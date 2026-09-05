@@ -14,6 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::error::ClickError;
+use crate::id::ItemId;
 use crate::inventory::{Inventories, InventoryRef};
 use crate::menu::{DragState, LookupCtx, MenuDef, MenuState, SlotBehaviour, SlotDef, SlotIx};
 use crate::stack::{ItemStack, take_from};
@@ -141,6 +142,26 @@ pub enum ClickAction {
     },
     /// A toolbar button.
     Toolbar(ToolbarAction),
+    /// Cheat-give: create `count` of `item` out of nothing. Refused with
+    /// [`ClickError::Permission`] unless [`Actor::can_cheat`]. The one action
+    /// that is exempt from item conservation, like `Clone`.
+    Give {
+        /// The item to create.
+        item: ItemId,
+        /// How many. Capped at the item's max stack size.
+        count: u32,
+        /// Where it lands.
+        target: GiveTarget,
+    },
+}
+
+/// Where a [`ClickAction::Give`] puts the created stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GiveTarget {
+    /// Onto the cursor: sets the carried stack, or merges into a same-kind one.
+    Cursor,
+    /// Into this inventory's slots, same-kind stacks first, then empty slots.
+    Inventory(InventoryRef),
 }
 
 /// Who is clicking. Carries the permissions actions check.
@@ -148,8 +169,7 @@ pub enum ClickAction {
 pub struct Actor {
     /// Creative mode: enables `Clone` and middle drags.
     pub creative: bool,
-    /// May receive cheat gives. Reserved for the owner's give/spawn commands;
-    /// no built-in action reads it yet.
+    /// May receive cheat gives: enables [`ClickAction::Give`].
     pub can_cheat: bool,
 }
 
@@ -221,6 +241,7 @@ pub fn apply_click(
     let duplicates = matches!(
         action,
         ClickAction::Clone { .. }
+            | ClickAction::Give { .. }
             | ClickAction::Drag {
                 kind: DragKind::Middle,
                 ..
@@ -245,6 +266,11 @@ pub fn apply_click(
         ClickAction::Drag { stage, kind, slot } => op.drag(state, stage, kind, slot, *actor)?,
         ClickAction::PickupAll { slot, reverse } => op.pickup_all(state, slot, reverse)?,
         ClickAction::Toolbar(action) => op.toolbar(action)?,
+        ClickAction::Give {
+            item,
+            count,
+            target,
+        } => op.give(state, item, count, target, *actor)?,
     };
 
     if mutated {
@@ -719,6 +745,54 @@ impl<'a> Op<'a> {
         let max = self.item_max(&present);
         state.carried = Some(present.with_count(max));
         Ok(true)
+    }
+
+    // ----- GIVE -----------------------------------------------------------
+
+    fn give(
+        &mut self,
+        state: &mut MenuState,
+        item: ItemId,
+        count: u32,
+        target: GiveTarget,
+        actor: Actor,
+    ) -> Result<bool, ClickError> {
+        if !actor.can_cheat {
+            return Err(ClickError::Permission);
+        }
+        if count == 0 {
+            return Err(ClickError::NothingToDo);
+        }
+        let mut stack = ItemStack::new(item, count);
+        let max = self.item_max(&stack);
+        stack.count = stack.count.min(max);
+        match target {
+            GiveTarget::Cursor => match state.carried.as_mut() {
+                None => {
+                    state.carried = Some(stack);
+                    Ok(true)
+                }
+                Some(carried) if carried.same_kind(&stack) => {
+                    if carried.count >= max {
+                        return Err(ClickError::NothingToDo);
+                    }
+                    carried.count = (carried.count + stack.count).min(max);
+                    Ok(true)
+                }
+                Some(_) => Err(ClickError::NotAllowed),
+            },
+            GiveTarget::Inventory(inventory) => {
+                let targets = self.target_slots(&[inventory], false, None);
+                if targets.is_empty() {
+                    return Err(ClickError::NoSuchSlot);
+                }
+                if self.move_into(&mut stack, &targets) {
+                    Ok(true)
+                } else {
+                    Err(ClickError::NothingToDo)
+                }
+            }
+        }
     }
 
     // ----- THROW ----------------------------------------------------------

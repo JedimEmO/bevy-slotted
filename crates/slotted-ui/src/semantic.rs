@@ -34,6 +34,22 @@ pub enum SemanticRole {
     Anchor,
     /// The carried-stack layer.
     Carried,
+    /// The item browser panel root (Phase 3, `slotted-browser`).
+    Browser,
+    /// A text input, such as the browser's search field.
+    TextField,
+    /// A toggle chip, such as a browser category filter.
+    Chip,
+    /// A browser card: one ingredient entry in the grid.
+    Card,
+    /// The browser's recipe view.
+    RecipeView,
+    /// One ingredient position inside a recipe layout.
+    RecipeSlot,
+    /// A tab, such as a recipe category tab.
+    Tab,
+    /// One bookmark in the browser's bookmark strip.
+    Bookmark,
     /// A widget with no better role.
     Custom(String),
 }
@@ -46,11 +62,17 @@ impl SemanticRole {
             Self::Screen => Role::Dialog,
             Self::Panel | Self::Anchor | Self::Carried | Self::Custom(_) => Role::GenericContainer,
             Self::Grid | Self::Hotbar => Role::Grid,
-            Self::Slot => Role::Cell,
+            Self::Slot | Self::RecipeSlot => Role::Cell,
             Self::Button => Role::Button,
             Self::Text => Role::Label,
             Self::Tooltip => Role::Tooltip,
             Self::Rail => Role::Toolbar,
+            Self::Browser => Role::Pane,
+            Self::TextField => Role::TextInput,
+            Self::Chip => Role::CheckBox,
+            Self::Card | Self::Bookmark => Role::ListItem,
+            Self::RecipeView => Role::Group,
+            Self::Tab => Role::Tab,
         }
     }
 }

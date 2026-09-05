@@ -50,6 +50,7 @@ slotted-ecs = { path = "crates/slotted-ecs", version = "0.1.0" }
 slotted-theme = { path = "crates/slotted-theme", version = "0.1.0" }
 slotted-ui = { path = "crates/slotted-ui", version = "0.1.0" }
 slotted-icons = { path = "crates/slotted-icons", version = "0.1.0" }
+slotted-browser = { path = "crates/slotted-browser", version = "0.1.0" }
 slotted-test = { path = "crates/slotted-test", version = "0.1.0" }
 slotted = { path = "crates/slotted", version = "0.1.0" }
 

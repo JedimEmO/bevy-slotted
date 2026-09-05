@@ -1,0 +1,6 @@
+(
+    name: "demo:coal",
+    recipe_type: "demo:smelting",
+    ingredients: ["#minecraft:planks"],
+    result: (item: "minecraft:coal", count: 1),
+)

@@ -1,6 +1,6 @@
 [package]
-name = "slotted-test"
-description = "Headless UI test harness for games built on slotted: locators over the semantic tree, synthetic input through real picking, virtual time, screen-tree snapshots."
+name = "slotted-browser"
+description = "Item and recipe browser for slotted: ingredient registry, categories, search index, browser panel, recipe transfer."
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -10,19 +10,18 @@ authors.workspace = true
 
 [features]
 default = []
-# Run the real renderer with a software adapter and compare pixels. Phase 7.
-render = []
+# Exclusion-zone highlighter, id tooltips, copy recipe id. No extra dependencies.
+dev = ["slotted-ui/dev"]
 
 [dependencies]
-slotted = { workspace = true }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
 slotted-ecs = { workspace = true }
 slotted-theme = { workspace = true }
-slotted-ui = { workspace = true }
 slotted-icons = { workspace = true }
-slotted-browser = { workspace = true }
-# `debug` so a failing system parameter names itself (ADR 0002).
+slotted-ui = { workspace = true }
+# Same feature list as slotted-ui: the panel lays out and picks, it does not
+# draw. `bevy_tasks` (via `std`) runs the index build off the main thread.
 bevy = { workspace = true, features = [
     "std",
     "bevy_asset",
@@ -35,19 +34,21 @@ bevy = { workspace = true, features = [
     "bevy_ui",
     "bevy_ui_widgets",
     "bevy_window",
-    "default_font",
     "ui_picking",
-    "debug",
 ] }
-insta = { workspace = true }
 serde = { workspace = true }
-uuid = { workspace = true }
+ron = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-slotted-testutils = { workspace = true }
 pretty_assertions = { workspace = true }
+criterion = { workspace = true }
+bevy = { workspace = true, features = ["std", "default_font", "bevy_state"] }
+
+[[bench]]
+name = "index"
+harness = false
 
 [lints]
 workspace = true

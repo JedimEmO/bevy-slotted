@@ -40,6 +40,10 @@ impl PluginGroup for SlottedPlugins {
                     },
                 });
         }
+        #[cfg(feature = "browser")]
+        {
+            group = group.add(slotted_browser::SlottedBrowserPlugin::default());
+        }
         group
     }
 }

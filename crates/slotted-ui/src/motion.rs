@@ -82,7 +82,7 @@ pub fn record_gesture_target(action: On<MenuAction>, mut target: ResMut<GestureT
         | ClickAction::PickupAll { slot, .. }
         | ClickAction::QuickMove { slot } => Some(slot),
         ClickAction::Drag { slot, .. } => slot,
-        ClickAction::Toolbar(_) => None,
+        ClickAction::Toolbar(_) | ClickAction::Give { .. } => None,
     };
     target.slot = named.map(|slot| (menu, slot));
     if let ClickAction::QuickMove { slot } = action.action {

@@ -23,6 +23,8 @@ pub use slotted_ecs as ecs;
 pub use slotted_model as model;
 pub use slotted_registry as registry;
 
+#[cfg(feature = "browser")]
+pub use slotted_browser as browser;
 #[cfg(feature = "ui")]
 pub use slotted_icons as icons;
 #[cfg(feature = "ui")]
@@ -33,6 +35,8 @@ pub use slotted_ui as ui;
 /// The common names.
 pub mod prelude {
     pub use crate::SlottedPlugins;
+    #[cfg(feature = "browser")]
+    pub use slotted_browser::prelude::*;
     pub use slotted_ecs::prelude::*;
     #[cfg(feature = "ui")]
     pub use slotted_icons::prelude::*;

@@ -9,13 +9,15 @@ repository.workspace = true
 authors.workspace = true
 
 [features]
-default = ["ui"]
+default = ["ui", "browser"]
 # Widgets, themes and icons. Off for a dedicated server.
 ui = ["dep:slotted-ui", "dep:slotted-theme", "dep:slotted-icons"]
+# The item and recipe browser overlay (Phase 3).
+browser = ["ui", "dep:slotted-browser"]
 # Backdrop blur for glass panels (ADR 0003).
 blur = ["ui", "slotted-theme/blur"]
 # Exclusion-zone highlighter, id tooltips.
-dev = ["ui", "slotted-ui/dev"]
+dev = ["ui", "slotted-ui/dev", "slotted-browser?/dev"]
 
 [dependencies]
 slotted-model = { workspace = true }
@@ -24,6 +26,7 @@ slotted-ecs = { workspace = true }
 slotted-theme = { workspace = true, optional = true }
 slotted-ui = { workspace = true, optional = true }
 slotted-icons = { workspace = true, optional = true }
+slotted-browser = { workspace = true, optional = true }
 # The headless group needs exactly what ADR 0002 lists; a game adds
 # DefaultPlugins on top of these for a windowed build.
 bevy = { workspace = true, features = [

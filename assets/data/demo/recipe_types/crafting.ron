@@ -1,3 +1,4 @@
 (
     name: "demo:crafting",
+    size: (3, 3),
 )

@@ -53,7 +53,7 @@ pub mod stack;
 
 pub use authority::{Authority, AuthorityError, AuthorityEvent, MenuId, MenuSnapshot};
 pub use click::{
-    Actor, Button, ClickAction, Delta, DragKind, DragStage, ToolbarAction, apply_click,
+    Actor, Button, ClickAction, Delta, DragKind, DragStage, GiveTarget, ToolbarAction, apply_click,
 };
 pub use error::ClickError;
 pub use id::{ComponentId, ItemId, Namespaced, NamespacedError};

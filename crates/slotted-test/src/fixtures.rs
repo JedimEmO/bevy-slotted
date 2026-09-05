@@ -10,7 +10,9 @@
 use std::sync::{Arc, OnceLock};
 
 use slotted_model::{Actor, Inventory, ItemId, ItemStack, MenuDef, Namespaced};
-use slotted_registry::defs::{ItemDef, Rarity, TagDef, TagEntry};
+use slotted_registry::defs::{
+    Ingredient, ItemDef, ItemResult, Rarity, RecipeDef, RecipeTypeDef, TagDef, TagEntry,
+};
 use slotted_registry::registry::Registries;
 use slotted_registry::{FrozenRegistries, Value};
 
@@ -135,6 +137,8 @@ fn id(s: &str) -> Namespaced {
 /// let registries = TestRegistries::basic();
 /// let pearl = TestRegistries::item("minecraft:ender_pearl");
 /// assert_eq!(registries.items.get(pearl).unwrap().max_stack_size, 16);
+/// // Three recipes back the browser tests.
+/// assert_eq!(registries.recipes.len(), 3);
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct TestRegistries;
@@ -196,6 +200,7 @@ impl TestRegistries {
                 replace: false,
             });
         }
+        add_recipes(&mut registries);
         let (frozen, warnings) = registries
             .freeze()
             .expect("the fixture table freezes cleanly");
@@ -205,6 +210,59 @@ impl TestRegistries {
         );
         Arc::new(frozen)
     }
+}
+
+/// The recipe types and recipes the browser tests need, mirroring
+/// `assets/data/demo/recipes`: a shaped pickaxe, a shapeless sword over the
+/// `#minecraft:planks` tag, and one smelting recipe.
+fn add_recipes(registries: &mut Registries) {
+    let mut crafting = RecipeTypeDef::new(id("demo:crafting"));
+    crafting.size = (3, 3);
+    registries
+        .add_recipe_type(crafting)
+        .expect("fixture recipe type demo:crafting");
+    registries
+        .add_recipe_type(RecipeTypeDef::new(id("demo:smelting")))
+        .expect("fixture recipe type demo:smelting");
+
+    let mut pickaxe = RecipeDef::shapeless(
+        id("demo:iron_pickaxe"),
+        id("demo:crafting"),
+        Vec::new(),
+        ItemResult::one(id("minecraft:iron_pickaxe")),
+    );
+    pickaxe.shape = Some(vec!["III".into(), " P ".into(), " P ".into()]);
+    pickaxe
+        .key
+        .insert('I', Ingredient::Item(id("minecraft:iron_ingot")));
+    pickaxe
+        .key
+        .insert('P', Ingredient::Item(id("minecraft:oak_planks")));
+    registries
+        .add_recipe(pickaxe)
+        .expect("fixture recipe demo:iron_pickaxe");
+
+    registries
+        .add_recipe(RecipeDef::shapeless(
+            id("demo:diamond_sword"),
+            id("demo:crafting"),
+            vec![
+                Ingredient::Item(id("minecraft:diamond")),
+                Ingredient::Item(id("minecraft:diamond")),
+                Ingredient::Tag(id("minecraft:planks")),
+            ],
+            ItemResult::one(id("minecraft:diamond_sword")),
+        ))
+        .expect("fixture recipe demo:diamond_sword");
+
+    registries
+        .add_recipe(RecipeDef::shapeless(
+            id("demo:coal"),
+            id("demo:smelting"),
+            vec![Ingredient::Tag(id("minecraft:planks"))],
+            ItemResult::one(id("minecraft:coal")),
+        ))
+        .expect("fixture recipe demo:coal");
 }
 
 /// Fills inventory `inv` from `(index, item name, count)` triples.
