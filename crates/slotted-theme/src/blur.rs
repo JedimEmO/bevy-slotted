@@ -7,11 +7,14 @@
 //! ever reaches the material.
 
 use bevy::asset::Handle;
-use bevy::image::Image;
+use bevy::camera::{ClearColorConfig, RenderTarget};
+use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::TextureFormat;
 use bevy::shader::ShaderRef;
 use bevy::ui_render::ui_material::UiMaterial;
+use bevy::window::PrimaryWindow;
 
 /// The frosted panel material. Only styling lives here.
 #[derive(AsBindGroup, Asset, TypePath, Debug, Clone)]
@@ -57,11 +60,93 @@ pub struct BackdropImage(pub Handle<Image>);
 
 /// Spawns the backdrop camera and keeps its transform synced to the
 /// [`BackdropSource`] camera every frame.
-// PHASE2-IMPL: agent B. Port `setup_backdrop` and `sync_backdrop_camera` from
-// spikes/glass-ui/src/main.rs; register `UiMaterialPlugin::<GlassPanelMaterial>`.
-#[derive(Default)]
-pub struct BackdropPlugin;
+///
+/// The backdrop camera is a `Camera3d` at order `-1`, so it draws the same
+/// world one pass before the window camera. A game whose world is 2D should
+/// skip this plugin and use a `Solid` panel role instead; see
+/// `docs/design/phase2-notes-B.md`.
+#[derive(Debug, Clone, Copy)]
+pub struct BackdropPlugin {
+    /// The backdrop image is the window divided by this on each axis.
+    /// Four means one sixteenth of the pixels.
+    pub divisor: u32,
+    /// Colour the backdrop camera clears to.
+    pub clear_color: Color,
+}
+
+impl Default for BackdropPlugin {
+    fn default() -> Self {
+        Self {
+            divisor: 4,
+            clear_color: Color::BLACK,
+        }
+    }
+}
 
 impl Plugin for BackdropPlugin {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.add_plugins(bevy::ui_render::prelude::UiMaterialPlugin::<
+            GlassPanelMaterial,
+        >::default())
+            .insert_resource(BackdropConfig {
+                divisor: self.divisor.max(1),
+                clear_color: self.clear_color,
+            })
+            .add_systems(Startup, spawn_backdrop_camera)
+            .add_systems(PostUpdate, sync_backdrop_camera);
+    }
+}
+
+#[derive(Resource, Debug, Clone, Copy)]
+struct BackdropConfig {
+    divisor: u32,
+    clear_color: Color,
+}
+
+fn spawn_backdrop_camera(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    config: Res<BackdropConfig>,
+    window: Query<&Window, With<PrimaryWindow>>,
+) {
+    let Ok(window) = window.single() else {
+        tracing::warn!("no primary window; backdrop camera not spawned");
+        return;
+    };
+    let size = window.physical_size().max(UVec2::splat(config.divisor)) / config.divisor;
+    let mut backdrop =
+        Image::new_target_texture(size.x, size.y, TextureFormat::Rgba8UnormSrgb, None);
+    // Linear filtering matters: the blur taps fall between texels of a small
+    // image.
+    backdrop.sampler = ImageSampler::linear();
+    let backdrop = images.add(backdrop);
+    commands.insert_resource(BackdropImage(backdrop.clone()));
+    commands.spawn((
+        Camera3d::default(),
+        Camera {
+            // Negative order so it runs before the window camera.
+            order: -1,
+            clear_color: ClearColorConfig::Custom(config.clear_color),
+            ..default()
+        },
+        RenderTarget::Image(backdrop.into()),
+        BackdropCamera,
+    ));
+}
+
+/// The backdrop camera must track the source camera exactly, or the blurred
+/// image will not line up with the world behind the panel.
+fn sync_backdrop_camera(
+    source: Query<&GlobalTransform, (With<BackdropSource>, Without<BackdropCamera>)>,
+    mut backdrop: Query<&mut Transform, With<BackdropCamera>>,
+) {
+    let Ok(src) = source.single() else {
+        return;
+    };
+    let target = src.compute_transform();
+    for mut dst in &mut backdrop {
+        if *dst != target {
+            *dst = target;
+        }
+    }
 }

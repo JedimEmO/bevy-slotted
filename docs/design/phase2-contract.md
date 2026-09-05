@@ -1,9 +1,12 @@
 # Phase 2 contract: ecs, theme, ui, icons, test harness
 
-Status: v1, 2026-09-05. Bevy 0.19.1. Companion to `docs/PLAN.md` 4.3 to 4.6, 4.11, 4.12 and
-ADRs 0002, 0003. The skeleton crates under `crates/` carry these types already; `// PHASE2-IMPL:
-<agent>` marks every body that is still a stub. Three agents build against this without talking
-to each other, so anything not written here is a private decision of the crate that owns it.
+Status: v1.1, 2026-09-05, amended in integration. Bevy 0.19.1. Companion to `docs/PLAN.md` 4.3
+to 4.6, 4.11, 4.12 and ADRs 0002, 0003. Three agents built against v1 without talking to each
+other, so anything not written here is a private decision of the crate that owns it; where two of
+them made incompatible calls, the section is marked **amended in integration** and says which way
+it went. Their notes are `docs/design/phase2-notes-{A,B,C}.md`. Phase 2 is implemented: no
+`// PHASE2-IMPL` stub bodies remain, and what Phase 2 deliberately leaves for later is listed in
+`docs/FOLLOWUPS.md`.
 
 ## 0. Ground rules
 
@@ -35,7 +38,7 @@ Components (`menu.rs`):
 | `OpenMenu { def: Arc<MenuDef>, state: MenuState, inventories: Vec<Entity>, id: MenuId, actor: Actor }` | menu entity | `inventories[i]` backs `InventoryRef::new(i)`; lengths must match `def.inventory_sizes()` or every action is `MenuMismatch`. |
 | `Carried(Option<ItemStack>)` | menu entity | Mirror of `state.carried`, kept for `Changed<Carried>` queries. |
 | `MenuProperty { id: PropertyId, value: i32 }` | child of menu | One per `def.properties`. |
-| `SlotEntities(HashMap<SlotIx, Entity>)` | menu entity | Reverse index of `SlotRef`s, filled by `register_slot_refs`. |
+| `SlotEntities(HashMap<SlotIx, Entity>)` | menu entity | Reverse index of `SlotRef`s, filled by `register_slot_refs`, which also emits the slot's current contents. |
 | `SlotRef { menu: Entity, slot: SlotIx }` | any UI entity | The one thing `ui` attaches to make a node a slot. |
 | `Favorite` | `SlotRef` entity | Mirrored from `Inventory::is_favorite` in `Reconcile`. |
 
@@ -51,9 +54,9 @@ Entity events (`events.rs`): `SlotClicked { entity: slot, button: Button, modifi
 `SlotRef`), `PropertyChanged { entity: property child, menu, id, value }`. Message: `SlotSync { menu,
 slot, stack }` for every changed slot, always.
 
-Flow. `SlotClicked` -> observer `interpret_slot_click` (resolves `SlotRef`, vanilla mapping:
-left/right `Pickup`, shift+left `QuickMove`, middle `Clone`, second left click on the same slot
-within `double_click_window` of `Time<Virtual>` `PickupAll`; drag paint state lives here too) ->
+Flow (**amended in integration**). `SlotClicked` -> observer `interpret_slot_click` (resolves
+`SlotRef`, vanilla mapping: left/right `Pickup`, shift+left `QuickMove`, middle `Clone`, second
+left click on the same slot within `double_click_window` of `Time<Virtual>` `PickupAll`) ->
 `commands.trigger(MenuAction)` -> observer `enqueue_menu_action` pushes to `ActionQueue`.
 `Predict` drains the queue in order: clone the menu's inventories into a `slotted_model::Inventories`,
 `apply_click(def, inv, state, action, actor, &registries.lookup())`, write changed inventories back,
@@ -62,6 +65,22 @@ update `Carried`, write `SlotSync`, trigger `SlotChanged` for registered slots, 
 back by requesting a resync path. `Reconcile`: `authority.poll()`; `Ack` decrements the counter;
 `Resync` overwrites `state` and the inventory components and re-emits every slot; `Property`
 updates the child and triggers `PropertyChanged`; then mirror `Favorite`.
+
+Drag painting does **not** go through `SlotClicked`. That event carries one completed click, so an
+observer of it can never see press, move and release; `ui` triggers it on `Pointer<Release>`.
+`ClickInterpreter` instead exposes `begin_drag`, `paint` and `end_drag`, which return the three
+`ClickAction::Drag` stages, and whoever owns the pointer stream triggers `MenuAction` with them
+directly. In Phase 2 that is `slotted-ui`'s `on_slot_drag_start` / `drag_enter` / `drag_end`, with a
+`DragPaint` resource suppressing the `Release` picking sends after a drag so a paint never also
+reads as a click. Number keys are the same story: `ClickInterpreter::swap(slot, hotbar)` builds the
+action and the crate that has the hover information triggers it. This is the reconciliation of
+`docs/design/phase2-notes-A.md` item 7 and `-B.md` item 8, which agreed.
+
+`register_slot_refs` (**amended in integration**) runs in `SlottedEcsSet::Input` and does two
+things for every `Added<SlotRef>`: it inserts the entity into its menu's `SlotEntities`, and it
+writes one `SlotSync` and triggers one `SlotChanged` carrying the slot's current contents. Slot
+entities are spawned after the menu is opened, so without this seeding they would never have seen a
+`SlotChanged` and a freshly spawned screen would render empty until the player's first click.
 
 Functions: `open_menu(&mut Commands, &mut MenuIdAllocator, Arc<MenuDef>, Vec<Entity>, Actor) -> Entity`
 (spawns `OpenMenu + Carried + SlotEntities`, property children, triggers `MenuOpened`);
@@ -224,7 +243,16 @@ the primary pointer each frame in `Render`.
 `ExclusionZone` marker; `Exclusions` `SystemParam` with `union(screen) -> Vec<Rect>` (logical px,
 descendants only, not merged).
 
-Tooltips: `TooltipRequest { entity, tier: TooltipTier::{Compact, Expanded} }` entity event ->
+Tooltips (**amended in integration**). The `Pointer<Over>` observer on a slot does not request a
+tooltip; it inserts `HoverStart(Time<Virtual>::elapsed)`, and `tooltip_delay` (`Render`) triggers
+the request once `durations.hover_delay_ms` has passed. `tooltip_delay` raises the request exactly
+twice: once when a hovered slot past the delay has no `TooltipContent`, and again on the frame a
+shift key is pressed or released while one is shown. It must not re-assert the shift-derived tier
+every frame, because that would undo a `TooltipRequest` raised by anything else (a widget, a
+script, or the harness's `request_tooltip`, which bypasses the delay by design) one frame later.
+The harness's `request_tooltip` therefore survives `settle()`.
+
+`TooltipRequest { entity, tier: TooltipTier::{Compact, Expanded} }` entity event ->
 `show_tooltip` observer composes `TooltipParts` (ordered `Arc<dyn TooltipPart>`,
 `fn build(&self, &TooltipCtx { stack, registries, tier }, &mut Vec<UiNodeDef>)`) into
 `TooltipContent { tier, parts }` on the hovered entity and spawns a `slotted:tooltip` under the layer
@@ -300,6 +328,15 @@ Queries: `stack_at(slot)` (from the model through `SlotRef`), `displayed_stack(e
 `carried(menu)`, `is_visible`, `is_focused`, `focused()`, `text_of`, `tooltip() -> Option<TooltipContent>`,
 `rect_of`, `center_of`, `exclusion_zones(screen)`, `screen_tree() -> ScreenTree`, `world()`, `world_mut()`.
 
+Conservation (**added in integration**): `assert_conserved()` sums per-kind counts across every
+`Inventory` component, every menu's `Carried` stack and the `Dropped` resource, and compares that
+to a baseline `open_screen` captures. Every test in `tests/chest_screen.rs` ends with it. A
+gesture may move items anywhere; it may not create or destroy one.
+
+Pointer and semantic actions take `Entity`, not `Locator`: `h.click(h.find(&loc))` is the idiom.
+A pointer press also moves `InputFocus`, which the semantic path does not, since it skips picking
+by design; a test comparing the two paths' `ScreenTree`s has to account for that.
+
 `ScreenTree { roots: Vec<TreeNode> }`, `TreeNode { role, label?, test_id?, tags, widget?, anchor?,
 screen?, visible, focused, item?: ItemSummary { id, count }, children }` (Serialize, `None`/empty
 skipped). Nodes without a `SemanticRole` are elided and their semantic descendants lifted.
@@ -320,3 +357,21 @@ Not in Phase 2: `load_mod`, recording and replay, the `render` feature, gamepad.
 - Icons are baked on the CPU in Phase 2 (section 3).
 - `slotted-registry` is pulled with `default-features = false` at the workspace level so the ecs
   crate builds on wasm; the facade re-enables `std-fs`.
+
+Amended in integration (see the marked sections above, and `docs/design/phase2-notes-{A,B,C}.md`):
+
+- Drag painting and number keys trigger `MenuAction` directly; `SlotClicked` carries only a
+  completed pointer click on a slot (section 1).
+- `register_slot_refs` seeds a newly registered slot with its current contents (section 1).
+- `Pointer<Over>` starts a hover timer; `tooltip_delay` requests the tooltip, and only re-requests
+  it when the shift key changes (section 4.4).
+- Widget params carry no `Option`: an untyped `ron::Value` forgets `Some`, so every field is a
+  plain type with a `#[serde(default)]` (section 4.3, notes B item 5).
+- Built-in `UiNodeDef` variants are dispatched by `SpawnCtx::spawn_child` straight to their spawn
+  functions rather than through `Widget::spawn`, which only sees `params` (notes B item 6). The
+  `WidgetRegistry` still holds a `Widget` per built-in kind and `Custom` still goes through it, so
+  every spawned node still carries `WidgetNode`.
+- Harness actions take `Entity`, not `Locator` (section 6, notes C).
+- `MenuClosed` keeps its `{ entity, id }` shape; a dropped stack lands in the `Dropped` resource
+  (notes A item 1).
+- `UiHarness::assert_conserved()` is part of the harness surface (section 6).

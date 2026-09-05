@@ -5,13 +5,17 @@ use bevy::ui::UiSystems;
 use slotted_ecs::SlottedEcsSet;
 use slotted_theme::SlottedThemeSet;
 
-use crate::item::render_items;
-use crate::layers::{CarriedLayer, TooltipLayer, zbands};
+use crate::input::{DragPaint, clear_drag_suppression};
+use crate::item::{ItemView, on_slot_changed, render_items, spawn_item_view_children};
+use crate::layers::{CarriedItem, CarriedLayer, TooltipLayer, update_carried_layer, zbands};
 use crate::nav::{NavKeys, directional_nav_keys};
-use crate::screen::{Injections, ScreenLayout, Screens, WidgetRegistry};
-use crate::semantic::{ScreenRoot, SemanticRole, sync_accessibility};
-use crate::tooltip::{TooltipParts, show_tooltip};
-use crate::widgets::{register_builtins, slot_state_roles};
+use crate::screen::{Injections, Screens, WidgetRegistry, emit_screen_layout};
+use crate::semantic::{SemanticRole, sync_accessibility};
+use crate::tooltip::{
+    TooltipParts, place_tooltips, register_builtin_parts, show_tooltip, tooltip_delay,
+};
+use crate::widgets::{hotbar_swap_keys, register_builtins, slot_state_roles};
+use slotted_theme::{Themed, roles};
 
 /// UI systems. `Input`, `Render`, `Semantics` run in `Update`; `Layout` runs
 /// in `PostUpdate` after `UiSystems::Layout`.
@@ -66,13 +70,17 @@ impl Plugin for SlottedUiPlugin {
     fn build(&self, app: &mut App) {
         let mut widgets = WidgetRegistry::default();
         register_builtins(&mut widgets);
+        let mut parts = TooltipParts::default();
+        register_builtin_parts(&mut parts);
         app.insert_resource(widgets)
+            .insert_resource(parts)
             .init_resource::<Screens>()
             .init_resource::<Injections>()
-            .init_resource::<TooltipParts>()
             .init_resource::<NavKeys>()
+            .init_resource::<DragPaint>()
             .insert_resource(self.config.clone())
             .add_observer(show_tooltip)
+            .add_observer(on_slot_changed)
             .configure_sets(
                 Update,
                 (
@@ -94,12 +102,27 @@ impl Plugin for SlottedUiPlugin {
             .add_systems(
                 Update,
                 (
-                    directional_nav_keys.in_set(SlottedUiSet::Input),
-                    (render_items, slot_state_roles).in_set(SlottedUiSet::Render),
+                    (
+                        directional_nav_keys,
+                        hotbar_swap_keys,
+                        clear_drag_suppression,
+                    )
+                        .in_set(SlottedUiSet::Input),
+                    (
+                        slot_state_roles,
+                        update_carried_layer,
+                        render_items,
+                        tooltip_delay,
+                    )
+                        .chain()
+                        .in_set(SlottedUiSet::Render),
                     sync_accessibility.in_set(SlottedUiSet::Semantics),
                 ),
             )
-            .add_systems(PostUpdate, emit_screen_layout.in_set(SlottedUiSet::Layout));
+            .add_systems(
+                PostUpdate,
+                (emit_screen_layout, place_tooltips).in_set(SlottedUiSet::Layout),
+            );
     }
 }
 
@@ -128,25 +151,37 @@ fn spawn_layers(mut commands: Commands, config: Res<SlottedUiConfig>) {
         Pickable::IGNORE,
         TooltipLayer,
     ));
-    commands.spawn((
-        full(),
-        GlobalZIndex(zbands::CARRIED),
-        Pickable::IGNORE,
-        CarriedLayer,
-        SemanticRole::Carried,
-    ));
-}
-
-/// Triggers [`ScreenLayout`] once per screen root, the first frame its root
-/// has a non-zero `ComputedNode`.
-// PHASE2-IMPL: agent B. Track "already reported" with a marker component and
-// use the first Panel child's rect, not the full-window root.
-fn emit_screen_layout(
-    _roots: Query<(Entity, &ComputedNode), With<ScreenRoot>>,
-    _commands: Commands,
-) {
-    let _ = ScreenLayout {
-        entity: Entity::PLACEHOLDER,
-        rect: Rect::default(),
-    };
+    let carried = commands
+        .spawn((
+            full(),
+            GlobalZIndex(zbands::CARRIED),
+            Pickable::IGNORE,
+            CarriedLayer,
+            SemanticRole::Carried,
+        ))
+        .id();
+    // The one child of the carried layer is an item view that follows the
+    // pointer; it is not a slot, so it carries no `SemanticRole`.
+    commands.queue(move |world: &mut World| {
+        let size = crate::widgets::SLOT_SIZE;
+        let item = world
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: px(size),
+                    height: px(size),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+                Themed(roles::CARRIED),
+                ItemView::default(),
+                CarriedItem,
+                Pickable::IGNORE,
+                Visibility::Hidden,
+                ChildOf(carried),
+            ))
+            .id();
+        spawn_item_view_children(world, item);
+    });
 }

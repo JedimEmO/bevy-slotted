@@ -48,9 +48,29 @@
         "slot.hover": Solid(fill: "#243447E6", border: "#7FD1FFD9", radius: 8.0),
         "slot.focus": Solid(fill: "#141A24B8", border: "$accent", radius: 8.0),
         "slot.carried": Solid(fill: "#2A3B4FF2", border: "$warm", radius: 8.0),
+        // The favourite (pinned) marker sits on the slot itself, one step
+        // warmer than the resting slot.
+        "slot.favorite": Solid(fill: "#2A241AB8", border: "$warm", radius: 8.0),
+
+        // Rarity rings are a sibling overlay child of the slot, so they do not
+        // fight the slot's own hover / focus / carried state role.
+        "slot.rarity": Solid(fill: "#00000000", radius: 8.0),
+        "slot.rarity.common": Solid(fill: "#00000000", radius: 8.0),
+        "slot.rarity.uncommon": Solid(fill: "#00000000", border: "#7FD1FFB3", radius: 8.0),
+        "slot.rarity.rare": Solid(fill: "#00000000", border: "#B48CFFB3", radius: 8.0),
+        "slot.rarity.epic": Solid(fill: "#00000000", border: "#FFB454B3", radius: 8.0),
+        "slot.rarity.legendary": Solid(fill: "#00000000", border: "#FF6B6BD9", radius: 8.0),
+
+        // Durability track; the fill's colour is interpolated per stack by the
+        // item renderer, so it carries no role.
+        "slot.durability": Solid(fill: "#0B0E14CC", radius: 2.0),
+
+        // The stack that follows the pointer.
+        "carried": Solid(fill: "#00000000", radius: 8.0),
 
         "tooltip": Solid(fill: "#0B0E14F2", border: None, radius: 12.0, elevation: Some("mid")),
         "tooltip.frame": Solid(fill: "#00000000", border: "$hairline", radius: 12.0),
+        "tooltip.title": Text(color: "$text", size: 14.0),
 
         "button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),
         "button.primary": Gradient(
@@ -66,5 +86,9 @@
         "count": Text(color: "$text", size: 11.0),
 
         "rail": Solid(fill: "#0B0E14A6", border: "$hairline", radius: 12.0),
+        "rail.button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),
+
+        // Anchors and layer roots are laid out but never painted.
+        "invisible": Solid(fill: "#00000000"),
     },
 )

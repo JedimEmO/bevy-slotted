@@ -1,0 +1,80 @@
+---
+source: crates/slotted-test/tests/chest_screen.rs
+expression: (h.screen_tree()).to_string()
+---
+Screen screen=demo:chest
+  Panel #chest_panel tags[test_id=chest_panel] widget=slotted:panel
+    Text #title "chest.title" tags[test_id=title] widget=slotted:text
+    Grid tags[region=chest] widget=slotted:slot_grid
+      Slot "minecraft:cobblestone x64" [minecraft:cobblestone x64] tags[region=chest] widget=slotted:slot
+      Slot "minecraft:cobblestone x23" [minecraft:cobblestone x23] tags[region=chest] widget=slotted:slot
+      Slot "minecraft:oak_planks x40" [minecraft:oak_planks x40] tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "minecraft:iron_ingot x12" [minecraft:iron_ingot x12] tags[region=chest] widget=slotted:slot
+      Slot "minecraft:gold_ingot x3" [minecraft:gold_ingot x3] tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "minecraft:diamond x7" [minecraft:diamond x7] tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "minecraft:ender_pearl x16" [minecraft:ender_pearl x16] tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+      Slot "" tags[region=chest] widget=slotted:slot
+    Grid tags[region=player] widget=slotted:slot_grid
+      Slot "minecraft:dirt x64" [minecraft:dirt x64] tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "minecraft:iron_ingot x5" [minecraft:iron_ingot x5] tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "minecraft:cobblestone x9" [minecraft:cobblestone x9] tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "" tags[region=player] widget=slotted:slot
+      Slot "minecraft:coal x48" [minecraft:coal x48] tags[region=player] widget=slotted:slot
+    Grid tags[region=hotbar] widget=slotted:slot_grid
+      Slot "minecraft:iron_pickaxe" [minecraft:iron_pickaxe x1] tags[region=hotbar] widget=slotted:slot
+      Slot "minecraft:diamond_sword" [minecraft:diamond_sword x1] tags[region=hotbar] widget=slotted:slot
+      Slot "" tags[region=hotbar] widget=slotted:slot
+      Slot "" tags[region=hotbar] widget=slotted:slot
+      Slot "slotted:debug_stick" [slotted:debug_stick x1] tags[region=hotbar] widget=slotted:slot
+      Slot "" tags[region=hotbar] widget=slotted:slot
+      Slot "" tags[region=hotbar] widget=slotted:slot
+      Slot "" tags[region=hotbar] widget=slotted:slot
+      Slot "" tags[region=hotbar] widget=slotted:slot
+    Rail #rail tags[test_id=rail] widget=slotted:action_rail
+      Button "sort" tags[action=sort] widget=slotted:button
+      Button "quick_stack" tags[action=quick_stack] widget=slotted:button
+      Button "deposit_all" tags[action=deposit_all] widget=slotted:button
+      Button "loot_all" tags[action=loot_all] widget=slotted:button
+    Anchor anchor=title_end (hidden)
+Carried

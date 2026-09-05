@@ -91,6 +91,9 @@ pub mod roles {
     pub const COUNT: Role = Role::new_static("count");
     /// The action rail strip beside a grid.
     pub const RAIL: Role = Role::new_static("rail");
+    /// The stack following the pointer. Not in [`ALL`]: a theme that omits it
+    /// falls back to nothing, and the carried node is drawn by its item view.
+    pub const CARRIED: Role = Role::new_static("carried");
 
     /// Every well-known role, for completeness checks.
     pub const ALL: [Role; 15] = [

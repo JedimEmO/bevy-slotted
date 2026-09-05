@@ -1,5 +1,6 @@
 //! The harness: app, virtual window, camera, pointer, time.
 
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,9 +13,9 @@ use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{PrimaryWindow, Window, WindowResolution};
 use slotted_ecs::{Inventory, MenuIdAllocator, PendingRoundTrips, open_menu};
 use slotted_theme::{ActiveMotions, Motion};
-use slotted_ui::{ScreenKind, Screens, spawn_screen};
+use slotted_ui::spawn_screen;
 
-use crate::fixture::{MenuFixture, Opened};
+use crate::fixture::{MenuFixture, Opened, ScreenSource};
 
 type PluginFn = Box<dyn FnOnce(&mut App) + Send>;
 
@@ -183,6 +184,9 @@ impl UiHarnessBuilder {
             max_settle_frames: self.max_settle_frames,
             held: Vec::new(),
             last_layout: 0,
+            last_rects: HashMap::new(),
+            prev_rects: HashMap::new(),
+            conserved: None,
         };
         h.step(1);
         h
@@ -194,11 +198,13 @@ fn physical_px(logical: f32, scale: f32) -> u32 {
     (logical * scale).round() as u32
 }
 
-/// `settle()` gave up.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error(
-    "UI did not settle within {frames} frames (pending round trips: {pending}, active motions: {motions}, layout dirty: {layout_dirty})"
-)]
+/// `settle()` gave up: something is still running after the frame cap.
+///
+/// The `Display` form names what: the pending authority round trips, every
+/// tween still advancing with its progress, and every node whose rect moved on
+/// the last frame. A `settle` that never terminates is almost always one of
+/// those three, and guessing which costs more than printing all of them.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettleTimeout {
     /// Frames run.
     pub frames: usize,
@@ -206,9 +212,40 @@ pub struct SettleTimeout {
     pub pending: u32,
     /// `ActiveMotions` at the end.
     pub motions: u32,
-    /// Layout still changing.
-    pub layout_dirty: bool,
+    /// Tweens still running, described.
+    pub tweens: Vec<String>,
+    /// Nodes whose rect changed on the last frame, described.
+    pub moving: Vec<String>,
 }
+
+impl SettleTimeout {
+    /// Layout was still changing when the cap was reached.
+    pub fn layout_dirty(&self) -> bool {
+        !self.moving.is_empty()
+    }
+}
+
+impl std::fmt::Display for SettleTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the UI did not settle within {} frames: {} pending round trip(s), {} active motion(s), {} node(s) still moving",
+            self.frames,
+            self.pending,
+            self.motions,
+            self.moving.len()
+        )?;
+        for tween in &self.tweens {
+            write!(f, "\n  tween: {tween}")?;
+        }
+        for node in &self.moving {
+            write!(f, "\n  moving: {node}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for SettleTimeout {}
 
 /// A headless app with a virtual window, UI camera and pointer.
 pub struct UiHarness {
@@ -222,6 +259,9 @@ pub struct UiHarness {
     pub(crate) max_settle_frames: usize,
     pub(crate) held: Vec<KeyCode>,
     pub(crate) last_layout: u64,
+    pub(crate) last_rects: HashMap<Entity, [u32; 4]>,
+    pub(crate) prev_rects: HashMap<Entity, [u32; 4]>,
+    pub(crate) conserved: Option<BTreeMap<slotted_model::ItemId, u64>>,
 }
 
 impl UiHarness {
@@ -286,7 +326,6 @@ impl UiHarness {
 
     /// [`settle`](Self::settle) without the panic.
     pub fn try_settle(&mut self) -> Result<usize, SettleTimeout> {
-        let mut quiet = 0;
         for n in 0..self.max_settle_frames {
             self.app.update();
             let (pending, motions) = self.counters();
@@ -294,12 +333,7 @@ impl UiHarness {
             let layout_dirty = fp != self.last_layout;
             self.last_layout = fp;
             if pending == 0 && motions == 0 && !layout_dirty {
-                quiet += 1;
-                if quiet >= 1 {
-                    return Ok(n + 1);
-                }
-            } else {
-                quiet = 0;
+                return Ok(n + 1);
             }
         }
         let (pending, motions) = self.counters();
@@ -307,7 +341,8 @@ impl UiHarness {
             frames: self.max_settle_frames,
             pending,
             motions,
-            layout_dirty: true,
+            tweens: self.running_tweens(),
+            moving: self.moving_nodes(),
         })
     }
 
@@ -323,29 +358,77 @@ impl UiHarness {
         (pending, motions)
     }
 
-    /// Hash of every laid-out node's rect, so `settle` can see layout move.
-    fn layout_fingerprint(&mut self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    /// The tweens that are still running, described for a failure message.
+    fn running_tweens(&mut self) -> Vec<String> {
+        let mut q = self
+            .app
+            .world_mut()
+            .query::<(Entity, &slotted_theme::Tween)>();
+        q.iter(self.app.world())
+            .map(|(e, t)| {
+                format!(
+                    "{} {:?} ({:.0} of {:.0} ms elapsed)",
+                    crate::locator::describe(self.app.world(), e),
+                    t.target,
+                    t.elapsed.as_secs_f32() * 1000.0,
+                    t.duration.as_secs_f32() * 1000.0,
+                )
+            })
+            .collect()
+    }
+
+    /// The nodes whose rect changed on the last frame, described.
+    fn moving_nodes(&self) -> Vec<String> {
+        self.last_rects
+            .iter()
+            .filter(|(e, rect)| self.prev_rects.get(e) != Some(rect))
+            .map(|(e, _)| crate::locator::describe(self.world(), *e))
+            .collect()
+    }
+
+    /// Every laid-out node's rect, so `settle` can see layout move and say
+    /// which nodes are still moving when it gives up.
+    fn rects(&mut self) -> HashMap<Entity, [u32; 4]> {
         let mut q = self.app.world_mut().query::<(
             Entity,
             &ComputedNode,
             &bevy::ui::ui_transform::UiGlobalTransform,
         )>();
-        for (e, node, tf) in q.iter(self.app.world()) {
-            e.hash(&mut hasher);
-            node.size().x.to_bits().hash(&mut hasher);
-            node.size().y.to_bits().hash(&mut hasher);
-            tf.translation.x.to_bits().hash(&mut hasher);
-            tf.translation.y.to_bits().hash(&mut hasher);
-        }
+        q.iter(self.app.world())
+            .map(|(e, node, tf)| {
+                (
+                    e,
+                    [
+                        node.size().x.to_bits(),
+                        node.size().y.to_bits(),
+                        tf.translation.x.to_bits(),
+                        tf.translation.y.to_bits(),
+                    ],
+                )
+            })
+            .collect()
+    }
+
+    /// Hash of every laid-out node's rect, so `settle` can see layout move.
+    fn layout_fingerprint(&mut self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let rects = self.rects();
+        let mut sorted: Vec<(Entity, [u32; 4])> = rects.iter().map(|(e, r)| (*e, *r)).collect();
+        sorted.sort_by_key(|(e, _)| e.to_bits());
+        self.prev_rects = std::mem::replace(&mut self.last_rects, rects);
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        sorted.hash(&mut hasher);
         hasher.finish()
     }
 
-    /// Spawns inventory entities from `fixture`, opens the menu, looks `kind`
-    /// up in [`Screens`] and spawns its screen bound to that menu. Runs one
-    /// frame so the tree exists. Panics if `kind` is not registered.
-    pub fn open_screen(&mut self, kind: ScreenKind, fixture: impl MenuFixture) -> Opened {
+    /// Spawns inventory entities from `fixture`, opens the menu, resolves
+    /// `screen` and spawns it bound to that menu. Runs one frame so the tree
+    /// exists.
+    ///
+    /// `screen` is either a [`slotted_ui::ScreenKind`] already registered in
+    /// [`slotted_ui::Screens`] (this panics listing the known kinds if not) or a
+    /// [`slotted_ui::ScreenDef`], which is registered on the way through.
+    pub fn open_screen(&mut self, screen: impl ScreenSource, fixture: impl MenuFixture) -> Opened {
         let def = fixture.def();
         let actor = fixture.actor();
         let inventories: Vec<Entity> = fixture
@@ -353,12 +436,7 @@ impl UiHarness {
             .into_iter()
             .map(|inv| self.app.world_mut().spawn(Inventory(inv)).id())
             .collect();
-        let screen_def = self
-            .world()
-            .resource::<Screens>()
-            .get(&kind)
-            .unwrap_or_else(|| panic!("screen {kind:?} is not registered in Screens"))
-            .clone();
+        let screen_def = screen.screen_def(self.app.world_mut());
 
         let world = self.app.world_mut();
         let mut ids = world
@@ -373,10 +451,90 @@ impl UiHarness {
         world.insert_resource(ids);
         world.flush();
         self.step(1);
+        self.conserved = Some(census(self.world()));
         Opened {
             menu,
             screen,
             inventories,
         }
+    }
+}
+
+/// Every item in the world, counted per kind: all `Inventory` components,
+/// every menu's `Carried` stack, and the `Dropped` resource.
+///
+/// This is the whole of "the items that exist" as far as Phase 2 is
+/// concerned. Nothing else in the harness holds a stack.
+fn census(world: &World) -> BTreeMap<slotted_model::ItemId, u64> {
+    let mut out: BTreeMap<slotted_model::ItemId, u64> = BTreeMap::new();
+    let mut add = |stack: &slotted_model::ItemStack| {
+        *out.entry(stack.id).or_default() += u64::from(stack.count);
+    };
+    let mut inventories = world.try_query::<&Inventory>();
+    if let Some(query) = inventories.as_mut() {
+        for inventory in query.iter(world) {
+            for i in 0..inventory.len() {
+                if let Some(stack) = inventory.get(i) {
+                    add(stack);
+                }
+            }
+        }
+    }
+    let mut carried = world.try_query::<&slotted_ecs::Carried>();
+    if let Some(query) = carried.as_mut() {
+        for held in query.iter(world) {
+            if let Some(stack) = held.0.as_ref() {
+                add(stack);
+            }
+        }
+    }
+    if let Some(dropped) = world.get_resource::<slotted_ecs::Dropped>() {
+        for entry in &dropped.0 {
+            add(&entry.stack);
+        }
+    }
+    out
+}
+
+impl UiHarness {
+    /// Every item that existed when the screen was opened still exists.
+    ///
+    /// Sums per-kind counts across every `Inventory` component, every menu's
+    /// `Carried` stack and the `Dropped` resource, and compares that to the
+    /// baseline `open_screen` captured. Panics naming the kinds that gained or
+    /// lost, which is the failure mode a click-handling bug produces.
+    ///
+    /// Panics if no screen has been opened on this harness.
+    #[track_caller]
+    pub fn assert_conserved(&self) {
+        let baseline = self
+            .conserved
+            .as_ref()
+            .expect("assert_conserved needs a baseline: call open_screen first");
+        let now = census(self.world());
+        let mut differences = Vec::new();
+        let kinds: std::collections::BTreeSet<slotted_model::ItemId> =
+            baseline.keys().chain(now.keys()).copied().collect();
+        for kind in kinds {
+            let before = baseline.get(&kind).copied().unwrap_or(0);
+            let after = now.get(&kind).copied().unwrap_or(0);
+            if before != after {
+                differences.push(format!("  {}: {before} -> {after}", self.item_name(kind)));
+            }
+        }
+        assert!(
+            differences.is_empty(),
+            "items were created or destroyed since open_screen:\n{}",
+            differences.join("\n")
+        );
+    }
+
+    /// The registered name of an item id, or `#<id>` when no registries are
+    /// present.
+    fn item_name(&self, id: slotted_model::ItemId) -> String {
+        self.world()
+            .get_resource::<slotted_ecs::Registries>()
+            .and_then(|r| r.items.name_of(id).map(ToString::to_string))
+            .unwrap_or_else(|| format!("#{}", id.0))
     }
 }

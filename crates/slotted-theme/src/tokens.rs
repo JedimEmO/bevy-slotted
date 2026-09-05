@@ -66,8 +66,54 @@ pub struct Blur {
     pub backdrop_divisor: u32,
 }
 
+impl Default for Spacing {
+    /// The `glass` theme's scale, so a widget can lay itself out before any
+    /// theme asset has loaded.
+    fn default() -> Self {
+        Self {
+            xs: 2.0,
+            sm: 6.0,
+            md: 14.0,
+            lg: 20.0,
+            xl: 32.0,
+        }
+    }
+}
+
+impl Default for Radii {
+    fn default() -> Self {
+        Self {
+            sm: 8.0,
+            md: 12.0,
+            lg: 16.0,
+        }
+    }
+}
+
+impl Default for Durations {
+    fn default() -> Self {
+        Self {
+            fast: 90,
+            normal: 180,
+            slow: 320,
+        }
+    }
+}
+
+impl Default for Blur {
+    fn default() -> Self {
+        Self {
+            radius: 4.0,
+            backdrop_divisor: 4,
+        }
+    }
+}
+
 /// The whole table.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// [`Tokens::default`] is the `glass` theme's numbers with empty colour maps:
+/// what a widget lays itself out with before any theme asset has loaded.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tokens {
     /// Spacing scale.
     pub spacing: Spacing,
@@ -83,4 +129,13 @@ pub struct Tokens {
     pub palette: BTreeMap<String, ThemeColor>,
     /// Rarity ring colours keyed by `slotted_registry::Rarity::as_str()`.
     pub rarity: BTreeMap<String, ThemeColor>,
+}
+
+/// Hover delay before a tooltip appears, in milliseconds. Not a token in
+/// Phase 2; derived from [`Durations::normal`].
+impl Durations {
+    /// How long a slot must be hovered before its tooltip is composed.
+    pub const fn hover_delay_ms(&self) -> u32 {
+        self.normal * 2
+    }
 }

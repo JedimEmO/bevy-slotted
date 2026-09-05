@@ -4,10 +4,11 @@ use bevy::prelude::*;
 
 use crate::authority::{Authority, PendingRoundTrips};
 use crate::events::SlotSync;
-use crate::menu::MenuIdAllocator;
+use crate::menu::{Dropped, MenuIdAllocator, PlayerInventories};
 use crate::systems::{
-    ActionQueue, ClickInterpreter, enqueue_menu_action, gather_input, interpret_slot_click,
-    predict, reconcile, register_slot_refs, submit,
+    ActionQueue, ClickInterpreter, PendingSubmissions, clear_dirty_masks, enqueue_menu_action,
+    gather_input, interpret_slot_click, mirror_favorites, predict, reconcile, register_slot_refs,
+    submit,
 };
 
 /// The prediction loop, in `Update`, chained in this order.
@@ -37,6 +38,9 @@ impl Plugin for SlottedEcsPlugin {
             .init_resource::<ClickInterpreter>()
             .init_resource::<MenuIdAllocator>()
             .init_resource::<PendingRoundTrips>()
+            .init_resource::<PendingSubmissions>()
+            .init_resource::<PlayerInventories>()
+            .init_resource::<Dropped>()
             .add_message::<SlotSync>()
             .add_observer(interpret_slot_click)
             .add_observer(enqueue_menu_action)
@@ -54,10 +58,14 @@ impl Plugin for SlottedEcsPlugin {
             .add_systems(
                 Update,
                 (
-                    (gather_input, register_slot_refs).in_set(SlottedEcsSet::Input),
+                    (clear_dirty_masks, gather_input, register_slot_refs)
+                        .chain()
+                        .in_set(SlottedEcsSet::Input),
                     predict.in_set(SlottedEcsSet::Predict),
                     submit.in_set(SlottedEcsSet::Submit),
-                    reconcile.in_set(SlottedEcsSet::Reconcile),
+                    (reconcile, mirror_favorites)
+                        .chain()
+                        .in_set(SlottedEcsSet::Reconcile),
                 ),
             );
     }

@@ -225,6 +225,12 @@ fn settle_gives_up_at_the_frame_cap() {
     let err = h.try_settle().expect_err("never settles");
     assert_eq!(err.frames, 5);
     assert_eq!(err.motions, 1);
+    // The message has to name what is still running, not just count it.
+    assert_eq!(err.tweens.len(), 1, "{err}");
+    let msg = err.to_string();
+    assert!(msg.contains("did not settle within 5 frames"), "{msg}");
+    assert!(msg.contains("tween: "), "{msg}");
+    assert!(msg.contains("Alpha"), "{msg}");
 }
 
 #[test]
@@ -271,4 +277,38 @@ fn open_screen_spawns_a_screen_root_bound_to_a_menu() {
     // skeleton; widget bodies fill in the rest.
     assert!(h.try_find(&by::test_id("chest_panel")).is_some());
     let _ = Arc::new(());
+}
+
+/// `assert_conserved` compares the item census against the baseline
+/// `open_screen` captured, so it has to notice a stack that simply vanishes.
+#[test]
+#[should_panic(expected = "items were created or destroyed")]
+fn assert_conserved_catches_a_vanished_stack() {
+    let mut h = UiHarness::builder()
+        .plugins(SlottedPlugins::headless())
+        .registries(TestRegistries::basic())
+        .build();
+    let kind = ScreenKind::new("demo:bare");
+    let opened = h.open_screen(
+        ScreenDef {
+            kind,
+            inherits: None,
+            root: UiNodeDef::Panel {
+                role: slotted_theme::roles::PANEL,
+                layout: slotted_ui::Layout::default(),
+                children: vec![],
+                tags: slotted_ui::Tags::new(),
+            },
+            listring: vec![],
+        },
+        ChestFixture::filled(),
+    );
+    h.settle();
+    h.assert_conserved();
+
+    h.world_mut()
+        .get_mut::<slotted_ecs::Inventory>(opened.inventories[0])
+        .unwrap()
+        .set(0, None);
+    h.assert_conserved();
 }

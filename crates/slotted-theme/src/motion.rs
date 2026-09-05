@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
+use bevy::ui::ui_transform::{UiTransform, Val2};
 
 use crate::tokens::Durations;
 
@@ -45,6 +46,13 @@ impl Motion {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let micros = (f64::from(ms) * 1000.0 * f64::from(self.scale.max(0.0))).round() as u64;
         Duration::from_micros(micros)
+    }
+
+    /// A [`Tween`] on `target` lasting [`Motion::duration`] for `preset`.
+    /// Under reduced motion the duration is zero, so the tween lands on its
+    /// end value the first time `advance_tweens` sees it.
+    pub fn tween(&self, preset: MotionPreset, target: TweenTarget, durations: &Durations) -> Tween {
+        Tween::new(target, self.duration(preset, durations))
     }
 }
 
@@ -103,7 +111,27 @@ pub struct Tween {
     pub elapsed: Duration,
 }
 
+/// The value a [`Tween`] holds at some point along its run.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TweenValue {
+    /// Uniform `UiTransform` scale.
+    Scale(f32),
+    /// `UiTransform` translation in logical px.
+    Translate(Vec2),
+    /// `BackgroundColor` alpha.
+    Alpha(f32),
+}
+
 impl Tween {
+    /// A tween that has not started.
+    pub fn new(target: TweenTarget, duration: Duration) -> Self {
+        Self {
+            target,
+            duration,
+            elapsed: Duration::ZERO,
+        }
+    }
+
     /// Progress in 0..=1 after easing.
     pub fn progress(&self) -> f32 {
         if self.duration.is_zero() {
@@ -117,6 +145,16 @@ impl Tween {
     pub fn is_done(&self) -> bool {
         self.elapsed >= self.duration
     }
+
+    /// The interpolated value at the current progress.
+    pub fn value(&self) -> TweenValue {
+        let t = self.progress();
+        match self.target {
+            TweenTarget::Scale { from, to } => TweenValue::Scale(from.lerp(to, t)),
+            TweenTarget::Translate { from, to } => TweenValue::Translate(from.lerp(to, t)),
+            TweenTarget::Alpha { from, to } => TweenValue::Alpha(from.lerp(to, t)),
+        }
+    }
 }
 
 /// Number of [`Tween`] components alive after the last `SlottedThemeSet::Motion`
@@ -124,18 +162,62 @@ impl Tween {
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ActiveMotions(pub u32);
 
-/// Advances tweens by `Time<Virtual>`, writes the interpolated value, removes
-/// finished ones, and updates [`ActiveMotions`].
-// PHASE2-IMPL: agent B. Apply `TweenTarget` to `UiTransform` / `BackgroundColor`.
+/// Advances tweens by `Time<Virtual>`, writes the interpolated value onto
+/// `UiTransform` or `BackgroundColor`, removes finished ones, and updates
+/// [`ActiveMotions`].
+///
+/// Never reads the wall clock. With [`Motion::reduced`] every tween lands on
+/// its final value the first time this runs, which is what makes a
+/// reduced-motion harness settle in one frame.
 pub fn advance_tweens(
     time: Res<Time<Virtual>>,
+    motion: Res<Motion>,
     mut commands: Commands,
-    mut tweens: Query<(Entity, &mut Tween)>,
+    mut tweens: Query<(
+        Entity,
+        &mut Tween,
+        Option<&mut UiTransform>,
+        Option<&mut BackgroundColor>,
+    )>,
     mut active: ResMut<ActiveMotions>,
 ) {
+    let delta = time.delta();
     let mut alive = 0u32;
-    for (entity, mut tween) in &mut tweens {
-        tween.elapsed = tween.elapsed.saturating_add(time.delta());
+    for (entity, mut tween, transform, background) in &mut tweens {
+        if motion.reduced {
+            tween.elapsed = tween.duration;
+        } else {
+            tween.elapsed = tween.elapsed.saturating_add(delta);
+        }
+        match tween.value() {
+            TweenValue::Scale(s) => match transform {
+                Some(mut tf) => tf.scale = Vec2::splat(s),
+                None => {
+                    commands.entity(entity).insert(UiTransform {
+                        scale: Vec2::splat(s),
+                        ..UiTransform::IDENTITY
+                    });
+                }
+            },
+            TweenValue::Translate(v) => {
+                let translation = Val2::px(v.x, v.y);
+                match transform {
+                    Some(mut tf) => tf.translation = translation,
+                    None => {
+                        commands.entity(entity).insert(UiTransform {
+                            translation,
+                            ..UiTransform::IDENTITY
+                        });
+                    }
+                }
+            }
+            TweenValue::Alpha(a) => match background {
+                Some(mut bg) => bg.0 = bg.0.with_alpha(a),
+                None => {
+                    tracing::trace!(?entity, "alpha tween on a node with no BackgroundColor");
+                }
+            },
+        }
         if tween.is_done() {
             commands.entity(entity).remove::<Tween>();
         } else {
@@ -151,19 +233,37 @@ pub fn advance_tweens(
 mod tests {
     use super::*;
 
+    const D: Durations = Durations {
+        fast: 100,
+        normal: 200,
+        slow: 400,
+    };
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.init_resource::<Time<Virtual>>()
+            .init_resource::<Motion>()
+            .init_resource::<ActiveMotions>()
+            .add_systems(Update, advance_tweens);
+        app
+    }
+
+    /// Advance the app by exactly `delta`, the way the harness does.
+    fn step(app: &mut App, delta: Duration) {
+        app.world_mut()
+            .resource_mut::<Time<Virtual>>()
+            .advance_by(delta);
+        app.update();
+    }
+
     #[test]
     fn reduced_motion_is_instant() {
-        let d = Durations {
-            fast: 100,
-            normal: 200,
-            slow: 400,
-        };
         assert_eq!(
-            Motion::REDUCED.duration(MotionPreset::FlyToSlot, &d),
+            Motion::REDUCED.duration(MotionPreset::FlyToSlot, &D),
             Duration::ZERO
         );
         assert_eq!(
-            Motion::default().duration(MotionPreset::Hover, &d),
+            Motion::default().duration(MotionPreset::Hover, &D),
             Duration::from_millis(100)
         );
         let half = Motion {
@@ -171,23 +271,146 @@ mod tests {
             reduced: false,
         };
         assert_eq!(
-            half.duration(MotionPreset::FlyToSlot, &d),
+            half.duration(MotionPreset::FlyToSlot, &D),
             Duration::from_millis(200)
         );
     }
 
     #[test]
+    fn every_preset_maps_to_a_duration_token() {
+        let m = Motion::default();
+        assert_eq!(
+            m.duration(MotionPreset::Hover, &D),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            m.duration(MotionPreset::Press, &D),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            m.duration(MotionPreset::DropSquash, &D),
+            Duration::from_millis(200)
+        );
+        assert_eq!(
+            m.duration(MotionPreset::Fade, &D),
+            Duration::from_millis(200)
+        );
+        assert_eq!(
+            m.duration(MotionPreset::FlyToSlot, &D),
+            Duration::from_millis(400)
+        );
+        assert_eq!(
+            m.duration(MotionPreset::Stagger, &D),
+            Duration::from_millis(400)
+        );
+    }
+
+    #[test]
     fn tween_progress_eases_out() {
-        let mut t = Tween {
-            target: TweenTarget::Alpha { from: 0.0, to: 1.0 },
-            duration: Duration::from_millis(100),
-            elapsed: Duration::ZERO,
-        };
+        let mut t = Tween::new(
+            TweenTarget::Alpha { from: 0.0, to: 1.0 },
+            Duration::from_millis(100),
+        );
         assert!(t.progress().abs() < f32::EPSILON);
         t.elapsed = Duration::from_millis(50);
-        assert!(t.progress() > 0.5);
+        // Ease-out cubic at t=0.5 is 1 - 0.5^3 = 0.875.
+        assert!((t.progress() - 0.875).abs() < 1e-6, "{}", t.progress());
+        assert_eq!(t.value(), TweenValue::Alpha(0.875));
         t.elapsed = Duration::from_millis(100);
         assert!(t.is_done());
         assert!((t.progress() - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn a_zero_duration_tween_is_complete_immediately() {
+        let t = Tween::new(TweenTarget::Scale { from: 1.0, to: 1.2 }, Duration::ZERO);
+        assert!(t.is_done());
+        assert_eq!(t.value(), TweenValue::Scale(1.2));
+    }
+
+    #[test]
+    fn scale_tween_advances_deterministically_over_fixed_frames() {
+        let mut app = app();
+        let e = app
+            .world_mut()
+            .spawn(Tween::new(
+                TweenTarget::Scale { from: 1.0, to: 2.0 },
+                Duration::from_millis(100),
+            ))
+            .id();
+        // Frame 1: 25ms elapsed, ease-out cubic gives 1 - 0.75^3 = 0.578125.
+        step(&mut app, Duration::from_millis(25));
+        let scale = app.world().get::<UiTransform>(e).expect("transform").scale;
+        assert!((scale.x - 1.578_125).abs() < 1e-5, "{scale:?}");
+        assert_eq!(app.world().resource::<ActiveMotions>().0, 1);
+
+        // Three more frames land exactly on the end.
+        for _ in 0..3 {
+            step(&mut app, Duration::from_millis(25));
+        }
+        let scale = app.world().get::<UiTransform>(e).expect("transform").scale;
+        assert!((scale.x - 2.0).abs() < 1e-6, "{scale:?}");
+        assert!(app.world().get::<Tween>(e).is_none(), "tween was removed");
+        assert_eq!(app.world().resource::<ActiveMotions>().0, 0);
+    }
+
+    #[test]
+    fn alpha_tween_writes_background_colour() {
+        let mut app = app();
+        let e = app
+            .world_mut()
+            .spawn((
+                BackgroundColor(Color::srgba(1.0, 0.0, 0.0, 0.0)),
+                Tween::new(
+                    TweenTarget::Alpha { from: 0.0, to: 1.0 },
+                    Duration::from_millis(50),
+                ),
+            ))
+            .id();
+        step(&mut app, Duration::from_millis(50));
+        let alpha = app
+            .world()
+            .get::<BackgroundColor>(e)
+            .expect("colour")
+            .0
+            .alpha();
+        assert!((alpha - 1.0).abs() < 1e-6, "{alpha}");
+        assert!(app.world().get::<Tween>(e).is_none());
+    }
+
+    #[test]
+    fn reduced_motion_finishes_a_tween_on_its_first_frame() {
+        let mut app = app();
+        app.insert_resource(Motion::REDUCED);
+        let e = app
+            .world_mut()
+            .spawn(Tween::new(
+                TweenTarget::Translate {
+                    from: Vec2::ZERO,
+                    to: Vec2::new(10.0, -4.0),
+                },
+                Duration::from_millis(400),
+            ))
+            .id();
+        step(&mut app, Duration::from_millis(1));
+        let tf = app.world().get::<UiTransform>(e).expect("transform");
+        assert_eq!(tf.translation, Val2::px(10.0, -4.0));
+        assert!(app.world().get::<Tween>(e).is_none());
+        assert_eq!(app.world().resource::<ActiveMotions>().0, 0);
+    }
+
+    #[test]
+    fn active_motions_counts_running_tweens() {
+        let mut app = app();
+        for _ in 0..3 {
+            app.world_mut().spawn(Tween::new(
+                TweenTarget::Scale { from: 0.0, to: 1.0 },
+                Duration::from_millis(100),
+            ));
+        }
+        step(&mut app, Duration::from_millis(16));
+        assert_eq!(app.world().resource::<ActiveMotions>().0, 3);
+        step(&mut app, Duration::from_millis(200));
+        assert_eq!(app.world().resource::<ActiveMotions>().0, 0);
     }
 }

@@ -81,6 +81,85 @@ pub struct SlotRef {
 #[derive(Component, Debug, Clone, Default)]
 pub struct SlotEntities(pub HashMap<SlotIx, Entity>);
 
+/// A stack that left a menu and should become an entity in the world.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DroppedStack {
+    /// The menu it left.
+    pub menu: Entity,
+    /// What was dropped.
+    pub stack: ItemStack,
+}
+
+/// Stacks that left their menus: clicks outside the window, throws, swaps
+/// with nowhere to put the displaced stack, and the carried stack of a menu
+/// that was closed.
+///
+/// The game drains this and spawns item entities. Nothing in this crate reads
+/// it back.
+///
+/// The contract fixes `MenuClosed` at `{ entity, id }`, so the stack a close
+/// drops is reported here rather than on the event. See
+/// `docs/design/phase2-notes-A.md`.
+#[derive(Resource, Debug, Default, Clone, PartialEq)]
+pub struct Dropped(pub Vec<DroppedStack>);
+
+impl Dropped {
+    /// Records `stacks` as having left `menu`.
+    pub fn record(&mut self, menu: Entity, stacks: &[ItemStack]) {
+        self.0.extend(stacks.iter().map(|stack| DroppedStack {
+            menu,
+            stack: stack.clone(),
+        }));
+    }
+
+    /// Takes everything recorded so far.
+    pub fn drain(&mut self) -> Vec<DroppedStack> {
+        std::mem::take(&mut self.0)
+    }
+
+    /// The stacks dropped by one menu, in order.
+    pub fn of(&self, menu: Entity) -> impl Iterator<Item = &ItemStack> {
+        self.0
+            .iter()
+            .filter(move |d| d.menu == menu)
+            .map(|d| &d.stack)
+    }
+}
+
+/// Where the player's own inventories live, so a game can open a container
+/// menu without repeating the [`MenuDef`] handle convention.
+///
+/// The fields are named after the [`MenuDef`] constants they back. A missing
+/// entity is filled with a freshly spawned empty [`Inventory`] of the size the
+/// definition asks for.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerInventories {
+    /// Backs [`MenuDef::PLAYER_MAIN`].
+    pub main: Option<Entity>,
+    /// Backs [`MenuDef::PLAYER_HOTBAR`].
+    pub hotbar: Option<Entity>,
+    /// Backs [`MenuDef::PLAYER_ARMOR`].
+    pub armor: Option<Entity>,
+    /// Backs [`MenuDef::PLAYER_OFFHAND`].
+    pub offhand: Option<Entity>,
+    /// Backs [`MenuDef::CRAFT_GRID`].
+    pub craft_grid: Option<Entity>,
+}
+
+impl PlayerInventories {
+    /// The entity backing handle `index`, under the standard convention.
+    pub fn get(&self, index: usize) -> Option<Entity> {
+        match index {
+            1 => self.main,
+            2 => self.hotbar,
+            3 => self.armor,
+            4 => self.offhand,
+            5 => self.craft_grid,
+            _ => None,
+        }
+    }
+}
+
 /// Hands out [`MenuId`]s for locally opened menus.
 #[derive(Resource, Debug, Default)]
 pub struct MenuIdAllocator(u32);
@@ -135,9 +214,76 @@ pub fn open_menu(
     menu
 }
 
-/// Triggers [`MenuClosed`] then despawns the menu entity and its children.
-/// Inventory entities are left alone: they belong to the world.
+/// Spawns a menu over `container` and the player's own inventories, filling
+/// the [`InventoryRef`](slotted_model::InventoryRef) list `def` needs.
+///
+/// Handle 0 is `container`; handles 1 to 5 come from [`PlayerInventories`]
+/// under the [`MenuDef`] convention. Any handle the definition uses that
+/// neither supplies gets a freshly spawned empty [`Inventory`] of the right
+/// size, so a menu always opens with a complete, correctly sized backing set.
+pub fn open_container_menu(
+    commands: &mut Commands,
+    ids: &mut MenuIdAllocator,
+    def: Arc<MenuDef>,
+    container: Entity,
+    player: &PlayerInventories,
+    actor: Actor,
+) -> Entity {
+    let sizes = def.inventory_sizes();
+    let inventories: Vec<Entity> = sizes
+        .iter()
+        .enumerate()
+        .map(|(index, size)| {
+            let known = if index == 0 {
+                Some(container)
+            } else {
+                player.get(index)
+            };
+            known.unwrap_or_else(|| commands.spawn(Inventory::new(*size)).id())
+        })
+        .collect();
+    open_menu(commands, ids, def, inventories, actor)
+}
+
+/// Drops the carried stack into [`Dropped`], triggers [`MenuClosed`], then
+/// despawns the menu entity and its children. Inventory entities are left
+/// alone: they belong to the world.
 pub fn close_menu(commands: &mut Commands, menu: Entity, id: MenuId) {
-    commands.trigger(MenuClosed { entity: menu, id });
-    commands.entity(menu).despawn();
+    commands.queue(CloseMenu { menu, id });
+}
+
+/// The command behind [`close_menu`]. It needs `&mut World` to read the
+/// menu's carried stack before the entity goes away.
+#[derive(Debug, Clone, Copy)]
+pub struct CloseMenu {
+    /// The menu entity.
+    pub menu: Entity,
+    /// Its id with the authority.
+    pub id: MenuId,
+}
+
+impl Command for CloseMenu {
+    type Out = ();
+
+    fn apply(self, world: &mut World) {
+        let Ok(entity) = world.get_entity_mut(self.menu) else {
+            return;
+        };
+        let carried = entity
+            .get::<OpenMenu>()
+            .and_then(|open| open.state.carried.clone());
+        if let Some(stack) = carried {
+            world
+                .get_resource_or_init::<Dropped>()
+                .record(self.menu, std::slice::from_ref(&stack));
+        }
+        world.trigger(MenuClosed {
+            entity: self.menu,
+            id: self.id,
+        });
+        world.flush();
+        if let Ok(entity) = world.get_entity_mut(self.menu) {
+            entity.despawn();
+        }
+    }
 }

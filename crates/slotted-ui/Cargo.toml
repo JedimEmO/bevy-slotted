@@ -43,6 +43,9 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+# The headless tests need a font to measure text with and the schedule runner
+# to step frames by hand; see ADR 0002.
+bevy = { workspace = true, features = ["std", "default_font", "bevy_state"] }
 
 [lints]
 workspace = true

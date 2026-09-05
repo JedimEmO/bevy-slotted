@@ -24,9 +24,11 @@ pub mod tokens;
 #[cfg(feature = "blur")]
 pub mod blur;
 
-pub use apply::{ActiveTheme, Themed, apply_theme};
+pub use apply::{ActiveTheme, GlassPaint, Paint, SlicedPaint, Themed, apply_theme};
 pub use material::{Material, ThemeColor};
-pub use motion::{ActiveMotions, Motion, MotionPreset, Tween, TweenTarget};
+pub use motion::{
+    ActiveMotions, Motion, MotionPreset, Tween, TweenTarget, TweenValue, advance_tweens,
+};
 pub use plugin::{SlottedThemePlugin, SlottedThemeSet};
 pub use role::{Role, roles};
 pub use theme::{Theme, ThemeError, ThemeLoader};

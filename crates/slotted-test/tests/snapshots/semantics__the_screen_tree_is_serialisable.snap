@@ -1,0 +1,96 @@
+---
+source: crates/slotted-test/tests/semantics.rs
+expression: h.screen_tree()
+---
+ScreenTree(
+  roots: [
+    TreeNode(
+      role: Screen,
+      screen: Some("demo:chest"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Grid,
+          test_id: Some("chest_grid"),
+          tags: {
+            "region": "chest",
+          },
+          visible: true,
+          children: [
+            TreeNode(
+              role: Slot,
+              label: Some("minecraft:cobblestone x64"),
+              test_id: Some("chest:0"),
+              tags: {
+                "region": "chest",
+              },
+              visible: true,
+              item: Some(ItemSummary(
+                id: "minecraft:cobblestone",
+                count: 64,
+              )),
+            ),
+            TreeNode(
+              role: Slot,
+              label: Some("minecraft:cobblestone x23"),
+              test_id: Some("chest:1"),
+              tags: {
+                "region": "chest",
+              },
+              visible: true,
+              item: Some(ItemSummary(
+                id: "minecraft:cobblestone",
+                count: 23,
+              )),
+            ),
+            TreeNode(
+              role: Slot,
+              label: Some("minecraft:ender_pearl x16"),
+              test_id: Some("chest:2"),
+              tags: {
+                "region": "chest",
+              },
+              visible: true,
+              item: Some(ItemSummary(
+                id: "minecraft:ender_pearl",
+                count: 16,
+              )),
+            ),
+            TreeNode(
+              role: Slot,
+              label: Some("minecraft:diamond x7"),
+              test_id: Some("chest:3"),
+              tags: {
+                "region": "chest",
+              },
+              visible: true,
+              item: Some(ItemSummary(
+                id: "minecraft:diamond",
+                count: 7,
+              )),
+            ),
+          ],
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Screen,
+      screen: Some("demo:hidden"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Slot,
+          label: Some("hidden slot"),
+          tags: {
+            "region": "elsewhere",
+          },
+          visible: false,
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Carried,
+      visible: true,
+    ),
+  ],
+)

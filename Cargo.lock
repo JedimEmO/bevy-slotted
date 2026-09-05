@@ -3380,6 +3380,8 @@ dependencies = [
 name = "slotted-testutils"
 version = "0.1.0"
 dependencies = [
+ "bevy",
+ "slotted-ecs",
  "slotted-model",
  "slotted-registry",
 ]

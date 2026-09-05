@@ -20,18 +20,27 @@
 
 pub mod actions;
 pub mod fixture;
+pub mod fixtures;
 pub mod harness;
 pub mod locator;
 pub mod queries;
 pub mod tree;
 
-pub use fixture::{MenuFixture, Opened};
+pub use fixture::{MenuFixture, Opened, ScreenSource};
+pub use fixtures::{ChestFixture, PlayerFixture, TestRegistries};
 pub use harness::{SettleTimeout, UiHarness, UiHarnessBuilder};
-pub use locator::{Locator, by};
+pub use locator::{Locator, by, describe};
 pub use tree::{ItemSummary, ScreenTree, TreeNode};
 
 /// `insta` RON snapshot of a [`ScreenTree`]. Stable across themes and layout
 /// tweaks; changes when roles, tags, labels, visibility or items change.
+///
+/// ```no_run
+/// # use slotted_test::prelude::*;
+/// # fn f(h: &UiHarness) {
+/// assert_tree_snapshot!(h.screen_tree());
+/// # }
+/// ```
 #[macro_export]
 macro_rules! assert_tree_snapshot {
     ($tree:expr) => {
@@ -42,14 +51,36 @@ macro_rules! assert_tree_snapshot {
     };
 }
 
+/// `insta` snapshot of a [`ScreenTree`]'s [`Display`](std::fmt::Display)
+/// form: an indented text tree, one node per line.
+///
+/// The same data as [`assert_tree_snapshot!`], in a shape that reads better
+/// in a review diff. Both are stable across themes and layout tweaks.
+///
+/// ```no_run
+/// # use slotted_test::prelude::*;
+/// # fn f(h: &UiHarness) {
+/// assert_tree_text_snapshot!(h.screen_tree());
+/// # }
+/// ```
+#[macro_export]
+macro_rules! assert_tree_text_snapshot {
+    ($tree:expr) => {
+        $crate::insta::assert_snapshot!(($tree).to_string())
+    };
+    ($name:expr, $tree:expr) => {
+        $crate::insta::assert_snapshot!($name, ($tree).to_string())
+    };
+}
+
 #[doc(hidden)]
 pub use insta;
 
 /// Everything a test needs.
 pub mod prelude {
     pub use crate::{
-        Locator, MenuFixture, Opened, ScreenTree, TreeNode, UiHarness, UiHarnessBuilder,
-        assert_tree_snapshot, by,
+        ChestFixture, Locator, MenuFixture, Opened, PlayerFixture, ScreenTree, TestRegistries,
+        TreeNode, UiHarness, UiHarnessBuilder, assert_tree_snapshot, assert_tree_text_snapshot, by,
     };
     pub use slotted::prelude::*;
     pub use slotted_ecs::Modifiers;

@@ -14,6 +14,7 @@
 //! See `docs/design/phase2-contract.md`.
 
 pub mod def;
+pub mod input;
 pub mod item;
 pub mod layers;
 pub mod nav;
@@ -27,20 +28,28 @@ pub use def::{
     AnchorId, DataSourceId, Direction, IconDef, Layout, LayoutDirection, LocKey, Orientation,
     ScreenDef, ScreenKind, Side, Tags, TextRole, UiNodeDef, ViewSubject, WidgetKind,
 };
-pub use item::{ItemCount, ItemIcon, ItemView, render_items};
-pub use layers::{CarriedLayer, ExclusionZone, Exclusions, TooltipLayer, zbands};
+pub use input::{DragPaint, on_slot_press, on_slot_release};
+pub use item::{
+    DurabilityBar, DurabilityFill, ItemCount, ItemIcon, ItemView, RarityRing, render_items,
+};
+pub use layers::{
+    CarriedItem, CarriedLayer, ExclusionZone, Exclusions, TooltipLayer, update_carried_layer,
+    zbands,
+};
 pub use nav::{NavKeys, directional_nav_keys};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use screen::{
-    Injection, Injections, ScreenClosed, ScreenLayout, ScreenSpawned, Screens, SpawnCtx,
-    SpawnScreen, Widget, WidgetRegistry, close_screen, spawn_screen,
+    Injection, Injections, ScreenClosed, ScreenLaidOut, ScreenLayout, ScreenSpawned, Screens,
+    SpawnCtx, SpawnScreen, Widget, WidgetRegistry, close_screen, emit_screen_layout, spawn_screen,
 };
 pub use semantic::{
     AnchorNode, ScreenRoot, SemanticLabel, SemanticRole, TestId, WidgetNode, sync_accessibility,
 };
 pub use tooltip::{
-    TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest, TooltipTier,
+    HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,
+    TooltipTier,
 };
+pub use widgets::{RailAction, SLOT_SIZE, slot_state_roles};
 
 /// Everything a game needs to define and open screens.
 pub mod prelude {

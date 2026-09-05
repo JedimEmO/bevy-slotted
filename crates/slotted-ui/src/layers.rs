@@ -1,6 +1,7 @@
 //! Z-order bands, overlay roots and exclusion zones.
 
 use bevy::ecs::system::SystemParam;
+use bevy::picking::pointer::PointerLocation;
 use bevy::prelude::*;
 use bevy::ui::ui_transform::UiGlobalTransform;
 
@@ -74,6 +75,57 @@ impl Exclusions<'_, '_> {
             match self.parents.get(e) {
                 Ok(p) => e = p.parent(),
                 Err(_) => return false,
+            }
+        }
+    }
+}
+
+/// The single child of [`CarriedLayer`]: an [`ItemView`](crate::ItemView)
+/// mirroring the active menu's carried stack.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct CarriedItem;
+
+/// `SlottedUiSet::Render`: mirror the active menu's `Carried` onto the carried
+/// node and park it under the primary pointer.
+///
+/// The pointer is `PointerId::Mouse`, the same one the harness drives, and the
+/// position is read from `PointerLocation` rather than a window event, so this
+/// works headless.
+pub fn update_carried_layer(
+    pointers: Query<(&bevy::picking::pointer::PointerId, &PointerLocation)>,
+    screens: Query<&crate::semantic::ScreenRoot>,
+    menus: Query<&slotted_ecs::Carried>,
+    mut carried: Query<(&mut crate::item::ItemView, &mut Node, &mut Visibility), With<CarriedItem>>,
+) {
+    let stack = screens
+        .iter()
+        .filter_map(|s| s.menu)
+        .find_map(|menu| menus.get(menu).ok())
+        .and_then(|c| c.0.clone());
+    let position = pointers
+        .iter()
+        .find(|(id, _)| matches!(id, bevy::picking::pointer::PointerId::Mouse))
+        .and_then(|(_, location)| location.location().map(|l| l.position));
+    for (mut view, mut node, mut visibility) in &mut carried {
+        if view.stack != stack {
+            view.stack.clone_from(&stack);
+        }
+        let wanted = if stack.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *visibility != wanted {
+            *visibility = wanted;
+        }
+        if let Some(p) = position {
+            let half = crate::widgets::SLOT_SIZE * 0.5;
+            let (left, top) = (Val::Px(p.x - half), Val::Px(p.y - half));
+            if node.left != left {
+                node.left = left;
+            }
+            if node.top != top {
+                node.top = top;
             }
         }
     }

@@ -12,6 +12,10 @@ publish = false
 [dependencies]
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
+slotted-ecs = { workspace = true }
+# Only what `minimal_ecs_app` needs. No rendering, no windowing: this crate is
+# a dev-dependency of crates that must keep building on wasm.
+bevy = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

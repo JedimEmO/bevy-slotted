@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
-use bevy::prelude::Entity;
+use bevy::prelude::{Entity, World};
 use slotted_model::{Actor, MenuDef};
+use slotted_ui::{ScreenDef, ScreenKind, Screens};
 
 /// A menu plus the inventories it opens over. Games implement this on their
 /// own fixture types (`ChestFixture::filled()`).
@@ -37,6 +38,62 @@ impl MenuFixture for MenuDef {
             .into_iter()
             .map(slotted_model::Inventory::new)
             .collect()
+    }
+}
+
+/// Where `open_screen` gets its [`ScreenDef`] from: a [`ScreenKind`] already
+/// in [`Screens`], or a def handed over directly.
+///
+/// A def passed by value or reference is registered on the way through, so
+/// `by::screen(kind)` and a later `open_screen(kind, ..)` both find it.
+pub trait ScreenSource {
+    /// Resolve, registering the def if it is not in [`Screens`] yet.
+    fn screen_def(self, world: &mut World) -> Arc<ScreenDef>;
+}
+
+impl ScreenSource for ScreenKind {
+    fn screen_def(self, world: &mut World) -> Arc<ScreenDef> {
+        (&self).screen_def(world)
+    }
+}
+
+impl ScreenSource for &ScreenKind {
+    fn screen_def(self, world: &mut World) -> Arc<ScreenDef> {
+        let screens = world.resource::<Screens>();
+        if let Some(def) = screens.get(self) {
+            return def.clone();
+        }
+        let mut known: Vec<String> = screens.0.keys().map(|k| k.0.to_string()).collect();
+        known.sort();
+        let known = if known.is_empty() {
+            "none are registered".to_owned()
+        } else {
+            known.join(", ")
+        };
+        panic!(
+            "screen {} is not registered in Screens; known: {known}",
+            self.0
+        )
+    }
+}
+
+impl ScreenSource for ScreenDef {
+    fn screen_def(self, world: &mut World) -> Arc<ScreenDef> {
+        world.resource_mut::<Screens>().register(self)
+    }
+}
+
+impl ScreenSource for &ScreenDef {
+    fn screen_def(self, world: &mut World) -> Arc<ScreenDef> {
+        self.clone().screen_def(world)
+    }
+}
+
+impl ScreenSource for Arc<ScreenDef> {
+    fn screen_def(self, world: &mut World) -> Arc<ScreenDef> {
+        let mut screens = world.resource_mut::<Screens>();
+        screens.0.insert(self.kind.clone(), self.clone());
+        self
     }
 }
 

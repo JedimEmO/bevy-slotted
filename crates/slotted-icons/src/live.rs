@@ -8,8 +8,7 @@ use slotted_model::ItemStack;
 use crate::source::{IconRef, IconSource};
 
 /// Stub adapter. Returns [`IconRef::Missing`] until Phase 6 wires the
-/// viewport camera rig.
-// PHASE2-IMPL: none. Phase 6.
+/// viewport camera rig. Tracked in `docs/FOLLOWUPS.md`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LiveIcons;
 

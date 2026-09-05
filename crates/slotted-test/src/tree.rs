@@ -1,6 +1,8 @@
 //! The `screen_tree()` snapshot type and tree walking helpers.
 
 use std::collections::BTreeMap;
+use std::fmt;
+use std::fmt::Write as _;
 
 use bevy::prelude::*;
 use serde::Serialize;
@@ -63,14 +65,93 @@ pub struct ScreenTree {
     pub roots: Vec<TreeNode>,
 }
 
-/// Screen roots in spawn order, then the carried layer.
+impl fmt::Display for ScreenTree {
+    /// An indented text tree, one node per line, in layout order. Stable
+    /// across themes and layout tweaks, so it snapshots well with
+    /// `insta::assert_snapshot!`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.roots.is_empty() {
+            return f.write_str("<no screens>");
+        }
+        for (i, root) in self.roots.iter().enumerate() {
+            if i > 0 {
+                writeln!(f)?;
+            }
+            root.fmt_indented(f, 0)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for TreeNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_indented(f, 0)
+    }
+}
+
+impl TreeNode {
+    /// This node and its descendants, two spaces deeper per level. The last
+    /// line carries no newline, so callers control the trailing break.
+    fn fmt_indented(&self, f: &mut fmt::Formatter<'_>, depth: usize) -> fmt::Result {
+        write!(f, "{:indent$}{}", "", self.summary(), indent = depth * 2)?;
+        for child in &self.children {
+            writeln!(f)?;
+            child.fmt_indented(f, depth + 1)?;
+        }
+        Ok(())
+    }
+
+    /// The one-line form: role first, then only what is set.
+    fn summary(&self) -> String {
+        let mut s = match &self.role {
+            SemanticRole::Custom(name) => format!("Custom({name})"),
+            role => format!("{role:?}"),
+        };
+        if let Some(kind) = &self.screen {
+            let _ = write!(s, " screen={kind}");
+        }
+        if let Some(id) = &self.test_id {
+            let _ = write!(s, " #{id}");
+        }
+        if let Some(label) = &self.label {
+            let _ = write!(s, " {label:?}");
+        }
+        if let Some(item) = &self.item {
+            let _ = write!(s, " [{} x{}]", item.id, item.count);
+        }
+        if !self.tags.is_empty() {
+            let pairs: Vec<String> = self.tags.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            let _ = write!(s, " tags[{}]", pairs.join(" "));
+        }
+        if let Some(widget) = &self.widget {
+            let _ = write!(s, " widget={widget}");
+        }
+        if let Some(anchor) = &self.anchor {
+            let _ = write!(s, " anchor={anchor}");
+        }
+        if !self.visible {
+            s.push_str(" (hidden)");
+        }
+        if self.focused {
+            s.push_str(" (focused)");
+        }
+        s
+    }
+}
+
+/// Screen roots in entity-index order, then the carried layer.
+///
+/// Index order rather than `Entity` order: `Entity`'s `Ord` compares
+/// generation first, so a root that landed on a recycled index would sort
+/// after a later one. Index order matches spawn order for as long as nothing
+/// is despawned, and is stable regardless.
 pub fn roots(world: &World) -> Vec<Entity> {
     let mut screens: Vec<Entity> = world
         .iter_entities()
         .filter(EntityRef::contains::<ScreenRoot>)
         .map(|e| e.id())
         .collect();
-    screens.sort();
+    screens.sort_by_key(|e| e.index());
     screens.extend(
         world
             .iter_entities()

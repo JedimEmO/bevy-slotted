@@ -1,5 +1,7 @@
 //! Read-only questions about the UI.
 
+use std::fmt::Write as _;
+
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
 use bevy::ui::ui_transform::UiGlobalTransform;
@@ -10,6 +12,16 @@ use slotted_ui::{ItemView, TooltipContent};
 use crate::harness::UiHarness;
 use crate::locator::Locator;
 use crate::tree::{ScreenTree, build, roots};
+
+/// How many nodes a `find` failure lists before it says "and n more".
+const NEAR_MISS_LIMIT: usize = 12;
+
+fn indent(text: &str, pad: &str) -> String {
+    text.lines()
+        .map(|l| format!("{pad}{l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 /// Laid out and not hidden. A node with a zero-size `ComputedNode` or
 /// `Visibility::Hidden` (own or inherited) is not visible.
@@ -31,14 +43,53 @@ pub fn is_focused(world: &World, entity: Entity) -> bool {
 }
 
 impl UiHarness {
-    /// The one entity matching `locator`. Panics on zero or several.
+    /// The one entity matching `locator`. Panics on zero or several, with the
+    /// near-misses listed so the message says why.
     pub fn find(&self, locator: &Locator) -> Entity {
         let found = locator.resolve(self.world());
         match found.as_slice() {
             [e] => *e,
-            [] => panic!("no node matches {locator:?}"),
-            many => panic!("{} nodes match {locator:?}; add .index(n)", many.len()),
+            [] => panic!("{}", self.explain_no_match(locator)),
+            many => panic!("{}", self.explain_several(locator, many)),
         }
+    }
+
+    /// The message [`find`](Self::find) panics with when nothing matched.
+    fn explain_no_match(&self, locator: &Locator) -> String {
+        let world = self.world();
+        let mut msg = format!("no node matches: {locator}");
+        let near = locator.near_misses(world, NEAR_MISS_LIMIT);
+        if near.is_empty() {
+            msg.push_str("\n  nothing in the world comes close.");
+        } else {
+            msg.push_str("\n  near misses:");
+            for (e, failed) in &near {
+                let _ = write!(
+                    msg,
+                    "\n    {}  <- fails {failed}",
+                    crate::locator::describe(world, *e)
+                );
+            }
+        }
+        msg.push_str("\n  semantic tree:\n");
+        msg.push_str(&indent(&self.screen_tree().to_string(), "    "));
+        msg
+    }
+
+    /// The message [`find`](Self::find) panics with when several matched.
+    fn explain_several(&self, locator: &Locator, found: &[Entity]) -> String {
+        let world = self.world();
+        let mut msg = format!(
+            "{} nodes match: {locator}\n  add .index(n), .within(..) or another criterion:",
+            found.len()
+        );
+        for (i, e) in found.iter().take(NEAR_MISS_LIMIT).enumerate() {
+            let _ = write!(msg, "\n    [{i}] {}", crate::locator::describe(world, *e));
+        }
+        if found.len() > NEAR_MISS_LIMIT {
+            let _ = write!(msg, "\n    ... and {} more", found.len() - NEAR_MISS_LIMIT);
+        }
+        msg
     }
 
     /// The first match, if any.
@@ -136,6 +187,15 @@ impl UiHarness {
             .get(world)
             .expect("Exclusions has no fallible params")
             .union(screen)
+    }
+
+    /// The HUD layer roots, in band order.
+    ///
+    /// Phase 2 has no HUD layers, so this is always empty. It exists now so
+    /// that tests written against it compile unchanged when Phase 3 spawns
+    /// them; assert on emptiness only if that is what you mean.
+    pub fn hud_layers(&self) -> Vec<Entity> {
+        Vec::new()
     }
 
     /// The semantic tree of every open screen.

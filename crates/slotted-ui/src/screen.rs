@@ -4,12 +4,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy::ecs::system::Command;
+use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
+use bevy::ui::ui_transform::UiGlobalTransform;
 use slotted_registry::Value;
+use slotted_theme::{ActiveTheme, Theme, Tokens};
 
 use crate::def::{AnchorId, ScreenDef, ScreenKind, UiNodeDef, WidgetKind};
 use crate::layers::zbands;
-use crate::semantic::{ScreenRoot, SemanticRole, TestId};
+use crate::semantic::{ScreenRoot, SemanticRole, TestId, WidgetNode};
+use crate::widgets;
 
 /// Every screen the app knows, by kind. Filled from Rust with
 /// [`Screens::register`] and from the frozen registries' `screens` payloads
@@ -46,7 +50,8 @@ impl Screens {
     /// `def` with its `inherits` chain flattened: the ancestor's tree with
     /// this screen's anchors kept. Cycles and unknown ancestors fall back to
     /// `def` itself.
-    // PHASE2-IMPL: agent B. Phase 2 screens do not inherit; return a clone.
+    // Phase 2 screens do not inherit; see docs/design/phase2-notes-B.md item 11
+    // for what has to be decided before this can be implemented.
     pub fn resolve(&self, def: &ScreenDef) -> ScreenDef {
         if def.inherits.is_some() {
             tracing::warn!(kind = ?def.kind, "screen inheritance is not implemented yet");
@@ -101,25 +106,131 @@ pub struct SpawnCtx<'w> {
 }
 
 impl SpawnCtx<'_> {
-    /// Spawns `def` under `self.parent` through the widget registry and
-    /// returns its root entity. The way widgets spawn their children.
-    // PHASE2-IMPL: agent B. Dispatch on `UiNodeDef`; `Custom` goes through
-    // `WidgetRegistry`. Apply the mapping table in the contract.
-    pub fn spawn_child(&mut self, def: &UiNodeDef) -> Entity {
-        let entity = self
+    /// The theme's token table, or the defaults when no theme has loaded.
+    /// Widgets read spacing and radii from here; colours are never their
+    /// business.
+    pub fn tokens(&self) -> Tokens {
+        let handle = self
             .world
-            .spawn((Node::default(), ChildOf(self.parent)))
-            .id();
+            .get_resource::<ActiveTheme>()
+            .map(|a| a.0.clone());
+        handle
+            .and_then(|h| {
+                self.world
+                    .get_resource::<Assets<Theme>>()
+                    .and_then(|assets| assets.get(&h).map(|t| t.tokens.clone()))
+            })
+            .unwrap_or_default()
+    }
+
+    /// Spawns one entity as a child of `self.parent`. The way every widget
+    /// makes its root.
+    pub fn spawn_node(&mut self, bundle: impl Bundle) -> Entity {
+        let parent = self.parent;
+        self.world.spawn((bundle, ChildOf(parent))).id()
+    }
+
+    /// Spawns `defs` under `parent`, restoring `self.parent` afterwards.
+    pub fn spawn_children(&mut self, parent: Entity, defs: &[UiNodeDef]) {
+        let previous = std::mem::replace(&mut self.parent, parent);
+        for def in defs {
+            self.spawn_child(def);
+        }
+        self.parent = previous;
+    }
+
+    /// Spawns `def` under `self.parent` and returns its root entity. The one
+    /// dispatch point: typed variants go to their built-in widget, `Custom`
+    /// goes through the [`WidgetRegistry`].
+    pub fn spawn_child(&mut self, def: &UiNodeDef) -> Entity {
+        let entity = match def {
+            UiNodeDef::Panel {
+                role,
+                layout,
+                children,
+                ..
+            } => widgets::spawn_panel(self, role, layout, children),
+            UiNodeDef::Text { key, style, .. } => widgets::spawn_text(self, key, *style),
+            UiNodeDef::Slot { slot, tags } => widgets::spawn_slot(self, *slot, tags, 0),
+            UiNodeDef::SlotGrid {
+                inventory,
+                cols,
+                rows,
+                first,
+                tags,
+            } => widgets::spawn_slot_grid(
+                self,
+                *inventory,
+                *cols,
+                *rows,
+                *first,
+                tags,
+                SemanticRole::Grid,
+            ),
+            UiNodeDef::Button { widget, .. } => widgets::spawn_button(self, widget, None),
+            UiNodeDef::Anchor { id } => widgets::spawn_anchor(self, id),
+            UiNodeDef::Custom {
+                kind,
+                params,
+                children,
+                ..
+            } => self.spawn_custom(kind, params, children),
+            other => self.spawn_placeholder(other),
+        };
         if let Some(tags) = def.tags() {
-            self.world.entity_mut(entity).insert(tags.clone());
+            if !tags.0.is_empty() {
+                self.world.entity_mut(entity).insert(tags.clone());
+            }
             if let Some(id) = tags.get(crate::def::Tags::TEST_ID) {
                 self.world.entity_mut(entity).insert(TestId::new(id));
             }
         }
-        tracing::warn!(
-            ?def,
-            "spawn_child is not implemented yet; spawned a bare node"
-        );
+        entity
+    }
+
+    fn spawn_custom(
+        &mut self,
+        kind: &WidgetKind,
+        params: &Value,
+        children: &[UiNodeDef],
+    ) -> Entity {
+        let widget = self
+            .world
+            .get_resource::<WidgetRegistry>()
+            .and_then(|r| r.get(kind).cloned());
+        if let Some(widget) = widget {
+            let entity = widget.spawn(self, params, children);
+            self.world
+                .entity_mut(entity)
+                .insert(WidgetNode(kind.clone()));
+            entity
+        } else {
+            tracing::warn!(?kind, "no widget registered for kind");
+            self.spawn_node((
+                Node::default(),
+                SemanticRole::Custom(kind.0.to_string()),
+                WidgetNode(kind.clone()),
+            ))
+        }
+    }
+
+    /// A node for a `UiNodeDef` variant Phase 2 does not implement yet
+    /// (`Tank`, `Bar`, `SideTab`, `Viewport`, `VirtualGrid`). It lays out,
+    /// carries a `Custom` semantic role and spawns its children, so a screen
+    /// that uses one still opens.
+    fn spawn_placeholder(&mut self, def: &UiNodeDef) -> Entity {
+        let name = match def {
+            UiNodeDef::VirtualGrid { .. } => "virtual_grid",
+            UiNodeDef::Tank { .. } => "tank",
+            UiNodeDef::Bar { .. } => "bar",
+            UiNodeDef::SideTab { .. } => "side_tab",
+            UiNodeDef::Viewport { .. } => "viewport",
+            _ => "unknown",
+        };
+        tracing::debug!(node = name, "node kind is not implemented in Phase 2");
+        let entity = self.spawn_node((Node::default(), SemanticRole::Custom(name.to_owned())));
+        let children = def.children().to_vec();
+        self.spawn_children(entity, &children);
         entity
     }
 }
@@ -188,14 +299,13 @@ pub struct SpawnScreen {
 impl Command for SpawnScreen {
     type Out = ();
 
-    // PHASE2-IMPL: agent B. Resolve inherits through `Screens`, splice
-    // `Injections` at anchors, then walk the tree with `SpawnCtx::spawn_child`.
     fn apply(self, world: &mut World) {
         let resolved = world
             .get_resource::<Screens>()
             .map_or_else(|| (*self.def).clone(), |s| s.resolve(&self.def));
         world.entity_mut(self.root).insert((
             Node {
+                position_type: PositionType::Absolute,
                 width: percent(100),
                 height: percent(100),
                 align_items: AlignItems::Center,
@@ -204,6 +314,7 @@ impl Command for SpawnScreen {
             },
             GlobalZIndex(zbands::SCREEN),
             Pickable::IGNORE,
+            TabGroup::new(0),
             ScreenRoot {
                 kind: resolved.kind.clone(),
                 menu: self.menu,
@@ -219,6 +330,35 @@ impl Command for SpawnScreen {
         };
         ctx.spawn_child(&resolved.root);
         world.trigger(ScreenSpawned { entity: self.root });
+    }
+}
+
+/// Marks a screen root whose [`ScreenLayout`] has already been triggered.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct ScreenLaidOut;
+
+/// `SlottedUiSet::Layout`: triggers [`ScreenLayout`] once per screen root,
+/// the first frame its panel has a size. The rect is the root's first laid-out
+/// child, not the full-window centring root.
+pub fn emit_screen_layout(
+    roots: Query<(Entity, &Children), (With<ScreenRoot>, Without<ScreenLaidOut>)>,
+    nodes: Query<(&ComputedNode, &UiGlobalTransform)>,
+    mut commands: Commands,
+) {
+    for (root, children) in &roots {
+        let Some((node, transform)) = children.iter().find_map(|c| nodes.get(c).ok()) else {
+            continue;
+        };
+        let size = node.size() * node.inverse_scale_factor();
+        if size.x <= 0.0 || size.y <= 0.0 {
+            continue;
+        }
+        let center = transform.translation * node.inverse_scale_factor();
+        commands.entity(root).insert(ScreenLaidOut);
+        commands.trigger(ScreenLayout {
+            entity: root,
+            rect: Rect::from_center_size(center, size),
+        });
     }
 }
 

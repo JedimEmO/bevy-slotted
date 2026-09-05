@@ -1,0 +1,13 @@
+---
+source: crates/slotted-test/tests/semantics.rs
+expression: tree.to_string()
+---
+Screen screen=demo:chest
+  Grid #chest_grid tags[region=chest]
+    Slot #chest:0 "minecraft:cobblestone x64" [minecraft:cobblestone x64] tags[region=chest]
+    Slot #chest:1 "minecraft:cobblestone x23" [minecraft:cobblestone x23] tags[region=chest] (focused)
+    Slot #chest:2 "minecraft:ender_pearl x16" [minecraft:ender_pearl x16] tags[region=chest]
+    Slot #chest:3 "minecraft:diamond x7" [minecraft:diamond x7] tags[region=chest]
+Screen screen=demo:hidden
+  Slot "hidden slot" tags[region=elsewhere] (hidden)
+Carried

@@ -218,6 +218,26 @@ impl UiHarness {
         self.key_event(key_code, logical, ButtonState::Released);
     }
 
+    /// Press and release `key_code` with `modifiers` held around it.
+    ///
+    /// `h.key_with_modifiers(KeyCode::KeyF, &[KeyCode::ControlLeft])` is
+    /// Ctrl+F. Modifiers already held stay held afterwards; the rest are
+    /// released again, so this composes with [`hold`](Self::hold).
+    pub fn key_with_modifiers(&mut self, key_code: KeyCode, modifiers: &[KeyCode]) {
+        let to_release: Vec<KeyCode> = modifiers
+            .iter()
+            .copied()
+            .filter(|m| !self.held.contains(m))
+            .collect();
+        for m in modifiers {
+            self.hold(*m);
+        }
+        self.key(key_code);
+        for m in to_release {
+            self.release(m);
+        }
+    }
+
     /// Hold a key across later actions.
     pub fn hold(&mut self, key_code: KeyCode) {
         if !self.held.contains(&key_code) {
