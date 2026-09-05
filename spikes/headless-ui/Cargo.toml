@@ -1,0 +1,28 @@
+[package]
+name = "headless-ui-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bevy = { version = "0.19.1", default-features = false, features = [
+    "std",
+    "bevy_asset",
+    "bevy_camera",
+    "bevy_input_focus",
+    "bevy_log",
+    "bevy_picking",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_widgets",
+    "bevy_window",
+    "default_font",
+    "ui_picking",
+    "debug",
+] }
+uuid = { version = "1", features = ["v4"] }
+
+[profile.dev]
+opt-level = 1
+[profile.dev.package."*"]
+opt-level = 3

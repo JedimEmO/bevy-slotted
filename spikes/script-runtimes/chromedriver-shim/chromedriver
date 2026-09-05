@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# wasm-pack looks for a binary literally named `chromedriver` on PATH. The
+# Chromium snap installs it as `chromium.chromedriver`, so put this directory
+# on PATH before running `wasm-pack test --headless --chrome`.
+exec /snap/bin/chromium.chromedriver "$@"

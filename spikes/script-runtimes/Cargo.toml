@@ -1,0 +1,49 @@
+[package]
+name = "script-runtimes-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[features]
+default = []
+# Bevy integration is native-only; wasm builds omit it.
+bevy-native = ["dep:bevy"]
+mlua-native = ["dep:mlua"]
+piccolo = ["dep:piccolo", "dep:getrandom", "dep:getrandom_02"]
+
+[dependencies]
+luaur = { version = "0.1.8", default-features = false, features = ["serde", "send"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+bevy = { version = "0.19.1", default-features = false, optional = true }
+piccolo = { version = "0.3", optional = true }
+mlua = { version = "0.11", features = ["luau", "vendored", "serialize", "send"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+# piccolo pulls ahash and rand, both of which need an explicit browser RNG
+# backend. getrandom 0.3 additionally needs
+#   RUSTFLAGS='--cfg getrandom_backend="wasm_js"'
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"], optional = true }
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"], optional = true }
+
+# Native release: speed, for the benchmark numbers.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+# Size-optimised profile used only for the reported .wasm size:
+#   cargo build --profile wasm-size --target wasm32-unknown-unknown
+[profile.wasm-size]
+inherits = "release"
+opt-level = "z"
+panic = "abort"
+strip = true
+
+[[bin]]
+name = "wasm_size_piccolo"
+required-features = ["piccolo"]

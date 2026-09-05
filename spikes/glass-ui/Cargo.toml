@@ -1,0 +1,16 @@
+[package]
+name = "glass-ui-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bevy = { version = "0.19.1", features = ["bevy_ui_widgets", "png"] }
+
+[profile.dev]
+opt-level = 1
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+debug = false
