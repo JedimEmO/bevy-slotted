@@ -162,3 +162,26 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   `scripts/<mod id>/<entry>` through the layering first and falls back to `<mod root>/<entry>`;
   `ModWatch` registers a handle only for the first form, so a root-level script reloads through an
   explicit `ReloadMod` and not the file watcher. **Phase 5** (packs notes B, item 4).
+
+## From Phase 5
+
+- **`ttf-parser` is unmaintained (RUSTSEC-2026-0192), so `cargo deny check advisories` fails.**
+  It arrives through Bevy's text stack and nothing in this workspace depends on it directly, so
+  there is nothing to bump here. Left unignored on purpose: an `ignore` entry in `deny.toml` would
+  hide the next advisory on the same crate too. CI does not run `cargo deny`, so nothing is red
+  today. Revisit when Bevy moves off it, or add a dated ignore if the wait gets long. **Phase 6**.
+- **The item browser's status line wraps when the panel is squeezed.** On a canvas narrow enough
+  that the free strip beside the chest is under about 260 px, `dock::choose` still docks the panel
+  and shrinks it to one or two card columns; "6 items" and "R recipes / U uses / A bookmark" then
+  wrap onto three lines each and the footer looks broken. It is legible, not wrong, and the fix is
+  in `slotted-browser`'s status line rather than in the playground: either a narrow form of the
+  hint text or a minimum width below which the panel hides. Seen in the playground screenshot at a
+  1400 px window. **Phase 6**.
+- **A wasm build's Bevy feature list is shared with the native debug run.** `web-playground`'s
+  `bevy` dependency carries `x11` so `cargo run -p web-playground` opens a window, and a wasm build
+  compiles that feature for nothing. Splitting it into two `[target.'cfg(..)'.dependencies]`
+  entries would drop whatever winit's x11 path contributes, which was not measured. **Phase 6**.
+- **`wasm-opt` is still the difference between 47 MiB and 23 MiB.** The `wasm-release` profile is
+  as small as the cheap knobs make it (`opt-level = "z"`, fat LTO, one codegen unit, `panic =
+  "abort"`, debuginfo stripped) and the module is still a whole Bevy renderer. The next real cut is
+  Bevy's own feature surface, not the profile. **Phase 6**.

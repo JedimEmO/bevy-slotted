@@ -51,7 +51,95 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The domain crates must stay free of anything that cannot reach the
-      # browser; the web playground depends on it. See docs/PLAN.md section 1.
-      - name: Check domain crates on wasm
-        run: cargo check --target wasm32-unknown-unknown -p slotted-model -p slotted-registry
+      - uses: extractions/setup-just@v2
+
+      # Every crate that has to reach a browser, not just the domain ones: the
+      # playground puts the whole stack in a tab. See docs/PLAN.md section 1.
+      - name: Check the stack on wasm
+        run: just wasm-check
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
+
+      - name: Install binaryen
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Build the playground
+        run: just playground
+
+      - name: Upload the playground
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-playground
+          path: dist/web-playground
+
+  browser:
+    name: Test (headless Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The browser tests are the only thing in the workspace that needs a
+      # browser, and a runner without one must not fail the build. This is an
+      # `if` on a detected binary rather than `continue-on-error`, because
+      # `continue-on-error` also swallows a real failure of the tests.
+      - name: Find a Chrome
+        id: chrome
+        run: |
+          for candidate in "$CHROME" "$CHROME_BIN" google-chrome chromium chromium-browser; do
+            [ -n "$candidate" ] || continue
+            found=$(command -v "$candidate" 2>/dev/null || true)
+            if [ -n "$found" ]; then
+              echo "path=$found" >> "$GITHUB_OUTPUT"
+              break
+            fi
+          done
+
+      - name: Say why there are no browser tests
+        if: steps.chrome.outputs.path == ''
+        run: |
+          echo "::notice title=Browser tests skipped::No Chrome or Chromium on this runner, so slotted-script-piccolo's wasm-bindgen tests did not run. Each of them has a native twin in the same crate, which the Test (ubuntu) job ran."
+
+      - name: Install wasm-pack
+        if: steps.chrome.outputs.path != ''
+        run: cargo install wasm-pack --version 0.13.1 --locked
+
+      # The piccolo adapter is the runtime the browser gets, and the four
+      # tombstone cases are the ones that used to abort the whole module.
+      - name: piccolo in a browser
+        if: steps.chrome.outputs.path != ''
+        env:
+          CHROME: ${{ steps.chrome.outputs.path }}
+        run: wasm-pack test --headless --chrome crates/slotted-script-piccolo --test wasm
+
+  pages:
+    name: Deploy the playground
+    needs: wasm
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-playground
+          path: dist/web-playground
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web-playground
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

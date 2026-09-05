@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>slotted — web playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Manrope:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="playground.css">
+</head>
+<body>
+<header class="bar">
+  <h1 class="disp">slotted<span class="dim"> / web playground</span></h1>
+  <p class="blurb">The <code>modded</code> example, in a tab. The three mods on the right are the ones on disk; edit their Lua and the running game reloads without a page refresh.</p>
+  <span class="spacer"></span>
+  <span id="status" class="status">booting…</span>
+</header>
+
+<main class="split">
+  <section class="stage panel">
+    <canvas id="slotted-canvas" tabindex="0"></canvas>
+    <div id="boot" class="boot"><span class="spinner"></span><span>compiling the wasm module…</span></div>
+  </section>
+
+  <section class="side">
+    <div class="panel editor-panel">
+      <div class="tabs">
+        <label class="pick">
+          <span class="eyebrow">mod</span>
+          <select id="mod-select"></select>
+        </label>
+        <div id="file-tabs" class="file-tabs"></div>
+      </div>
+      <div id="editor-host" class="editor-host"></div>
+      <div class="actions">
+        <button id="run" class="primary" type="button">Run <kbd>Ctrl</kbd><kbd>↵</kbd></button>
+        <button id="reset" type="button">Reset file</button>
+        <label class="toggle"><input id="auto" type="checkbox" checked><span>Run on idle</span></label>
+        <span class="spacer"></span>
+        <button id="share" type="button">Copy link</button>
+      </div>
+    </div>
+
+    <div class="panel console-panel">
+      <div class="console-head"><span class="eyebrow">console</span><button id="clear" type="button">Clear</button></div>
+      <div id="console" class="console"></div>
+    </div>
+  </section>
+</main>
+
+<script src="playground.js" type="module"></script>
+</body>
+</html>

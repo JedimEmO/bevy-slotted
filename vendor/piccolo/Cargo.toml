@@ -1,0 +1,26 @@
+# Vendored piccolo 0.3.3 with one upstream fix backported. See VENDOR.md.
+#
+# `[workspace]` makes this its own workspace root: it lives inside the slotted
+# checkout but is not a member of it, which is what `[patch.crates-io]` in the
+# root manifest needs.
+[workspace]
+
+[package]
+name = "piccolo"
+description = "Stackless Lua VM implemented in pure Rust"
+version = "0.3.3"
+edition = "2021"
+authors = ["kyren <catherine@kyju.org>"]
+license = "MIT"
+repository = "https://github.com/kyren/piccolo"
+readme = "README.md"
+publish = false
+
+[dependencies]
+ahash = "0.8"
+allocator-api2 = "0.2"
+anyhow = "1.0"
+gc-arena = { version = "0.5.3", features = ["allocator-api2", "hashbrown"] }
+hashbrown = { version = "0.14", features = ["raw"] }
+rand = { version = "0.8", features = ["small_rng"] }
+thiserror = "1.0"

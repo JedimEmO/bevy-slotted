@@ -47,13 +47,53 @@ shot-modded:
     cargo run -p modded -- --shot examples/modded/shots/modded-console.png
     cargo run -p modded -- --reload copper_chest --shot examples/modded/shots/modded-reload.png
 
-# Phase 5 (web playground) enables these.
-# wasm-build example:
-#     cargo build --target wasm32-unknown-unknown -p {{example}} --release
-#     wasm-bindgen --target web --out-dir dist target/wasm32-unknown-unknown/release/{{example}}.wasm
+# Every crate that has to reach a browser, on wasm32, with the feature set a
+# wasm build actually uses. `slotted` drops `script-mlua`: Luau is C++ and
+# cannot target wasm at all (ADR 0001).
+wasm-check:
+    cargo check --target wasm32-unknown-unknown -p slotted-model
+    cargo check --target wasm32-unknown-unknown -p slotted-script
+    cargo check --target wasm32-unknown-unknown -p slotted-script-piccolo
+    cargo check --target wasm32-unknown-unknown -p slotted-registry --no-default-features
+    cargo check --target wasm32-unknown-unknown -p slotted-ecs
+    cargo check --target wasm32-unknown-unknown -p slotted-theme
+    cargo check --target wasm32-unknown-unknown -p slotted-icons
+    cargo check --target wasm32-unknown-unknown -p slotted-ui
+    cargo check --target wasm32-unknown-unknown -p slotted-browser
+    cargo check --target wasm32-unknown-unknown -p slotted-packs
+    cargo check --target wasm32-unknown-unknown -p slotted --no-default-features --features ui,browser,packs
+    cargo check --target wasm32-unknown-unknown -p web-playground
 
-# serve:
-#     python3 -m http.server --directory dist 8080
+# One example to dist/<example>/: release wasm, wasm-bindgen, wasm-opt if it
+# is installed. Needs `cargo install wasm-bindgen-cli` matching the crate.
+wasm-build example:
+    cargo run -p xtask -- wasm-build {{example}}
+
+# The playground: the wasm build plus the page and the shared assets.
+playground:
+    cargo run -p xtask -- playground
+
+# dist/ over HTTP with the wasm MIME type right.
+# http://127.0.0.1:8080/web-playground/
+serve:
+    cargo run -p xtask -- serve
+
+# The playground in a window, for debugging without a wasm build.
+run-playground:
+    cargo run -p web-playground
+
+# End to end in headless Chromium: load dist/, edit a mod's control.lua through
+# the same export the editor uses, assert the reloaded chunk's line comes back
+# out of the console queue. Needs `just playground` and `just serve` first.
+smoke:
+    node examples/web-playground/tests/smoke.mjs
+
+# One screenshot of the page, for a look at what CI would deploy.
+shot-playground:
+    node examples/web-playground/tests/smoke.mjs \
+        --url http://127.0.0.1:8080/web-playground/index.html \
+        --size 1760,900 \
+        --wait 12000 --shot ~/snap/chromium/common/slotted-playground.png
 
 # Phase 2 (slotted-icons) enables this.
 # bake-icons:

@@ -1,0 +1,40 @@
+[package]
+name = "slotted-script-piccolo"
+description = "Web ScriptRuntime adapter for slotted: pure-Rust Lua through piccolo, fuel-budgeted, with a stdlib polyfill and a manual value bridge."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+slotted-script = { workspace = true }
+slotted-model = { workspace = true }
+piccolo = { workspace = true }
+# The `Collect` derive for the one `Sequence` this crate defines (`xpcall`).
+# piccolo does not re-export gc-arena, so the version has to track piccolo's.
+gc-arena = "0.5.3"
+serde = { workspace = true }
+
+# piccolo pulls `ahash`, which seeds itself from `getrandom`. On
+# wasm32-unknown-unknown that needs the `wasm_js` backend feature *and*
+# `--cfg getrandom_backend="wasm_js"`, which `.cargo/config.toml` sets for the
+# target so every member of the workspace builds the same way.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+# `ahash` seeds through getrandom 0.2 as well, which needs its own `js`
+# feature. Neither line is used by this crate's own code; both exist to turn on
+# a browser backend in a transitive dependency, which Cargo only allows from a
+# direct dependency.
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+slotted-testutils = { workspace = true, features = ["conformance"] }
+pretty_assertions = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true

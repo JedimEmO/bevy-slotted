@@ -16,6 +16,9 @@ default = ["ui", "browser", "packs", "script-mlua"]
 packs = ["ui", "browser", "dep:slotted-packs", "dep:slotted-script"]
 # The native Luau runtime, inserted as `ScriptHost` when none exists.
 script-mlua = ["packs", "dep:slotted-script-mlua"]
+# The pure-Rust runtime, and the only one that builds for wasm32 (ADR 0001).
+# A wasm build takes `--no-default-features --features "ui,browser,script-piccolo"`.
+script-piccolo = ["packs", "dep:slotted-script-piccolo"]
 # Widgets, themes and icons. Off for a dedicated server.
 ui = ["dep:slotted-ui", "dep:slotted-theme", "dep:slotted-icons"]
 # The item and recipe browser overlay (Phase 3).
@@ -36,6 +39,7 @@ slotted-browser = { workspace = true, optional = true }
 slotted-packs = { workspace = true, optional = true }
 slotted-script = { workspace = true, optional = true }
 slotted-script-mlua = { workspace = true, optional = true }
+slotted-script-piccolo = { workspace = true, optional = true }
 # The headless group needs exactly what ADR 0002 lists; a game adds
 # DefaultPlugins on top of these for a windowed build.
 bevy = { workspace = true, features = [

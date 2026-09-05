@@ -48,6 +48,10 @@ impl PluginGroup for SlottedPlugins {
         {
             group = group.add(MluaHostPlugin);
         }
+        #[cfg(feature = "script-piccolo")]
+        {
+            group = group.add(PiccoloHostPlugin);
+        }
         #[cfg(feature = "packs")]
         {
             group = group.add(slotted_packs::SlottedPacksPlugin::default());
@@ -148,6 +152,26 @@ impl Plugin for HeadlessRenderAssets {
         app.init_asset::<bevy::image::TextureAtlasLayout>();
         app.init_asset::<bevy::mesh::Mesh>();
         app.init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
+    }
+}
+
+/// Inserts `slotted_packs::ScriptHost` holding a `PiccoloRuntime` unless the
+/// app already provided a host, the wasm counterpart of [`MluaHostPlugin`].
+/// With both features on, whichever plugin runs first wins and this one does
+/// nothing, so a native build that adds `script-piccolo` for a test keeps
+/// Luau.
+#[cfg(feature = "script-piccolo")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PiccoloHostPlugin;
+
+#[cfg(feature = "script-piccolo")]
+impl Plugin for PiccoloHostPlugin {
+    fn build(&self, app: &mut App) {
+        if !app.world().contains_resource::<slotted_packs::ScriptHost>() {
+            app.insert_resource(slotted_packs::ScriptHost::new(
+                slotted_script_piccolo::PiccoloRuntime::default(),
+            ));
+        }
     }
 }
 

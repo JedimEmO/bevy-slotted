@@ -19,6 +19,8 @@ pub mod plugins;
 
 #[cfg(feature = "script-mlua")]
 pub use plugins::MluaHostPlugin;
+#[cfg(feature = "script-piccolo")]
+pub use plugins::PiccoloHostPlugin;
 pub use plugins::{HeadlessBevyPlugins, HeadlessRenderAssets, SlottedPlugins};
 
 pub use slotted_ecs as ecs;

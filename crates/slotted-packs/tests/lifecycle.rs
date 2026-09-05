@@ -525,6 +525,105 @@ fn a_failed_reload_keeps_the_previous_registries() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn a_control_chunk_that_fails_leaves_the_mod_answering_with_the_last_good_one() {
+    let mut harness = harness();
+    harness.run_all();
+    let before = harness
+        .app
+        .world()
+        .resource::<ControlScripts>()
+        .by_mod
+        .get(&mod_id("beta"))
+        .expect("beta has a control script")
+        .clone();
+
+    // The new chunk loads and then throws out of `control_start`, which is
+    // what a mod with a typo below its handler does.
+    harness.reply(
+        "beta",
+        "control_start",
+        Err(ScriptError::Runtime {
+            name: "control.lua".to_owned(),
+            message: "boom".to_owned(),
+            traceback: String::new(),
+        }),
+    );
+    ModLoader::reload_mod(harness.app.world_mut(), &mod_id("beta"))
+        .expect("a bad control chunk is a per-mod failure, not a fatal one");
+
+    let after = harness
+        .app
+        .world()
+        .resource::<ControlScripts>()
+        .by_mod
+        .get(&mod_id("beta"))
+        .cloned();
+    assert_eq!(
+        after.as_ref(),
+        Some(&before),
+        "the mod lost its control script instead of keeping the last good one"
+    );
+    assert!(
+        !harness.errors().is_empty(),
+        "the failure was never reported"
+    );
+
+    // Still live in the runtime: keeping the entry would be worthless if the
+    // handle behind it had been freed.
+    let host = harness.app.world().resource::<ScriptHost>().clone();
+    let answer = host.lock().call(
+        before.id,
+        &slotted_script::ScriptEvent::ControlStart {
+            api_version: slotted_script::API_VERSION,
+            mods: Vec::new(),
+        },
+    );
+    assert!(
+        !matches!(answer, Err(ScriptError::UnknownScript(_))),
+        "the kept script had been unloaded out from under the table"
+    );
+}
+
+#[test]
+fn a_control_chunk_that_loads_replaces_and_unloads_the_previous_one() {
+    let mut harness = harness();
+    harness.run_all();
+    let before = harness
+        .app
+        .world()
+        .resource::<ControlScripts>()
+        .by_mod
+        .get(&mod_id("beta"))
+        .expect("beta has a control script")
+        .id;
+
+    ModLoader::reload_mod(harness.app.world_mut(), &mod_id("beta")).expect("the reload succeeds");
+
+    let after = harness
+        .app
+        .world()
+        .resource::<ControlScripts>()
+        .by_mod
+        .get(&mod_id("beta"))
+        .expect("beta still has one")
+        .id;
+    assert_ne!(before, after, "the reload did not load a new chunk");
+
+    let host = harness.app.world().resource::<ScriptHost>().clone();
+    let answer = host.lock().call(
+        before,
+        &slotted_script::ScriptEvent::ControlStart {
+            api_version: slotted_script::API_VERSION,
+            mods: Vec::new(),
+        },
+    );
+    assert!(
+        matches!(answer, Err(ScriptError::UnknownScript(_))),
+        "the replaced chunk was left loaded, so every reload leaks a script"
+    );
+}
+
 // -- localisation -----------------------------------------------------------
 
 #[test]

@@ -1,0 +1,86 @@
+/* The moodboard's dark tokens (docs/moodboard.html), trimmed to what a
+   two-pane tool needs. Nothing here is loaded by the Bevy app; the canvas
+   draws its own theme from assets/themes/glass.theme.ron. */
+:root{
+  --bg:#0b0e14; --panel:#141a24; --panel-2:#0f131b; --line:#232c3c;
+  --ink:#e6edf3; --muted:#8a97ad; --accent:#7fd1ff; --accent-soft:#12283a;
+  --warn:#ffc35c; --bad:#ff7b7b; --good:#7ed37e;
+  --r:12px;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:
+    radial-gradient(1200px 600px at 20% -10%,#16202f 0%,transparent 60%),
+    var(--bg);
+  color:var(--ink);
+  font:15px/1.5 "Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+code,kbd,.mono,.console,.cm-editor{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+.eyebrow{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.spacer{flex:1}
+
+/* header */
+.bar{display:flex;align-items:baseline;gap:18px;padding:14px 20px;border-bottom:1px solid var(--line);background:rgba(15,19,27,.72);backdrop-filter:blur(10px)}
+.disp{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:30px;font-weight:700;letter-spacing:.01em;margin:0;line-height:1}
+.dim{color:var(--muted);font-weight:600}
+.blurb{margin:0;color:var(--muted);font-size:13px;max-width:62ch}
+.blurb code{color:var(--accent);font-size:12px}
+.status{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.status.busy{color:var(--warn)} .status.ok{color:var(--good)} .status.bad{color:var(--bad)}
+
+/* layout */
+/* The stage takes the larger share because the item browser docks inside the
+   canvas, beside the chest, and needs about 130 px of clear strip to appear at
+   all. At 1.25fr on a 1400 px window there was none and the panel vanished. */
+.split{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(360px,.8fr);gap:14px;padding:14px}
+@media (max-width:1080px){.split{grid-template-columns:1fr;grid-template-rows:minmax(240px,40vh) 1fr;overflow:auto}}
+
+.panel{
+  background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0)) ,var(--panel);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  min-height:0;display:flex;flex-direction:column;overflow:hidden;
+}
+.stage{position:relative;background:var(--panel-2)}
+#slotted-canvas{display:block;width:100%;height:100%;outline:none}
+.boot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;color:var(--muted);font-size:13px;background:var(--panel-2)}
+.boot.gone{display:none}
+.spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.side{display:grid;grid-template-rows:minmax(0,1fr) minmax(150px,.42fr);gap:14px;min-height:0}
+
+/* editor */
+.tabs{display:flex;align-items:center;gap:14px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.pick{display:flex;align-items:center;gap:8px}
+select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font:inherit;font-size:13px}
+.file-tabs{display:flex;gap:6px}
+.file-tabs button{background:transparent;color:var(--muted);border:1px solid transparent;border-radius:8px;padding:5px 10px;font:inherit;font-size:12.5px;cursor:pointer}
+.file-tabs button:hover{color:var(--ink)}
+.file-tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);border-color:#1d3f57}
+.file-tabs button.dirty::after{content:"•";margin-left:6px;color:var(--warn)}
+.editor-host{flex:1;min-height:0;overflow:auto;background:var(--panel-2)}
+.cm-editor{height:100%;font-size:12.5px}
+.cm-scroller{font-family:inherit}
+textarea.fallback{width:100%;height:100%;min-height:220px;background:var(--panel-2);color:var(--ink);border:0;padding:12px;font:12.5px/1.6 "JetBrains Mono",monospace;resize:none;outline:none}
+
+.actions{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:var(--panel-2)}
+button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+button:hover{border-color:#33415a}
+button.primary{background:var(--accent-soft);border-color:#1d3f57;color:var(--accent);font-weight:600}
+kbd{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px}
+.toggle{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px}
+
+/* console */
+.console-panel{min-height:0}
+.console-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.console-head button{padding:3px 9px;font-size:12px}
+.console{flex:1;min-height:0;overflow:auto;padding:8px 12px;font-size:12px;line-height:1.65}
+.console .row{display:flex;gap:8px;white-space:pre-wrap;word-break:break-word}
+.console .who{color:var(--muted);flex:0 0 auto}
+.console .info{color:#c3cad8}
+.console .warn{color:var(--warn)}
+.console .error{color:var(--bad)}
+.console .debug,.console .trace{color:var(--muted)}

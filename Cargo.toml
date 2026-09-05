@@ -1,9 +1,8 @@
 [workspace]
 resolver = "3"
-# `tools/xtask` joins the members list in a later phase (docs/PLAN.md section 3).
 # Examples are workspace members so `cargo check --workspace --all-targets` and
 # `just ci` cover them; each one sets `publish = false`.
-members = ["crates/*", "examples/*"]
+members = ["crates/*", "examples/*", "tools/*"]
 # Phase 0 spikes are standalone throwaway crates with their own lockfiles.
 exclude = ["spikes/*"]
 
@@ -36,6 +35,13 @@ uuid = { version = "1", features = ["v4"] }
 # Luau through mlua: the native script adapter (ADR 0001). The feature set is
 # the one the Phase 0 spike verified; `serialize` is the serde bridge.
 mlua = { version = "0.11", features = ["luau", "vendored", "serialize", "send"] }
+# piccolo: the pure-Rust web adapter (ADR 0001). No C++ build, errors come back
+# as `Result` and leave the VM usable, which is what wasm needs.
+#
+# Patched through `[patch.crates-io]` at the bottom of this file: 0.3.3 panics
+# when a table that has had a key removed is grown, and a panic on wasm is an
+# abort of the whole module. `vendor/piccolo/VENDOR.md` has the details.
+piccolo = "0.3.3"
 # Own `.ftl` loader for mod localisation (Phase 4 contract section 2.7).
 fluent-bundle = "0.16"
 unic-langid = { version = "0.9", features = ["macros"] }
@@ -60,6 +66,7 @@ slotted-browser = { path = "crates/slotted-browser", version = "0.1.0" }
 slotted-test = { path = "crates/slotted-test", version = "0.1.0" }
 slotted-script = { path = "crates/slotted-script", version = "0.1.0" }
 slotted-script-mlua = { path = "crates/slotted-script-mlua", version = "0.1.0" }
+slotted-script-piccolo = { path = "crates/slotted-script-piccolo", version = "0.1.0" }
 slotted-packs = { path = "crates/slotted-packs", version = "0.1.0" }
 slotted = { path = "crates/slotted", version = "0.1.0" }
 
@@ -77,6 +84,21 @@ debug = false
 [profile.test]
 debug = "line-tables-only"
 
+# What `cargo xtask wasm-build` uses. A plain `--release` wasm module is over
+# 80 MiB because release keeps debuginfo and every generic Bevy instantiates;
+# this is the same code with the symbols dropped and size chosen over speed,
+# which is the trade a page load wants. Native release builds are untouched.
+[profile.wasm-release]
+inherits = "release"
+# "z" rather than "s". Together with dropping `bevy_scene` from the playground
+# it took the optimised module from 26.46 MiB to 23.05 MiB, and nothing here is
+# a hot inner loop: the frame cost is the renderer, not this code.
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
+panic = "abort"
+
 [workspace.lints.rust]
 unsafe_code = "deny"
 missing_docs = "warn"
@@ -92,3 +114,10 @@ type_complexity = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 unwrap_used = "warn"
+
+# Vendored piccolo, one upstream fix backported. `vendor/piccolo/VENDOR.md`
+# says what changed and how to drop this once piccolo releases past 0.3.3.
+# A path patch keeps `cargo deny`'s `unknown-git = "deny"` satisfied, which a
+# git dependency on piccolo `main` would not: it pulls `gc-arena` from git too.
+[patch.crates-io]
+piccolo = { path = "vendor/piccolo" }

@@ -208,6 +208,27 @@ fn from_script_error(mod_id: &ModId, source: ScriptError) -> ModError {
     }
 }
 
+/// Puts back the control script a mod already had, after its new chunk failed.
+///
+/// The handle is still live in the runtime, because nothing is unloaded until
+/// its replacement is running, so the mod keeps answering events with the last
+/// chunk that worked. Its `tooltip_build` subscription comes back too, or the
+/// tooltip would lose a line that the mod never stopped providing.
+fn keep_previous(
+    previous: &ControlScripts,
+    scripts: &mut ControlScripts,
+    dynamic: &mut Vec<(ModId, ScriptId)>,
+    mod_id: &ModId,
+) {
+    let Some(kept) = previous.by_mod.get(mod_id) else {
+        return;
+    };
+    if kept.events.contains(crate::route::TOOLTIP_BUILD) {
+        dynamic.push((mod_id.clone(), kept.id));
+    }
+    scripts.by_mod.insert(mod_id.clone(), kept.clone());
+}
+
 /// Writes `message` only when its `Messages` resource exists, so the loader
 /// runs in a bare `World` as well as in a full app.
 pub(crate) fn send<M: Message>(world: &mut World, message: M) {
@@ -283,6 +304,18 @@ struct DataOutcome {
     logs: Vec<LogEntry>,
 }
 
+/// The source the loader reads mods through: a host-supplied [`PackAssets`]
+/// when there is one, otherwise a [`LayeredSource`] over the layout.
+///
+/// `PackAssets` is how a host with no filesystem (`wasm32-unknown-unknown`)
+/// gets its mods in; native builds never insert it and read the disk as before.
+fn pack_source(world: &World, layout: &PackLayout) -> crate::SharedSource {
+    world.get_resource::<crate::PackAssets>().map_or_else(
+        || Arc::new(LayeredSource::new(layout)) as _,
+        |assets| assets.0.clone(),
+    )
+}
+
 /// The state machine. Pure functions over `&mut World` so `PreStartup`, the
 /// reload system and the test harness run the identical code.
 #[derive(Debug, Clone, Copy, Default)]
@@ -305,8 +338,9 @@ impl ModLoader {
         world.init_resource::<ModErrors>();
 
         set_stage(world, ModStage::Data);
-        let source = LayeredSource::new(&layout);
-        let outcome = Self::run_data_stage(world, &layout.mods, &source)?;
+        let source = pack_source(world, &layout);
+        let source = &*source;
+        let outcome = Self::run_data_stage(world, &layout.mods, source)?;
         let DataOutcome {
             registries,
             mut report,
@@ -331,7 +365,7 @@ impl ModLoader {
         Self::install_registries(world, frozen.clone());
 
         set_stage(world, ModStage::Control);
-        Self::run_control_stage(world, &layout, &source, &frozen, &collected);
+        Self::run_control_stage(world, &layout, source, &frozen, &collected);
 
         set_stage(world, ModStage::Running);
         Ok(report)
@@ -349,11 +383,12 @@ impl ModLoader {
             .get_resource::<PackLayout>()
             .cloned()
             .ok_or(ModError::NoLayout)?;
-        let source = LayeredSource::new(&layout);
+        let source = pack_source(world, &layout);
+        let source = &*source;
 
         // Step 1: the whole data stage again. Anything at all that goes wrong
         // leaves the previous frozen set untouched.
-        let outcome = match Self::run_data_stage(world, &layout.mods, &source) {
+        let outcome = match Self::run_data_stage(world, &layout.mods, source) {
             Ok(outcome) => outcome,
             Err(error) => {
                 fail(world, Some(id.clone()), error.clone());
@@ -408,7 +443,7 @@ impl ModLoader {
 
         // Step 3: publish everything the frozen set feeds, control scripts
         // included.
-        Self::run_control_stage(world, &layout, &source, &frozen, &collected);
+        Self::run_control_stage(world, &layout, source, &frozen, &collected);
 
         // Step 4: respawn the screens whose tree actually changed.
         let mut changed: BTreeSet<ScreenKind> = world
@@ -438,7 +473,7 @@ impl ModLoader {
     fn run_data_stage(
         world: &mut World,
         mods: &ModSet,
-        source: &LayeredSource,
+        source: &dyn AssetSource,
     ) -> Result<DataOutcome, ModError> {
         let shared = world.get_resource::<crate::PacksConfig>().map_or_else(
             || vec![crate::plugin::SHARED_NAMESPACE.to_owned()],
@@ -550,7 +585,7 @@ impl ModLoader {
     fn run_control_stage(
         world: &mut World,
         layout: &PackLayout,
-        source: &LayeredSource,
+        source: &dyn AssetSource,
         frozen: &Arc<FrozenRegistries>,
         collected: &CollectedUi,
     ) {
@@ -658,12 +693,20 @@ impl ModLoader {
         send(world, slotted_browser::RebuildBrowser);
     }
 
-    /// Unloads every control script and loads them all again, returning the
-    /// `(mod, script)` pairs subscribed to `tooltip_build`.
+    /// Loads every control script again, returning the `(mod, script)` pairs
+    /// subscribed to `tooltip_build`.
+    ///
+    /// A mod whose new chunk will not compile, will not read or throws out of
+    /// `control_start` **keeps the script it already had**, and the previous
+    /// chunk is only unloaded once its replacement is running. The failure is
+    /// still reported. The alternative, which this used to do, was to unload
+    /// everything up front and leave that mod with no control script at all:
+    /// in the web playground a single typo then stopped every click in the
+    /// game until the page was reloaded, with nothing on screen to say why.
     fn load_control_scripts(
         world: &mut World,
         layout: &PackLayout,
-        source: &LayeredSource,
+        source: &dyn AssetSource,
         frozen: &Arc<FrozenRegistries>,
     ) -> Vec<(ModId, ScriptId)> {
         let _ = frozen;
@@ -672,12 +715,6 @@ impl ModLoader {
             .get_resource::<ControlScripts>()
             .cloned()
             .unwrap_or_default();
-        if let Some(host) = host.as_ref() {
-            let mut runtime = host.lock();
-            for script in previous.by_mod.values() {
-                runtime.unload(script.id);
-            }
-        }
 
         let mods: Vec<String> = layout
             .mods
@@ -700,7 +737,8 @@ impl ModLoader {
             let text = match read_script(source, entry, &relative) {
                 Ok(text) => text,
                 Err(error) => {
-                    fail(world, Some(mod_id), error);
+                    fail(world, Some(mod_id.clone()), error);
+                    keep_previous(&previous, &mut scripts, &mut dynamic, &mod_id);
                     continue;
                 }
             };
@@ -710,7 +748,8 @@ impl ModLoader {
                 Err(source) => {
                     let error = from_script_error(&mod_id, source);
                     drop(runtime);
-                    fail(world, Some(mod_id), error);
+                    fail(world, Some(mod_id.clone()), error);
+                    keep_previous(&previous, &mut scripts, &mut dynamic, &mod_id);
                     continue;
                 }
             };
@@ -726,7 +765,9 @@ impl ModLoader {
                 Ok(commands) => commands,
                 Err(source) => {
                     let error = from_script_error(&mod_id, source);
-                    fail(world, Some(mod_id), error);
+                    fail(world, Some(mod_id.clone()), error);
+                    host.lock().unload(script);
+                    keep_previous(&previous, &mut scripts, &mut dynamic, &mod_id);
                     continue;
                 }
             };
@@ -753,6 +794,18 @@ impl ModLoader {
             scripts
                 .by_mod
                 .insert(mod_id, ControlScript { id: script, events });
+        }
+
+        // Only now, and only what was really replaced: a mod that kept its
+        // previous chunk kept the handle with it, and unloading that handle
+        // would leave the table pointing at a script the runtime has freed.
+        if let Some(host) = host.as_ref() {
+            let mut runtime = host.lock();
+            for (mod_id, script) in &previous.by_mod {
+                if scripts.by_mod.get(mod_id).map(|kept| kept.id) != Some(script.id) {
+                    runtime.unload(script.id);
+                }
+            }
         }
         world.insert_resource(scripts);
         dynamic
@@ -986,7 +1039,7 @@ fn namespace_warnings(
 /// A mod's script text, through the layered source when a pack overrides it
 /// and from the mod's own directory otherwise.
 fn read_script(
-    source: &LayeredSource,
+    source: &dyn AssetSource,
     entry: &ModEntry,
     relative: &str,
 ) -> Result<String, ModError> {
@@ -1107,7 +1160,7 @@ fn respawn_screens(world: &mut World, changed: &BTreeSet<ScreenKind>) {
 ///
 /// A mod's scripts are watched when they live at `scripts/<mod id>/`, the one
 /// layout where a logical `pack://` path names exactly one mod's file.
-fn populate_watch(world: &mut World, layout: &PackLayout, source: &LayeredSource) {
+fn populate_watch(world: &mut World, layout: &PackLayout, source: &dyn AssetSource) {
     let Some(server) = world.get_resource::<AssetServer>().cloned() else {
         return;
     };
@@ -1123,7 +1176,7 @@ fn populate_watch(world: &mut World, layout: &PackLayout, source: &LayeredSource
             .chain(entry.manifest.entry.control.iter())
         {
             let logical = format!("scripts/{}/{relative}", entry.id());
-            if source.resolve(&logical).is_some() {
+            if source.read(&logical).is_ok() {
                 handles.push(
                     server
                         .load::<crate::ScriptAsset>(format!("{}://{logical}", crate::PACK_SOURCE))
@@ -1147,7 +1200,7 @@ fn populate_watch(world: &mut World, layout: &PackLayout, source: &LayeredSource
                 .get_resource::<crate::Locales>()
                 .map_or_else(|| unic_langid::langid!("en-US"), |l| l.lang.clone())
         );
-        if source.resolve(&locale).is_some() {
+        if source.read(&locale).is_ok() {
             handles.push(
                 server
                     .load::<crate::FtlAsset>(format!("{}://{locale}", crate::PACK_SOURCE))

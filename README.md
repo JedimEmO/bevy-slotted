@@ -51,7 +51,19 @@ just check   # cargo check --workspace --all-targets
 just test    # cargo test --workspace
 just lint    # clippy, warnings fatal
 just ci      # what CI runs: fmt-check, lint, test
+
+just wasm-check   # every crate that has to reach a browser, on wasm32
+just playground   # build dist/web-playground/
+just serve        # then open http://127.0.0.1:8080/web-playground/
+just smoke        # drive that page in headless Chromium
 ```
+
+The playground is the `modded` example in a browser tab, with the three demo
+mods' Lua editable beside the canvas: edit `control.lua`, press Run, and the
+mod reloads while the chest keeps its contents. `just playground` needs
+`cargo install wasm-bindgen-cli` at the version the lockfile pins;
+[binaryen](https://github.com/WebAssembly/binaryen)'s `wasm-opt` is optional and
+halves the module.
 
 `.cargo/config.toml` forces a plain `cc`/`c++` toolchain. If your shell exports
 an Anaconda toolchain, that is deliberate: ADR 0001 records how it corrupts a

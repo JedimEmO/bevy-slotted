@@ -8,29 +8,68 @@ use bevy::prelude::*;
 
 use crate::{
     ControlScripts, DataFileLoader, FtlLoader, LayeredAssetReader, Locales, ModFailed, ModLoader,
-    ModReloaded, ModStage, ModWatch, OpenScreens, PACK_SOURCE, PackLayout, PendingScriptEvents,
-    ReloadMod, ScriptLoader, ScriptLog, ScriptLogs, route,
+    ModReloaded, ModStage, ModWatch, OpenScreens, PACK_SOURCE, PackAssets, PackLayout,
+    PendingScriptEvents, ReloadMod, ScriptLoader, ScriptLog, ScriptLogs, SharedSource,
+    SourceAssetReader, route,
 };
 
 /// Registers the `pack://` asset source. **Add before `AssetPlugin`**
 /// (before `DefaultPlugins`): Bevy builds sources when the asset server is
 /// created and ignores later registrations.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PackSourcePlugin {
     /// What to layer.
     pub layout: PackLayout,
+    /// Read through this instead of the filesystem, when set. Also inserted as
+    /// [`PackAssets`], so the lifecycle and `pack://` agree on one bundle.
+    pub assets: Option<SharedSource>,
 }
 
 impl PackSourcePlugin {
-    /// Over `layout`.
+    /// Over `layout`, reading the filesystem.
     pub fn new(layout: PackLayout) -> Self {
-        Self { layout }
+        Self {
+            layout,
+            assets: None,
+        }
+    }
+
+    /// Over `layout`, reading `assets` instead of the filesystem.
+    ///
+    /// This is the `wasm32-unknown-unknown` path: the mods are a bundle
+    /// compiled into the binary, not directories, and nothing here calls
+    /// `std::fs`.
+    #[must_use]
+    pub fn with_assets(mut self, assets: SharedSource) -> Self {
+        self.assets = Some(assets);
+        self
+    }
+}
+
+impl std::fmt::Debug for PackSourcePlugin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PackSourcePlugin")
+            .field("layout", &self.layout)
+            .field("assets", &self.assets.is_some())
+            .finish()
     }
 }
 
 impl Plugin for PackSourcePlugin {
     fn build(&self, app: &mut App) {
         let layout = self.layout.clone();
+        if let Some(assets) = self.assets.clone() {
+            let reader_assets = assets.clone();
+            app.register_asset_source(
+                PACK_SOURCE,
+                AssetSourceBuilder::new(move || {
+                    Box::new(SourceAssetReader::new(reader_assets.clone()))
+                }),
+            );
+            app.insert_resource(PackAssets(assets));
+            app.insert_resource(layout);
+            return;
+        }
         let reader_layout = layout.clone();
         #[allow(unused_mut)]
         let mut builder =

@@ -1,0 +1,74 @@
+[package]
+name = "web-playground"
+description = "slotted example: the modded demo in a browser tab, with the mods' Lua editable live beside the canvas."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Backdrop blur. Off by default: it is a second scene render per frame, and
+# WebGL2 is where that costs the most (ADR 0003).
+blur = ["slotted/blur"]
+
+[dependencies]
+# `script-mlua` is off: Luau is C++ and cannot reach wasm at all (ADR 0001).
+# A path dependency rather than the workspace one: the facade's default
+# features include `script-mlua`, and a workspace dependency cannot be
+# inherited with `default-features = false`.
+slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "packs", "dev"] }
+slotted-packs = { workspace = true }
+slotted-script = { workspace = true }
+slotted-script-piccolo = { path = "../../crates/slotted-script-piccolo", version = "0.1.0" }
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true }
+bevy = { version = "0.19.1", default-features = false, features = [
+    "bevy_ui_widgets",
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_render",
+    # No bevy_scene, bevy_audio, bevy_gltf or bevy_gizmos: nothing here loads a
+    # scene file, plays a sound or draws a gizmo, and each is module size.
+    "bevy_state",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_window",
+    "bevy_winit",
+    "default_font",
+    "png",
+    "std",
+    # Without it the camera's default TonyMcMapFace tonemapper errors at
+    # runtime and the 3D scene never draws. ~1 MiB of KTX2 LUTs.
+    # `tonemapping_luts` needs a zstd backend to unpack the LUTs; the pure-Rust
+    # one, because wasm has no C toolchain here.
+    "tonemapping_luts",
+    "zstd_rust",
+    "ui_picking",
+    "webgl2",
+    "x11",
+] }
+tracing = { workspace = true }
+serde = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+
+[dev-dependencies]
+slotted-testutils = { workspace = true }
+slotted-browser = { workspace = true }
+slotted-ecs = { workspace = true }
+slotted-ui = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

@@ -269,7 +269,7 @@ pub fn resolve_loc_text(
 pub(crate) fn load_locales(
     world: &mut World,
     layout: &crate::PackLayout,
-    source: &crate::LayeredSource,
+    source: &dyn slotted_registry::AssetSource,
 ) {
     let lang = world
         .get_resource::<Locales>()
@@ -278,17 +278,28 @@ pub(crate) fn load_locales(
     let file = format!("locale/{lang}.ftl");
 
     // Base first, so a mod's layer sits above it.
-    if let Ok(bytes) = std::fs::read(layout.base.join(&file))
-        && let Ok(text) = String::from_utf8(bytes)
+    if let Ok(bytes) = std::fs::read(layout.base.join(&file)).or_else(|_| {
+        source
+            .read(&file)
+            .map_err(|_| ())
+            .map_err(|()| std::io::Error::other(""))
+    }) && let Ok(text) = String::from_utf8(bytes)
         && let Err(error) = locales.push_layer(None, text)
     {
         tracing::warn!(%error, "base locale file is not valid Fluent");
     }
-    let _ = source;
 
     for entry in layout.mods.iter() {
         let path = entry.locale_dir().join(format!("{lang}.ftl"));
-        let Ok(bytes) = std::fs::read(&path) else {
+        // One logical `locale/<lang>.ftl` cannot name one mod's file, so a
+        // source that layers nothing (an in-memory bundle on wasm) addresses
+        // them per mod. The disk is tried first, so native is unchanged.
+        let per_mod = format!("locale/{}/{lang}.ftl", entry.id());
+        let Ok(bytes) = std::fs::read(&path).or_else(|_| {
+            source
+                .read(&per_mod)
+                .map_err(|_| std::io::Error::other("not in the pack source"))
+        }) else {
             continue;
         };
         let Ok(text) = String::from_utf8(bytes) else {

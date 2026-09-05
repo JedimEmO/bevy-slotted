@@ -1,0 +1,18 @@
+[package]
+name = "xtask"
+description = "Build tasks for the slotted workspace: wasm builds, the web playground bundle and a static file server."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+# No dependencies on purpose. `cargo xtask` has to work from a bare checkout,
+# before anything else is compiled, so the server is std's `TcpListener` and
+# the argument parsing is a `match` on `std::env::args`.
+[dependencies]
+
+[lints]
+workspace = true

@@ -41,14 +41,16 @@ pub use route::{
     MAX_SCRIPT_CALLS_PER_FRAME, OpenScreens, PendingScriptEvents, TOOLTIP_BUILD,
     WarnedDeprecations, apply_control_command,
 };
-pub use source::{LayeredAssetReader, LayeredSource, PACK_SOURCE};
+pub use source::{
+    LayeredAssetReader, LayeredSource, PACK_SOURCE, PackAssets, SharedSource, SourceAssetReader,
+};
 pub use tooltip::{CHILDREN_ANCHOR, ScriptTooltipPart, StaticPart, TemplateWidget};
 
 /// Everything a game needs to wire mods in.
 pub mod prelude {
     pub use crate::{
         LogEntry, ModError, ModErrors, ModFailed, ModLoader, ModReloaded, ModSet, ModStage,
-        PackLayout, PackSourcePlugin, PacksConfig, ReloadMod, ScriptHost, ScriptLog, ScriptLogs,
-        SlottedPacksPlugin,
+        PackAssets, PackLayout, PackSourcePlugin, PacksConfig, ReloadMod, ScriptHost, ScriptLog,
+        ScriptLogs, SlottedPacksPlugin,
     };
 }

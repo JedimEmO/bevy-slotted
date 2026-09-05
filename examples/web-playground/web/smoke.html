@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>smoke: pending</title>
+<style>body{background:#0b0e14;color:#e6edf3;font:13px/1.6 monospace;margin:0;padding:16px}
+canvas{position:absolute;left:-4000px;width:640px;height:360px}
+#out{white-space:pre-wrap}</style>
+</head>
+<body>
+<!-- The app still needs a canvas; the point of this page is the exports. -->
+<canvas id="slotted-canvas"></canvas>
+<div id="out">running…</div>
+<script type="module">
+// The deployed artifact's own end-to-end check, run in a headless browser by
+// `just smoke` (see docs/design/phase5-notes-B.md section 7). It edits a mod's
+// control.lua through the same export the editor uses and asserts the reloaded
+// script's log line comes back out of the console queue.
+import init, {
+  list_mods,
+  get_mod_file,
+  reload_mod,
+  drain_console,
+  set_canvas_console,
+} from './web_playground.js';
+
+const MARKER = 'smoke: the edited control chunk ran';
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok, detail });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function drainUntil(marker, ms) {
+  const deadline = Date.now() + ms;
+  const seen = [];
+  while (Date.now() < deadline) {
+    for (const line of JSON.parse(drain_console())) {
+      seen.push(`[${line.level}/${line.who}] ${line.text}`);
+      if (line.text.includes(marker)) return { found: true, seen };
+    }
+    await sleep(50);
+  }
+  return { found: false, seen };
+}
+
+/** Everything the console said over `ms`, as one array of rendered lines. */
+async function drainFor(ms) {
+  const deadline = Date.now() + ms;
+  const seen = [];
+  while (Date.now() < deadline) {
+    for (const line of JSON.parse(drain_console())) {
+      seen.push(`[${line.level}/${line.who}] ${line.text}`);
+    }
+    await sleep(50);
+  }
+  return seen;
+}
+
+/** The control chunk the demo ships, so a check can put the mod back. */
+const ORIGINAL_CONTROL = () => get_mod_file('copper_chest', 'control.lua');
+const ORIGINAL_DATA = () => get_mod_file('copper_chest', 'data.lua');
+
+/** A control chunk that logs `marker` and still answers a click. */
+const chunkLogging = (marker) =>
+  `slotted.info(${JSON.stringify(marker)})\n` +
+  'slotted.on("slot_click", function(ev)\n  slotted.info("edited slot %d", ev.slot)\nend)\n';
+
+async function main() {
+  try {
+    await init();
+  } catch (error) {
+    if (!String(error).includes('control flow')) throw error;
+  }
+
+  const mods = JSON.parse(list_mods());
+  check('list_mods names the three demo mods', mods.length === 3, JSON.stringify(mods.map((m) => m.id)));
+
+  const control = get_mod_file('copper_chest', 'control.lua');
+  check('get_mod_file returns the bundled chunk', control.includes('slotted.on("slot_click"'), `${control.length} bytes`);
+
+  // The app boots on animation frames; give it some before asking for a reload.
+  await sleep(1200);
+  drain_console();
+
+  reload_mod(
+    'copper_chest',
+    '',
+    `slotted.info(${JSON.stringify(MARKER)})\n` +
+      'slotted.on("slot_click", function(ev)\n  slotted.info("edited slot %d", ev.slot)\nend)\n',
+  );
+
+  const { found, seen } = await drainUntil(MARKER, 8000);
+  check('the reloaded control chunk logged through the console queue', found, seen.slice(-8).join('\n'));
+
+  // -------------------------------------------------------------------------
+  // The adversarial half: everything a person can do to this page by accident.
+  // -------------------------------------------------------------------------
+
+  // A chunk that will not compile. The mod must keep answering with the last
+  // good chunk, and the page must be told why.
+  reload_mod('copper_chest', '', 'slotted.on("slot_click", function(ev)\n');
+  const broken = await drainFor(3000);
+  check(
+    'a compile error is reported and does not take the module down',
+    broken.some((line) => line.startsWith('[error/')),
+    broken.slice(-4).join('\n'),
+  );
+
+  // A chunk that will not stop. The fuel budget has to end it; if it does not,
+  // this page hangs and the run times out, which is the failure.
+  reload_mod('copper_chest', 'while true do end\n', '');
+  const runaway = await drainFor(6000);
+  check(
+    'an infinite loop in data.lua is stopped and reported',
+    runaway.some((line) => line.startsWith('[error/')),
+    runaway.slice(-4).join('\n'),
+  );
+
+  // The mod list and the bundled text are untouched by either failure.
+  const afterFailures = JSON.parse(list_mods());
+  check(
+    'list_mods is the same after two failed reloads',
+    afterFailures.length === 3 && afterFailures.every((m) => m.files.length === 2),
+    JSON.stringify(afterFailures.map((m) => m.id)),
+  );
+
+  // A name the page made up is an error, not a dead canvas.
+  let threw = false;
+  try {
+    get_mod_file('no_such_mod', 'control.lua');
+  } catch {
+    threw = true;
+  }
+  check('get_mod_file throws on an unknown mod rather than aborting', threw);
+
+  // Two reloads in one turn: both run, in the order they were asked for.
+  drain_console();
+  reload_mod('copper_chest', ORIGINAL_DATA(), chunkLogging('smoke: first of two'));
+  reload_mod('copper_chest', '', chunkLogging('smoke: second of two'));
+  const both = await drainFor(8000);
+  const firstAt = both.findIndex((line) => line.includes('smoke: first of two'));
+  const secondAt = both.findIndex((line) => line.includes('smoke: second of two'));
+  check(
+    'two reloads queued together both ran, in order',
+    firstAt >= 0 && secondAt > firstAt,
+    both.slice(-8).join('\n'),
+  );
+
+  // The overlay export is reachable and the game survives being told to draw
+  // it, which is the only thing this page can assert about a hidden canvas.
+  set_canvas_console(true);
+  await sleep(500);
+  set_canvas_console(false);
+  drain_console();
+  reload_mod('copper_chest', '', ORIGINAL_CONTROL());
+  const alive = await drainUntil('reloaded', 8000);
+  check('the game still reloads after all of that', alive.found, alive.seen.slice(-4).join('\n'));
+
+  const passed = results.every((r) => r.ok);
+  document.title = passed ? 'smoke: pass' : 'smoke: fail';
+  document.getElementById('out').textContent =
+    results.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}\n      ${r.detail}`).join('\n') +
+    `\n\nRESULT ${passed ? 'PASS' : 'FAIL'}`;
+}
+
+main().catch((error) => {
+  document.title = 'smoke: fail';
+  document.getElementById('out').textContent = `RESULT FAIL\n${error?.stack ?? error}`;
+});
+</script>
+</body>
+</html>

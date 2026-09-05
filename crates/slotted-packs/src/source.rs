@@ -2,8 +2,10 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bevy::asset::io::{AssetReader, AssetReaderError, PathStream, Reader, VecReader};
+use bevy::prelude::Resource;
 use bevy::tasks::futures_lite::stream;
 use slotted_registry::{AssetSource, SourceError};
 
@@ -11,6 +13,43 @@ use crate::PackLayout;
 
 /// The Bevy asset source id: `pack://textures/gui/chest.png`.
 pub const PACK_SOURCE: &str = "pack";
+
+/// An [`AssetSource`] that can be shared between the lifecycle, the
+/// `pack://` reader and whoever built it.
+pub type SharedSource = Arc<dyn AssetSource + Send + Sync>;
+
+/// The source [`ModLoader`](crate::ModLoader) reads mods through.
+///
+/// Absent, the loader builds a [`LayeredSource`] over the [`PackLayout`], which
+/// is the native path and the default. A host with no usable filesystem
+/// (`wasm32-unknown-unknown`, a dedicated server reading a bundle) inserts this
+/// resource instead, typically over a
+/// [`InMemorySource`](slotted_registry::InMemorySource) built at compile time.
+///
+/// The logical paths are exactly the ones [`LayeredSource`] serves:
+/// `data/<mod>/items/*.ron`, `scripts/<mod>/<entry>`, `mods/<mod>/mod.toml`,
+/// `locale/<lang>.ftl` and, for a source that cannot layer several roots onto
+/// one path, the per-mod form `locale/<mod>/<lang>.ftl`.
+#[derive(Resource, Clone)]
+pub struct PackAssets(pub SharedSource);
+
+impl PackAssets {
+    /// Over any source.
+    pub fn new(source: impl AssetSource + Send + Sync + 'static) -> Self {
+        Self(Arc::new(source))
+    }
+
+    /// The source behind the resource.
+    pub fn source(&self) -> &(dyn AssetSource + Send + Sync) {
+        &*self.0
+    }
+}
+
+impl std::fmt::Debug for PackAssets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PackAssets(..)")
+    }
+}
 
 /// [`AssetSource`] for the registry's data stage. `read` returns the first
 /// root that has the file, in [`PackLayout::roots`] order; `list` is the
@@ -200,7 +239,7 @@ impl LayeredAssetReader {
         &self.source
     }
 
-    fn logical(path: &Path) -> String {
+    pub(crate) fn logical(path: &Path) -> String {
         path.to_string_lossy().replace('\\', "/")
     }
 }
@@ -241,5 +280,67 @@ impl AssetReader for LayeredAssetReader {
 
     async fn is_directory<'a>(&'a self, path: &'a Path) -> Result<bool, AssetReaderError> {
         Ok(self.source.is_dir(&Self::logical(path)))
+    }
+}
+
+/// The `pack://` [`AssetReader`] over any [`AssetSource`].
+///
+/// [`LayeredAssetReader`] is the filesystem form; this is the one a host with
+/// no filesystem registers, so `pack://` resolves against the same
+/// [`PackAssets`] the loader reads mods through and a `ScriptAsset` handle
+/// still points at real bytes.
+#[derive(Clone)]
+pub struct SourceAssetReader {
+    source: SharedSource,
+}
+
+impl SourceAssetReader {
+    /// Over `source`.
+    pub fn new(source: SharedSource) -> Self {
+        Self { source }
+    }
+}
+
+impl std::fmt::Debug for SourceAssetReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SourceAssetReader(..)")
+    }
+}
+
+impl AssetReader for SourceAssetReader {
+    async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+        let logical = LayeredAssetReader::logical(path);
+        match self.source.read(&logical) {
+            Ok(bytes) => Ok(VecReader::new(bytes)),
+            Err(SourceError::NotFound(_)) => Err(AssetReaderError::NotFound(path.to_path_buf())),
+            Err(SourceError::Io { message, .. }) => {
+                Err(AssetReaderError::Io(std::io::Error::other(message).into()))
+            }
+        }
+    }
+
+    async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+        Err::<VecReader, _>(AssetReaderError::NotFound(path.to_path_buf()))
+    }
+
+    async fn read_directory<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> Result<Box<PathStream>, AssetReaderError> {
+        let logical = LayeredAssetReader::logical(path);
+        let entries: Vec<PathBuf> = self
+            .source
+            .list(&logical)
+            .unwrap_or_default()
+            .into_iter()
+            .map(PathBuf::from)
+            .collect();
+        Ok(Box::new(stream::iter(entries)))
+    }
+
+    async fn is_directory<'a>(&'a self, path: &'a Path) -> Result<bool, AssetReaderError> {
+        let logical = LayeredAssetReader::logical(path);
+        // The port lists files only, so a directory is one that lists something.
+        Ok(!self.source.list(&logical).unwrap_or_default().is_empty())
     }
 }
