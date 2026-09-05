@@ -1,0 +1,4 @@
+(
+    name: "c:dusts",
+    values: ["minecraft:redstone"],
+)

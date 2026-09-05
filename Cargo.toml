@@ -1,8 +1,9 @@
 [workspace]
 resolver = "3"
-# Phase 1 ships only the domain crates. `examples/*` and `tools/xtask` join the
-# members list in later phases (see docs/PLAN.md section 3).
-members = ["crates/*"]
+# `tools/xtask` joins the members list in a later phase (docs/PLAN.md section 3).
+# Examples are workspace members so `cargo check --workspace --all-targets` and
+# `just ci` cover them; each one sets `publish = false`.
+members = ["crates/*", "examples/*"]
 # Phase 0 spikes are standalone throwaway crates with their own lockfiles.
 exclude = ["spikes/*"]
 

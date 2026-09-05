@@ -54,6 +54,17 @@ impl UiHarness {
         self.step(1);
     }
 
+    /// Drop the tooltip `entity` hosts. The counterpart to
+    /// [`request_tooltip`](Self::request_tooltip), which stands until the
+    /// pointer leaves the host.
+    pub fn clear_tooltip(&mut self, entity: Entity) {
+        self.world_mut().commands().queue(move |world: &mut World| {
+            let mut commands = world.commands();
+            slotted_ui::clear_tooltip(&mut commands, entity);
+        });
+        self.step(1);
+    }
+
     // ---- pointer ------------------------------------------------------------
 
     fn location(&self, pos: Vec2) -> Location {

@@ -39,9 +39,13 @@ fn drag_kind(button: ModelButton) -> DragKind {
 }
 
 /// Observer on a slot: a press is recorded but never acted on, so that a
-/// gesture is only ever interpreted once, on release.
-pub fn on_slot_press(press: On<Pointer<Press>>) {
+/// gesture is only ever interpreted once, on release. The marker it leaves is
+/// what `slot_motion` reads to hold the slot at the press scale.
+pub fn on_slot_press(press: On<Pointer<Press>>, mut commands: Commands) {
     tracing::trace!(entity = ?press.entity, button = ?press.event.button, "slot pressed");
+    commands
+        .entity(press.entity)
+        .insert(crate::motion::SlotPressed);
 }
 
 /// Observer on a slot: `Pointer<Release>` becomes [`SlotClicked`] with the
@@ -54,6 +58,9 @@ pub fn on_slot_release(
     mut commands: Commands,
 ) {
     let entity = release.entity;
+    commands
+        .entity(entity)
+        .try_remove::<crate::motion::SlotPressed>();
     if drag.kind.is_some() || drag.suppress_release {
         return;
     }
@@ -128,6 +135,9 @@ pub fn on_slot_drag_end(
     mut drag: ResMut<DragPaint>,
     mut commands: Commands,
 ) {
+    commands
+        .entity(end.entity)
+        .try_remove::<crate::motion::SlotPressed>();
     let Some(kind) = drag.kind.take() else {
         return;
     };

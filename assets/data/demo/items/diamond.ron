@@ -1,0 +1,7 @@
+(
+    name: "minecraft:diamond",
+    display_name: Some("Diamond"),
+    max_stack_size: 64,
+    rarity: "rare",
+    tags: ["c:gems"],
+)

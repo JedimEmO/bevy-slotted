@@ -1,0 +1,5 @@
+// Inherits three tags rather than listing their members, the datapack way.
+(
+    name: "demo:crafting_materials",
+    values: ["#c:ingots", "#c:gems", "#minecraft:planks"],
+)

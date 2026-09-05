@@ -1,0 +1,7 @@
+(
+    name: "minecraft:oak_planks",
+    display_name: Some("Oak Planks"),
+    max_stack_size: 64,
+    rarity: "common",
+    tags: ["minecraft:planks"],
+)

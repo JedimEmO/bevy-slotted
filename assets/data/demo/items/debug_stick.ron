@@ -1,0 +1,11 @@
+(
+    name: "slotted:debug_stick",
+    display_name: Some("Debug Stick"),
+    max_stack_size: 1,
+    rarity: "legendary",
+    tags: ["c:tools", "slotted:dev"],
+    components: {
+        "slotted:damage": 0,
+        "slotted:max_damage": 100,
+    },
+)

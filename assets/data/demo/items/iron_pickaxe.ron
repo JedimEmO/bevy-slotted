@@ -1,0 +1,14 @@
+// `slotted:damage` and `slotted:max_damage` have to appear in some item's
+// component map for the freeze to intern them; the item renderer reads them
+// off a stack's patch to draw the durability bar.
+(
+    name: "minecraft:iron_pickaxe",
+    display_name: Some("Iron Pickaxe"),
+    max_stack_size: 1,
+    rarity: "common",
+    tags: ["c:tools"],
+    components: {
+        "slotted:damage": 0,
+        "slotted:max_damage": 250,
+    },
+)

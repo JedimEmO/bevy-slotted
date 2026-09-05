@@ -17,6 +17,7 @@ pub mod def;
 pub mod input;
 pub mod item;
 pub mod layers;
+pub mod motion;
 pub mod nav;
 pub mod plugin;
 pub mod screen;
@@ -36,18 +37,23 @@ pub use layers::{
     CarriedItem, CarriedLayer, ExclusionZone, Exclusions, TooltipLayer, update_carried_layer,
     zbands,
 };
+pub use motion::{
+    FlyingItem, GestureTarget, HOVER_SCALE, MotionTarget, PRESS_SCALE, REST_SCALE, SQUASH_SCALE,
+    SlotPressed, despawn_finished_flights, drop_squash, fly_to_slot, slot_motion,
+};
 pub use nav::{NavKeys, directional_nav_keys};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use screen::{
     Injection, Injections, ScreenClosed, ScreenLaidOut, ScreenLayout, ScreenSpawned, Screens,
-    SpawnCtx, SpawnScreen, Widget, WidgetRegistry, close_screen, emit_screen_layout, spawn_screen,
+    SpawnCtx, SpawnScreen, UnmatchedInjections, Widget, WidgetRegistry, close_screen,
+    emit_screen_layout, spawn_screen,
 };
 pub use semantic::{
     AnchorNode, ScreenRoot, SemanticLabel, SemanticRole, TestId, WidgetNode, sync_accessibility,
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,
-    TooltipTier,
+    TooltipTier, clear_tooltip, despawn_orphan_tooltips,
 };
 pub use widgets::{RailAction, SLOT_SIZE, slot_state_roles};
 

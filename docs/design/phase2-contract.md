@@ -252,6 +252,14 @@ every frame, because that would undo a `TooltipRequest` raised by anything else 
 script, or the harness's `request_tooltip`, which bypasses the delay by design) one frame later.
 The harness's `request_tooltip` therefore survives `settle()`.
 
+Teardown is the pointer *leaving*, not the absence of hover (**amended in review**). `HoverStart`
+is on a node exactly while the pointer is over it, so `tooltip_delay` drops a `TooltipContent`
+only on a node that still carries one. A node that was never hovered keeps whatever tooltip
+something else asked for: an explicit `TooltipRequest` stands until the pointer leaves the host or
+`slotted_ui::clear_tooltip` (the harness's `clear_tooltip`) clears it. Without this the delay
+system tore down every requested tooltip on the following frame, since a never-hovered node and a
+just-left one look the same to a `Hovered` query.
+
 `TooltipRequest { entity, tier: TooltipTier::{Compact, Expanded} }` entity event ->
 `show_tooltip` observer composes `TooltipParts` (ordered `Arc<dyn TooltipPart>`,
 `fn build(&self, &TooltipCtx { stack, registries, tier }, &mut Vec<UiNodeDef>)`) into

@@ -1,0 +1,6 @@
+// The items name this tag from their own side too; a tag file is how a mod
+// adds someone else's item to a tag it does not own.
+(
+    name: "c:ingots",
+    values: ["minecraft:copper_ingot"],
+)

@@ -8,11 +8,16 @@ use slotted_theme::SlottedThemeSet;
 use crate::input::{DragPaint, clear_drag_suppression};
 use crate::item::{ItemView, on_slot_changed, render_items, spawn_item_view_children};
 use crate::layers::{CarriedItem, CarriedLayer, TooltipLayer, update_carried_layer, zbands};
+use crate::motion::{
+    GestureTarget, clear_gesture_target, despawn_finished_flights, drop_squash, fly_to_slot,
+    record_gesture_target, slot_motion,
+};
 use crate::nav::{NavKeys, directional_nav_keys};
 use crate::screen::{Injections, Screens, WidgetRegistry, emit_screen_layout};
 use crate::semantic::{SemanticRole, sync_accessibility};
 use crate::tooltip::{
-    TooltipParts, place_tooltips, register_builtin_parts, show_tooltip, tooltip_delay,
+    TooltipParts, despawn_orphan_tooltips, place_tooltips, register_builtin_parts, show_tooltip,
+    tooltip_delay,
 };
 use crate::widgets::{hotbar_swap_keys, register_builtins, slot_state_roles};
 use slotted_theme::{Themed, roles};
@@ -78,9 +83,13 @@ impl Plugin for SlottedUiPlugin {
             .init_resource::<Injections>()
             .init_resource::<NavKeys>()
             .init_resource::<DragPaint>()
+            .init_resource::<GestureTarget>()
             .insert_resource(self.config.clone())
             .add_observer(show_tooltip)
             .add_observer(on_slot_changed)
+            .add_observer(record_gesture_target)
+            .add_observer(drop_squash)
+            .add_observer(fly_to_slot)
             .configure_sets(
                 Update,
                 (
@@ -112,7 +121,11 @@ impl Plugin for SlottedUiPlugin {
                         slot_state_roles,
                         update_carried_layer,
                         render_items,
+                        slot_motion,
+                        despawn_finished_flights,
                         tooltip_delay,
+                        despawn_orphan_tooltips,
+                        clear_gesture_target,
                     )
                         .chain()
                         .in_set(SlottedUiSet::Render),

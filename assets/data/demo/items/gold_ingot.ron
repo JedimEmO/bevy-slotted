@@ -1,0 +1,7 @@
+(
+    name: "minecraft:gold_ingot",
+    display_name: Some("Gold Ingot"),
+    max_stack_size: 64,
+    rarity: "uncommon",
+    tags: ["c:ingots"],
+)

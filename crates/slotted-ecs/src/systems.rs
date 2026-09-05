@@ -61,7 +61,15 @@ impl LookupCtx for EmptyLookup {
 /// `double_click_window` = `PickupAll`.
 #[derive(Resource, Debug)]
 pub struct ClickInterpreter {
-    /// Two clicks closer than this on the same slot become `PickupAll`.
+    /// Two clicks closer together than this on the same slot become
+    /// `PickupAll`. Configuration, not a constant: a game with a slower
+    /// audience raises it, and the test harness sets it through
+    /// `UiHarnessBuilder::double_click_window`.
+    ///
+    /// It is measured against accumulated `Time<Virtual>::elapsed`, and the
+    /// comparison is strict, so a window that happens to equal
+    /// `Time<Virtual>::max_delta` (both default to 250 ms) does not turn a
+    /// single clamped frame into a double click.
     pub double_click_window: std::time::Duration,
     /// Last left click: slot and virtual time.
     pub last_click: Option<(Entity, SlotIx, std::time::Duration)>,
@@ -110,7 +118,7 @@ impl ClickInterpreter {
         let plain_left = click.button == Button::Left && !click.modifiers.shift;
         if plain_left {
             let doubled = self.last_click.is_some_and(|(e, s, t)| {
-                e == entity && s == slot && now.saturating_sub(t) <= self.double_click_window
+                e == entity && s == slot && now.saturating_sub(t) < self.double_click_window
             });
             if doubled {
                 self.last_click = None;
@@ -243,7 +251,7 @@ pub fn predict(
     mut queue: ResMut<ActionQueue>,
     mut pending: ResMut<PendingSubmissions>,
     mut dropped: ResMut<Dropped>,
-    mut menus: Query<(&mut OpenMenu, &mut Carried, &SlotEntities)>,
+    mut menus: Query<(Entity, &mut OpenMenu, &mut Carried, &SlotEntities)>,
     mut inventories: Query<&mut Inventory>,
     registries: Option<Res<Registries>>,
     mut sync: MessageWriter<SlotSync>,
@@ -258,13 +266,15 @@ pub fn predict(
         None => &EmptyLookup,
     };
 
+    let fanout = SlotFanout::build(menus.iter().map(|(e, open, _, slots)| (e, open, slots)));
+
     let actions: Vec<MenuAction> = queue.0.drain(..).collect();
     for MenuAction {
         entity: menu_entity,
         action,
     } in actions
     {
-        let Ok((mut menu, mut carried, slot_entities)) = menus.get_mut(menu_entity) else {
+        let Ok((_, mut menu, mut carried, _)) = menus.get_mut(menu_entity) else {
             tracing::warn!(
                 ?menu_entity,
                 ?action,
@@ -299,9 +309,10 @@ pub fn predict(
         write_back(&def, &delta, &entities, &invs, &mut inventories);
         carried.set_if_neq(Carried(menu.state.carried.clone()));
         dropped.record(menu_entity, &delta.dropped);
-        emit_slots(
+        fanout.emit(
+            &def,
+            &entities,
             menu_entity,
-            slot_entities,
             delta.slots.iter().cloned(),
             &mut sync,
             &mut commands,
@@ -358,28 +369,92 @@ fn write_back(
     }
 }
 
-/// Writes a `SlotSync` for every changed slot and triggers `SlotChanged` on
-/// the ones that have a UI entity.
-fn emit_slots(
-    menu: Entity,
-    slot_entities: &SlotEntities,
-    slots: impl Iterator<Item = (SlotIx, Option<ItemStack>)>,
-    sync: &mut MessageWriter<SlotSync>,
-    commands: &mut Commands,
-) {
-    for (slot, stack) in slots {
-        sync.write(SlotSync {
-            menu,
-            slot,
-            stack: stack.clone(),
-        });
-        if let Some(entity) = slot_entities.0.get(&slot) {
-            commands.trigger(SlotChanged {
-                entity: *entity,
-                menu,
-                slot,
-                stack,
-            });
+/// Which UI slot entities draw which inventory cell, across every open menu.
+///
+/// A slot of one menu and a slot of another are the *same* cell when they
+/// resolve to the same `Inventory` entity and the same index inside it. The
+/// player's own inventory is the case that matters: a chest screen and the
+/// player screen are two menus over one `Inventory` component, and a click
+/// through either has to reach the slot entities of both. Without this the
+/// second menu keeps drawing what the inventory held before the click.
+#[derive(Debug, Default)]
+pub struct SlotFanout {
+    by_cell: std::collections::HashMap<(Entity, usize), Vec<(Entity, SlotIx, Option<Entity>)>>,
+}
+
+impl SlotFanout {
+    /// Indexes every open menu's slots by the inventory cell they draw.
+    pub fn build<'a>(
+        menus: impl Iterator<Item = (Entity, &'a OpenMenu, &'a SlotEntities)>,
+    ) -> Self {
+        let mut by_cell: std::collections::HashMap<
+            (Entity, usize),
+            Vec<(Entity, SlotIx, Option<Entity>)>,
+        > = std::collections::HashMap::new();
+        for (menu, open, slot_entities) in menus {
+            for (index, slot) in open.def.slots.iter().enumerate() {
+                let Some(inventory) = open.inventories.get(slot.source.index()) else {
+                    continue;
+                };
+                let ix = SlotIx(narrow(index));
+                by_cell
+                    .entry((*inventory, usize::from(slot.index)))
+                    .or_default()
+                    .push((menu, ix, slot_entities.0.get(&ix).copied()));
+            }
+        }
+        Self { by_cell }
+    }
+
+    /// The cell one slot of `def` over `inventories` addresses.
+    fn cell(def: &MenuDef, inventories: &[Entity], slot: SlotIx) -> Option<(Entity, usize)> {
+        let slot = def.slot(slot)?;
+        Some((
+            *inventories.get(slot.source.index())?,
+            usize::from(slot.index),
+        ))
+    }
+
+    /// Writes a `SlotSync` and triggers a `SlotChanged` for every menu that
+    /// draws each changed cell, not only the menu the action ran on.
+    fn emit(
+        &self,
+        def: &MenuDef,
+        inventories: &[Entity],
+        menu: Entity,
+        slots: impl Iterator<Item = (SlotIx, Option<ItemStack>)>,
+        sync: &mut MessageWriter<SlotSync>,
+        commands: &mut Commands,
+    ) {
+        for (slot, stack) in slots {
+            let listeners = Self::cell(def, inventories, slot)
+                .and_then(|cell| self.by_cell.get(&cell))
+                .map_or(&[][..], Vec::as_slice);
+            if listeners.is_empty() {
+                // A slot the index does not know about (no `Inventory`
+                // component behind it) still syncs for its own menu.
+                sync.write(SlotSync {
+                    menu,
+                    slot,
+                    stack: stack.clone(),
+                });
+                continue;
+            }
+            for (listener, listener_slot, entity) in listeners {
+                sync.write(SlotSync {
+                    menu: *listener,
+                    slot: *listener_slot,
+                    stack: stack.clone(),
+                });
+                if let Some(entity) = entity {
+                    commands.trigger(SlotChanged {
+                        entity: *entity,
+                        menu: *listener,
+                        slot: *listener_slot,
+                        stack: stack.clone(),
+                    });
+                }
+            }
         }
     }
 }
@@ -401,7 +476,7 @@ pub fn submit(
     mut pending: ResMut<PendingSubmissions>,
     mut round_trips: ResMut<PendingRoundTrips>,
     authority: Option<Res<Authority>>,
-    menus: Query<(&OpenMenu, &SlotEntities)>,
+    menus: Query<(Entity, &OpenMenu, &SlotEntities)>,
     inventories: Query<&mut Inventory>,
     mut sync: MessageWriter<SlotSync>,
     mut commands: Commands,
@@ -422,7 +497,7 @@ pub fn submit(
             Ok(()) => round_trips.0 = round_trips.0.saturating_add(1),
             Err(error) => {
                 tracing::warn!(menu = ?submission.menu, %error, "authority refused the submission");
-                let Ok((menu, slot_entities)) = menus.get(submission.menu) else {
+                let Ok((_, menu, _)) = menus.get(submission.menu) else {
                     continue;
                 };
                 let contents = read_slots(&menu.def, &menu.inventories, &inventories);
@@ -430,9 +505,11 @@ pub fn submit(
                     .into_iter()
                     .enumerate()
                     .map(|(i, stack)| (SlotIx(narrow(i)), stack));
-                emit_slots(
+                let fanout = SlotFanout::build(menus.iter());
+                fanout.emit(
+                    &menu.def,
+                    &menu.inventories,
                     submission.menu,
-                    slot_entities,
                     all,
                     &mut sync,
                     &mut commands,
@@ -466,6 +543,7 @@ pub fn reconcile(
         return;
     }
     let by_id: Vec<(MenuId, Entity)> = menus.iter().map(|(e, m, _, _)| (m.id, e)).collect();
+    let fanout = SlotFanout::build(menus.iter().map(|(e, open, _, slots)| (e, open, slots)));
     let entity_of = |id: MenuId| by_id.iter().find(|(m, _)| *m == id).map(|(_, e)| *e);
 
     for event in events {
@@ -485,6 +563,7 @@ pub fn reconcile(
                 apply_resync(
                     entity,
                     &snapshot,
+                    &fanout,
                     &mut menus,
                     &mut inventories,
                     &mut sync,
@@ -521,12 +600,13 @@ pub fn reconcile(
 fn apply_resync(
     entity: Entity,
     snapshot: &slotted_model::MenuSnapshot,
+    fanout: &SlotFanout,
     menus: &mut Query<(Entity, &mut OpenMenu, &mut Carried, &SlotEntities)>,
     inventories: &mut Query<&mut Inventory>,
     sync: &mut MessageWriter<SlotSync>,
     commands: &mut Commands,
 ) {
-    let Ok((_, mut menu, mut carried, slot_entities)) = menus.get_mut(entity) else {
+    let Ok((_, mut menu, mut carried, _)) = menus.get_mut(entity) else {
         return;
     };
     let def = menu.def.clone();
@@ -570,7 +650,7 @@ fn apply_resync(
         .filter(|(_, (old, new))| old != new)
         .map(|(i, (_, new))| (SlotIx(narrow(i)), new))
         .collect::<Vec<_>>();
-    emit_slots(entity, slot_entities, changed.into_iter(), sync, commands);
+    fanout.emit(&def, &entities, entity, changed.into_iter(), sync, commands);
 }
 
 /// `SlottedEcsSet::Reconcile`: mirrors `Inventory::is_favorite` onto the slot

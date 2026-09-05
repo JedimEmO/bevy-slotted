@@ -261,6 +261,16 @@ impl WidgetRegistry {
     }
 }
 
+/// Anchors an [`Injection`] named that the spawned screen does not have, on
+/// the screen root.
+///
+/// An injection is a mod reaching into a screen it does not own, so a typo in
+/// the anchor id is the failure mode to expect. Dropping it silently leaves
+/// the author with a screen that is simply missing their node; this records
+/// what was dropped and the spawn logs it once.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnmatchedInjections(pub Vec<AnchorId>);
+
 /// The screen root exists with its full tree. Layout has not run yet.
 #[derive(EntityEvent, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenSpawned {
@@ -329,7 +339,56 @@ impl Command for SpawnScreen {
             parent: self.root,
         };
         ctx.spawn_child(&resolved.root);
+        report_unmatched_injections(world, self.root, &resolved.kind);
         world.trigger(ScreenSpawned { entity: self.root });
+    }
+}
+
+/// Records, on the screen root, every injection for this screen whose anchor
+/// the spawned tree does not contain.
+fn report_unmatched_injections(world: &mut World, root: Entity, kind: &ScreenKind) {
+    let wanted: Vec<AnchorId> = world
+        .get_resource::<Injections>()
+        .map(|i| {
+            i.0.iter()
+                .filter(|inj| &inj.target == kind)
+                .map(|inj| inj.anchor.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    if wanted.is_empty() {
+        return;
+    }
+    let mut present: Vec<AnchorId> = Vec::new();
+    collect_anchors(world, root, &mut present);
+    let mut missing: Vec<AnchorId> = wanted
+        .into_iter()
+        .filter(|anchor| !present.contains(anchor))
+        .collect();
+    missing.dedup();
+    if missing.is_empty() {
+        return;
+    }
+    for anchor in &missing {
+        tracing::warn!(
+            screen = %kind.0,
+            anchor = %anchor.0,
+            "injection targets an anchor this screen does not have"
+        );
+    }
+    world.entity_mut(root).insert(UnmatchedInjections(missing));
+}
+
+fn collect_anchors(world: &World, entity: Entity, out: &mut Vec<AnchorId>) {
+    if let Some(anchor) = world.get::<crate::semantic::AnchorNode>(entity) {
+        out.push(anchor.0.clone());
+    }
+    let children: Vec<Entity> = world
+        .get::<Children>(entity)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
+    for child in children {
+        collect_anchors(world, child, out);
     }
 }
 

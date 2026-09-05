@@ -1,0 +1,873 @@
+---
+source: examples/chest/tests/ui.rs
+expression: harness.screen_tree()
+---
+ScreenTree(
+  roots: [
+    TreeNode(
+      role: Screen,
+      screen: Some("demo:chest"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Panel,
+          test_id: Some("chest_panel"),
+          tags: {
+            "test_id": "chest_panel",
+          },
+          widget: Some("slotted:panel"),
+          visible: true,
+          children: [
+            TreeNode(
+              role: Panel,
+              test_id: Some("header"),
+              tags: {
+                "test_id": "header",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Text,
+                  label: Some("demo.chest.title"),
+                  test_id: Some("title"),
+                  tags: {
+                    "test_id": "title",
+                  },
+                  widget: Some("slotted:text"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Text,
+                  label: Some("demo.chest.capacity"),
+                  test_id: Some("capacity"),
+                  tags: {
+                    "test_id": "capacity",
+                  },
+                  widget: Some("slotted:text"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Anchor,
+                  anchor: Some("title_end"),
+                  visible: false,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("body"),
+              tags: {
+                "test_id": "body",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Panel,
+                  test_id: Some("grids"),
+                  tags: {
+                    "test_id": "grids",
+                  },
+                  widget: Some("slotted:panel"),
+                  visible: true,
+                  children: [
+                    TreeNode(
+                      role: Grid,
+                      test_id: Some("chest_grid"),
+                      tags: {
+                        "region": "chest",
+                        "test_id": "chest_grid",
+                      },
+                      widget: Some("slotted:slot_grid"),
+                      visible: true,
+                      children: [
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:cobblestone x64"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:cobblestone",
+                            count: 64,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:cobblestone x23"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:cobblestone",
+                            count: 23,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:oak_planks x40"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:oak_planks",
+                            count: 40,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:iron_ingot x12"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:iron_ingot",
+                            count: 12,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:gold_ingot x3"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:gold_ingot",
+                            count: 3,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:copper_ingot x31"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:copper_ingot",
+                            count: 31,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:diamond x7"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:diamond",
+                            count: 7,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:redstone x55"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:redstone",
+                            count: 55,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:ender_pearl x16"),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:ender_pearl",
+                            count: 16,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "chest",
+                            "test_id": "chest_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                      ],
+                    ),
+                    TreeNode(
+                      role: Text,
+                      label: Some("demo.chest.inventory"),
+                      test_id: Some("inventory_label"),
+                      tags: {
+                        "test_id": "inventory_label",
+                      },
+                      widget: Some("slotted:text"),
+                      visible: true,
+                    ),
+                    TreeNode(
+                      role: Grid,
+                      test_id: Some("player_grid"),
+                      tags: {
+                        "region": "player",
+                        "test_id": "player_grid",
+                      },
+                      widget: Some("slotted:slot_grid"),
+                      visible: true,
+                      children: [
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:dirt x64"),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:dirt",
+                            count: 64,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:iron_ingot x5"),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:iron_ingot",
+                            count: 5,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:redstone x8"),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:redstone",
+                            count: 8,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:cobblestone x9"),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:cobblestone",
+                            count: 9,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:coal x48"),
+                          tags: {
+                            "region": "player",
+                            "test_id": "player_grid",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:coal",
+                            count: 48,
+                          )),
+                        ),
+                      ],
+                    ),
+                    TreeNode(
+                      role: Hotbar,
+                      test_id: Some("hotbar"),
+                      tags: {
+                        "test_id": "hotbar",
+                      },
+                      widget: Some("slotted:hotbar"),
+                      visible: true,
+                      children: [
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:iron_pickaxe"),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:iron_pickaxe",
+                            count: 1,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:diamond_sword"),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:diamond_sword",
+                            count: 1,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("minecraft:oak_planks x12"),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "minecraft:oak_planks",
+                            count: 12,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some("slotted:debug_stick"),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                          item: Some(ItemSummary(
+                            id: "slotted:debug_stick",
+                            count: 1,
+                          )),
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slot,
+                          label: Some(""),
+                          tags: {
+                            "region": "hotbar",
+                          },
+                          widget: Some("slotted:slot"),
+                          visible: true,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                TreeNode(
+                  role: Rail,
+                  test_id: Some("rail"),
+                  tags: {
+                    "test_id": "rail",
+                  },
+                  widget: Some("slotted:action_rail"),
+                  visible: true,
+                  children: [
+                    TreeNode(
+                      role: Button,
+                      label: Some("Sort"),
+                      tags: {
+                        "action": "sort",
+                      },
+                      widget: Some("slotted:button"),
+                      visible: true,
+                    ),
+                    TreeNode(
+                      role: Button,
+                      label: Some("Quick stack"),
+                      tags: {
+                        "action": "quick_stack",
+                      },
+                      widget: Some("slotted:button"),
+                      visible: true,
+                    ),
+                    TreeNode(
+                      role: Button,
+                      label: Some("Deposit all"),
+                      tags: {
+                        "action": "deposit_all",
+                      },
+                      widget: Some("slotted:button"),
+                      visible: true,
+                    ),
+                    TreeNode(
+                      role: Button,
+                      label: Some("Loot all"),
+                      tags: {
+                        "action": "loot_all",
+                      },
+                      widget: Some("slotted:button"),
+                      visible: true,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Carried,
+      visible: true,
+    ),
+  ],
+)

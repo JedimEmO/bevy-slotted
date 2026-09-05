@@ -237,12 +237,18 @@ pub fn tooltip_delay(
     let shift_changed = keys.any_just_pressed(shift) || keys.any_just_released(shift);
     for (entity, hovered, start, content) in &hovered {
         if !hovered.get() {
+            // Teardown is the pointer *leaving*, which is exactly the frames
+            // where a `HoverStart` is still on the node. A node that was
+            // never hovered keeps whatever tooltip something else asked for:
+            // a request from a widget, a script or the harness stands until
+            // the pointer leaves the host or `clear_tooltip` clears it. See
+            // `docs/design/phase2-contract.md` 4.4.
             if start.is_some() {
                 commands.entity(entity).remove::<HoverStart>();
-            }
-            if content.is_some() {
-                commands.entity(entity).remove::<TooltipContent>();
-                despawn_tooltips_for(&hosts, entity, &mut commands);
+                if content.is_some() {
+                    commands.entity(entity).remove::<TooltipContent>();
+                    despawn_tooltips_for(&hosts, entity, &mut commands);
+                }
             }
             continue;
         }
@@ -256,6 +262,46 @@ pub fn tooltip_delay(
                 commands.trigger(TooltipRequest { entity, tier });
             }
             Some(_) => {}
+        }
+    }
+}
+
+/// Drops the tooltip `entity` hosts, whether hover or a request raised it.
+///
+/// The counterpart to [`TooltipRequest`]: a request stands until the pointer
+/// leaves the host, so a caller that raised one without hovering has to say
+/// when it is done with it.
+pub fn clear_tooltip(commands: &mut Commands, entity: Entity) {
+    commands.entity(entity).try_remove::<TooltipContent>();
+    commands.queue(move |world: &mut World| {
+        let stale: Vec<Entity> = world
+            .query::<(Entity, &TooltipHost)>()
+            .iter(world)
+            .filter(|(_, host)| host.0 == entity)
+            .map(|(e, _)| e)
+            .collect();
+        for tooltip in stale {
+            if let Ok(entity) = world.get_entity_mut(tooltip) {
+                entity.despawn();
+            }
+        }
+    });
+}
+
+/// `SlottedUiSet::Render`: despawns any tooltip whose host node is gone.
+///
+/// A tooltip lives under [`TooltipLayer`], not under the screen that owns the
+/// node it describes, so despawning a screen root (or one slot of it) leaves
+/// the tooltip on screen with nothing behind it. `tooltip_delay` cannot clean
+/// these up: it only looks at entities that still have a `Hovered`.
+pub fn despawn_orphan_tooltips(
+    hosts: Query<(Entity, &TooltipHost)>,
+    alive: Query<Entity>,
+    mut commands: Commands,
+) {
+    for (tooltip, host) in &hosts {
+        if alive.get(host.0).is_err() {
+            commands.entity(tooltip).despawn();
         }
     }
 }

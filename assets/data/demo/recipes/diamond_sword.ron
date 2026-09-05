@@ -1,0 +1,6 @@
+(
+    name: "demo:diamond_sword",
+    recipe_type: "demo:crafting",
+    ingredients: ["minecraft:diamond", "minecraft:diamond", "#minecraft:planks"],
+    result: (item: "minecraft:diamond_sword", count: 1),
+)

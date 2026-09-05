@@ -1,0 +1,73 @@
+// The chest screen of `examples/chest`, as data.
+//
+// Nothing in this file is example-specific machinery: it is the same
+// `slotted_ui::ScreenDef` shape a mod would ship, and the same text a Lua
+// `data.lua` would produce as a table. The example reads it with
+// `ScreenDef::from_ron`; there is no `ScreenDef` asset loader in Phase 2, so
+// the file is read through `std::fs` rather than `AssetServer` (see
+// docs/FOLLOWUPS.md).
+//
+// Slot indices follow `MenuDef::chest(3)`: 0..27 container, 27..54 player
+// main, 54..63 hotbar. `inventory` picks which backing inventory a grid draws
+// from; `first` is the menu slot the grid starts at.
+#![enable(implicit_some)]
+(
+    kind: "demo:chest",
+    root: (
+        type: "panel",
+        role: "panel",
+        layout: (direction: "column", gap: 2.0, padding: 2.0),
+        tags: {"test_id": "chest_panel"},
+        children: [
+            // Header: title, capacity readout, and an anchor a mod can hang a
+            // button off without owning this screen.
+            (
+                type: "panel",
+                role: "invisible",
+                layout: (direction: "row", gap: 2.0, center: true),
+                tags: {"test_id": "header"},
+                children: [
+                    (type: "text", key: "demo.chest.title", style: "title", tags: {"test_id": "title"}),
+                    (type: "text", key: "demo.chest.capacity", style: "muted", tags: {"test_id": "capacity"}),
+                    (type: "anchor", id: "title_end"),
+                ],
+            ),
+            // Body: the grids on the left, the action rail down the right.
+            (
+                type: "panel",
+                role: "invisible",
+                layout: (direction: "row", gap: 2.0),
+                tags: {"test_id": "body"},
+                children: [
+                    (
+                        type: "panel",
+                        role: "invisible",
+                        layout: (direction: "column", gap: 1.0),
+                        tags: {"test_id": "grids"},
+                        children: [
+                            (type: "slot_grid", inventory: 0, cols: 9, rows: 3, first: 0,
+                             tags: {"region": "chest", "test_id": "chest_grid"}),
+                            (type: "text", key: "demo.chest.inventory", style: "muted",
+                             tags: {"test_id": "inventory_label"}),
+                            (type: "slot_grid", inventory: 1, cols: 9, rows: 3, first: 27,
+                             tags: {"region": "player", "test_id": "player_grid"}),
+                            (type: "custom", kind: "slotted:hotbar", params: (first: 54, inventory: 2),
+                             tags: {"test_id": "hotbar"}),
+                        ],
+                    ),
+                    (
+                        type: "custom",
+                        kind: "slotted:action_rail",
+                        params: (
+                            actions: ["sort", "quick_stack", "deposit_all", "loot_all"],
+                            container: 0,
+                            player: 1,
+                        ),
+                        tags: {"test_id": "rail"},
+                    ),
+                ],
+            ),
+        ],
+    ),
+    listring: [0, 1, 2],
+)

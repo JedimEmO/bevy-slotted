@@ -45,6 +45,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+slotted-testutils = { workspace = true }
 pretty_assertions = { workspace = true }
 
 [lints]

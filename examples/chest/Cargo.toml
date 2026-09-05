@@ -1,0 +1,29 @@
+[package]
+name = "chest"
+description = "The moodboard chest screen over a 3D scene: the slotted example a consumer copies from."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+slotted = { workspace = true, features = ["blur"] }
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true, features = ["std-fs"] }
+# A windowed 3D app needs the renderer, winit and PBR, so this is the one
+# crate in the workspace that takes Bevy's default features. `png` is for the
+# screenshot writer.
+bevy = { version = "0.19.1", features = ["bevy_ui_widgets", "png"] }
+ron = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+slotted-test = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

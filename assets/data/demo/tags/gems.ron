@@ -1,0 +1,4 @@
+(
+    name: "c:gems",
+    values: ["minecraft:diamond"],
+)

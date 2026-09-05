@@ -26,6 +26,15 @@ doc:
 # What CI runs.
 ci: fmt-check lint test
 
+# The chest example in a window: the glass chest screen over a 3D scene.
+run-chest:
+    cargo run -p chest
+
+# Recapture the example's two reference screenshots.
+shot-chest:
+    cargo run -p chest -- --shot examples/chest/shots/chest.png
+    cargo run -p chest -- --hover 0 --shot examples/chest/shots/chest-hover.png
+
 # Phase 5 (web playground) enables these.
 # wasm-build example:
 #     cargo build --target wasm32-unknown-unknown -p {{example}} --release

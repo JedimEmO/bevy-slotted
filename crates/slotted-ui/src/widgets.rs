@@ -18,7 +18,9 @@ use slotted_registry::Value;
 use slotted_theme::{Role, Themed, roles};
 
 use crate::def::{Layout, LayoutDirection, LocKey, Tags, TextRole, UiNodeDef, WidgetKind};
-use crate::input::{on_slot_drag_end, on_slot_drag_enter, on_slot_press, on_slot_release};
+use crate::input::{
+    on_slot_drag_end, on_slot_drag_enter, on_slot_drag_start, on_slot_press, on_slot_release,
+};
 use crate::item::{ItemView, spawn_item_view_children};
 use crate::screen::{SpawnCtx, Widget, WidgetRegistry};
 use crate::semantic::{AnchorNode, SemanticLabel, SemanticRole, WidgetNode};
@@ -192,6 +194,7 @@ pub fn spawn_slot(ctx: &mut SpawnCtx<'_>, slot: SlotIx, tags: &Tags, tab_index: 
     e.observe(on_slot_press);
     e.observe(on_slot_release);
     e.observe(on_slot_over);
+    e.observe(on_slot_drag_start);
     e.observe(on_slot_drag_enter);
     e.observe(on_slot_drag_end);
     entity

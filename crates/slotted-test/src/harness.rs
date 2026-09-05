@@ -29,6 +29,7 @@ pub struct UiHarnessBuilder {
     frame_delta: Duration,
     max_settle_frames: usize,
     motion: Option<Motion>,
+    double_click_window: Option<Duration>,
     registries: Option<Arc<slotted_registry::FrozenRegistries>>,
 }
 
@@ -43,6 +44,7 @@ impl Default for UiHarnessBuilder {
             frame_delta: Duration::from_micros(16_667),
             max_settle_frames: 600,
             motion: None,
+            double_click_window: None,
             registries: None,
         }
     }
@@ -103,6 +105,16 @@ impl UiHarnessBuilder {
         self
     }
 
+    /// Override `ClickInterpreter::double_click_window`. Default 250 ms.
+    ///
+    /// The window is compared against accumulated `Time<Virtual>` and does
+    /// not depend on how coarsely the harness steps frames.
+    #[must_use]
+    pub fn double_click_window(mut self, window: Duration) -> Self {
+        self.double_click_window = Some(window);
+        self
+    }
+
     /// Frozen registries to insert as `slotted_ecs::Registries`.
     #[must_use]
     pub fn registries(mut self, registries: Arc<slotted_registry::FrozenRegistries>) -> Self {
@@ -121,6 +133,11 @@ impl UiHarnessBuilder {
         }
         if let Some(m) = self.motion {
             app.insert_resource(m);
+        }
+        if let Some(window) = self.double_click_window {
+            app.world_mut()
+                .get_resource_or_init::<slotted_ecs::ClickInterpreter>()
+                .double_click_window = window;
         }
         app.insert_resource(TimeUpdateStrategy::ManualDuration(self.frame_delta));
 

@@ -1,0 +1,8 @@
+// The one item that does not stack to 64: it keeps the split and merge
+// gestures honest in a demo where everything else caps at a power of two.
+(
+    name: "minecraft:ender_pearl",
+    display_name: Some("Ender Pearl"),
+    max_stack_size: 16,
+    rarity: "epic",
+)

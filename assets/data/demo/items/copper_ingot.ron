@@ -1,0 +1,7 @@
+(
+    name: "minecraft:copper_ingot",
+    display_name: Some("Copper Ingot"),
+    max_stack_size: 64,
+    rarity: "common",
+    tags: ["c:ingots"],
+)

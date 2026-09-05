@@ -1,0 +1,11 @@
+(
+    name: "minecraft:diamond_sword",
+    display_name: Some("Diamond Sword"),
+    max_stack_size: 1,
+    rarity: "rare",
+    tags: ["c:tools"],
+    components: {
+        "slotted:damage": 0,
+        "slotted:max_damage": 1561,
+    },
+)

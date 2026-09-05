@@ -1,0 +1,4 @@
+(
+    name: "slotted:dev",
+    values: ["slotted:debug_stick"],
+)

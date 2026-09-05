@@ -277,6 +277,13 @@ impl Command for CloseMenu {
                 .get_resource_or_init::<Dropped>()
                 .record(self.menu, std::slice::from_ref(&stack));
         }
+        // A gesture in progress belonged to this menu. `ClickInterpreter` is
+        // a resource shared by every menu, so leaving a paint or a pending
+        // double click behind would hand it to whichever menu opens next.
+        if let Some(mut interpreter) = world.get_resource_mut::<crate::ClickInterpreter>() {
+            interpreter.drag = None;
+            interpreter.last_click = None;
+        }
         world.trigger(MenuClosed {
             entity: self.menu,
             id: self.id,

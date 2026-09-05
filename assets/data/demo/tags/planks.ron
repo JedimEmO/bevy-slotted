@@ -1,0 +1,4 @@
+(
+    name: "minecraft:planks",
+    values: ["minecraft:oak_planks"],
+)
