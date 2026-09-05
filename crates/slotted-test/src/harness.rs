@@ -514,6 +514,15 @@ fn census(world: &World) -> BTreeMap<slotted_model::ItemId, u64> {
 }
 
 impl UiHarness {
+    /// Takes a fresh conservation baseline from the world as it is now.
+    ///
+    /// A cheat-give creates items on purpose, so it breaks the baseline
+    /// `open_screen` captured. A test that gives calls this afterwards and
+    /// then keeps asserting conservation over everything that follows.
+    pub fn rebaseline(&mut self) {
+        self.conserved = Some(census(self.world()));
+    }
+
     /// Every item that existed when the screen was opened still exists.
     ///
     /// Sums per-kind counts across every `Inventory` component, every menu's

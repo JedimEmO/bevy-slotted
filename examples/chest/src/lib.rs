@@ -9,7 +9,7 @@
 //! The three things a consumer has to supply are all here:
 //!
 //! 1. [`load_registries`] runs `slotted_registry`'s data stage over
-//!    `assets/data/demo/` with a [`DirSource`](slotted_registry::DirSource),
+//!    `assets/data/demo/` with a [`DirSource`],
 //!    exactly as a game would over its own content directory.
 //! 2. [`demo_screen`] reads `assets/screens/demo_chest.screen.ron` into a
 //!    [`ScreenDef`].
@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy::prelude::*;
+use slotted::browser::{BrowserPhase, DefaultScreenHandler, ScreenHandlers};
 use slotted::ecs::MenuIdAllocator;
 use slotted::prelude::*;
 use slotted_model::{Actor, ComponentPatch, Inventory, ItemStack, MenuDef, Namespaced};
@@ -165,7 +166,8 @@ fn ns(s: &str) -> Namespaced {
     Namespaced::parse(s).unwrap_or_else(|e| panic!("bad id {s:?} in the demo table: {e}"))
 }
 
-/// The demo's inventories, filled from [`CONTENTS`] against `registries`.
+/// The demo's inventories, filled from the demo contents table against
+/// `registries`.
 ///
 /// Item ids are dense handles interned at freeze time, so the stacks have to
 /// be built against the same [`FrozenRegistries`] the app runs with.
@@ -207,6 +209,20 @@ pub fn inventories(registries: &FrozenRegistries) -> Vec<Inventory> {
 /// the conservation assertion in the tests means something.
 pub const ACTOR: Actor = Actor::SURVIVAL;
 
+/// Whether the demo runs as a player who may cheat.
+///
+/// `cargo run -p chest -- --cheat` opens the chest as a creative actor, which
+/// is the one thing that lets the browser's Ctrl+click give an item out of
+/// nowhere. Survival is the default so the conservation assertion in the
+/// tests keeps its teeth.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CheatMode(pub bool);
+
+/// The actor to open the chest as.
+pub fn actor(cheat: bool) -> Actor {
+    if cheat { Actor::CREATIVE } else { ACTOR }
+}
+
 /// Which chest screen and menu are currently open, and what to reopen.
 ///
 /// The demo keeps the three inventory entities alive across a close, the way
@@ -244,16 +260,36 @@ pub struct ChestDemoPlugin;
 
 impl Plugin for ChestDemoPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ChestBinding>().add_systems(
-            Update,
-            (
-                track_open_screens,
-                toggle_chest_screen.after(track_open_screens),
-                fill_labels.after(toggle_chest_screen),
+        app.init_resource::<ChestBinding>()
+            .init_resource::<CheatMode>()
+            // The browser attaches only to screen kinds a handler claims, so
+            // this one line is the whole of "give this screen an overlay".
+            // The chest has no crafting grid, so no `TransferHandler` goes
+            // with it and the `+` button stays disabled.
+            .add_systems(
+                Startup,
+                register_browser_handler.in_set(BrowserPhase::ScreenHandlers),
             )
-                .in_set(SlottedUiSet::Input),
-        );
+            .add_systems(
+                Update,
+                (
+                    track_open_screens,
+                    toggle_chest_screen.after(track_open_screens),
+                    fill_labels.after(toggle_chest_screen),
+                )
+                    .in_set(SlottedUiSet::Input),
+            );
     }
+}
+
+/// `BrowserPhase::ScreenHandlers`: the chest screen takes the default
+/// integration, so the panel docks beside it and the exclusion zones in the
+/// screen file push it clear of the rail.
+fn register_browser_handler(mut handlers: ResMut<ScreenHandlers>) {
+    handlers.register(
+        ScreenKind::new(CHEST),
+        std::sync::Arc::new(DefaultScreenHandler),
+    );
 }
 
 /// Records every chest screen as it appears, wherever it came from: the
@@ -403,7 +439,7 @@ fn rail_label(action: &str) -> Option<&'static str> {
 /// screen. Returns the screen root.
 ///
 /// The same three calls a game makes when a player right-clicks a chest.
-pub fn open_chest(commands: &mut Commands, registries: &FrozenRegistries) {
+pub fn open_chest(commands: &mut Commands, registries: &FrozenRegistries, cheat: bool) {
     let inventories = inventories(registries);
     let entities: Vec<Entity> = inventories
         .into_iter()
@@ -424,7 +460,7 @@ pub fn open_chest(commands: &mut Commands, registries: &FrozenRegistries) {
             .unwrap_or_default();
         {
             let mut commands = world.commands();
-            let menu = open_menu(&mut commands, &mut ids, menu_def(), entities, ACTOR);
+            let menu = open_menu(&mut commands, &mut ids, menu_def(), entities, actor(cheat));
             spawn_screen(&mut commands, def, Some(menu));
         }
         world.insert_resource(ids);

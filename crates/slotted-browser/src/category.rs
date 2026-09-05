@@ -291,18 +291,10 @@ impl RecipeCategory for CraftingCategory {
     }
 
     fn layout(&self, recipe: &RecipeView<'_>, out: &mut LayoutBuilder) {
-        // PHASE3-IMPL: A — shaped placement from `shape`/`key`. The skeleton
-        // lays every recipe shapeless, row-major, which is correct for the
-        // shapeless case and merely misplaces shaped inputs.
-        let mut cells = (0..self.rows).flat_map(|r| (0..self.cols).map(move |c| (c, r)));
-        for ingredient in recipe.def.all_ingredients() {
-            let Some((c, r)) = cells.next() else { break };
-            out.slot(
-                SlotRole::Input,
-                Self::cell_pos(c, r),
-                recipe.expand(ingredient),
-                1,
-            );
+        if recipe.def.is_shaped() {
+            self.layout_shaped(recipe, out);
+        } else {
+            self.layout_shapeless(recipe, out);
         }
         let grid_w = f32::from(self.cols) * (SLOT_SIZE + SLOT_GAP);
         let mid_y = (self.size().y - SLOT_SIZE) * 0.5;
@@ -320,6 +312,47 @@ impl RecipeCategory for CraftingCategory {
             recipe.def.result.count,
         );
     }
+}
+
+impl CraftingCategory {
+    /// Rows of the `shape`, each character resolved through `key`; a space, or
+    /// a character the key does not name, leaves the cell empty. Rows and
+    /// columns past the grid are dropped.
+    fn layout_shaped(&self, recipe: &RecipeView<'_>, out: &mut LayoutBuilder) {
+        let shape = recipe.def.shape.as_ref().expect("caller checked is_shaped");
+        for (row, line) in shape.iter().enumerate().take(usize::from(self.rows)) {
+            for (col, ch) in line.chars().enumerate().take(usize::from(self.cols)) {
+                let Some(ingredient) = recipe.def.key.get(&ch) else {
+                    continue;
+                };
+                let (col, row) = (narrow16(col), narrow16(row));
+                out.slot(
+                    SlotRole::Input,
+                    Self::cell_pos(col, row),
+                    recipe.expand(ingredient),
+                    1,
+                );
+            }
+        }
+    }
+
+    /// Shapeless inputs fill the grid row-major.
+    fn layout_shapeless(&self, recipe: &RecipeView<'_>, out: &mut LayoutBuilder) {
+        let mut cells = (0..self.rows).flat_map(|r| (0..self.cols).map(move |c| (c, r)));
+        for ingredient in &recipe.def.ingredients {
+            let Some((c, r)) = cells.next() else { break };
+            out.slot(
+                SlotRole::Input,
+                Self::cell_pos(c, r),
+                recipe.expand(ingredient),
+                1,
+            );
+        }
+    }
+}
+
+fn narrow16(i: usize) -> u16 {
+    u16::try_from(i).unwrap_or(u16::MAX)
 }
 
 /// One input, an arrow, one output; an optional render-only fuel slot from
@@ -366,7 +399,6 @@ impl RecipeCategory for ProcessingCategory {
     }
 
     fn layout(&self, recipe: &RecipeView<'_>, out: &mut LayoutBuilder) {
-        // PHASE3-IMPL: A — fuel slot from `extra`.
         let input = recipe
             .def
             .all_ingredients()
@@ -374,6 +406,14 @@ impl RecipeCategory for ProcessingCategory {
             .map(|i| recipe.expand(i))
             .unwrap_or_default();
         out.slot(SlotRole::Input, Vec2::ZERO, input, 1);
+        if let Some(fuel) = fuel_ingredient(recipe) {
+            out.slot(
+                SlotRole::RenderOnly,
+                Vec2::new(0.0, SLOT_SIZE + SLOT_GAP),
+                fuel,
+                1,
+            );
+        }
         let x = SLOT_SIZE + SLOT_GAP;
         out.arrow(Rect::new(x, 0.0, x + ARROW_WIDTH, SLOT_SIZE));
         out.slot(
@@ -383,4 +423,23 @@ impl RecipeCategory for ProcessingCategory {
             recipe.def.result.count,
         );
     }
+}
+
+/// `RecipeDef::extra` is opaque to the registry. A processing recipe may name
+/// its fuel there as `(fuel: "ns:item")` or `(fuel: "#ns:tag")`; anything else
+/// means the category draws no fuel slot.
+fn fuel_ingredient(recipe: &RecipeView<'_>) -> Option<Vec<Ingredient>> {
+    let slotted_registry::Value::Map(map) = &recipe.def.extra else {
+        return None;
+    };
+    let key = slotted_registry::Value::String("fuel".to_owned());
+    let slotted_registry::Value::String(text) = map.get(&key)? else {
+        return None;
+    };
+    let ingredient = match text.strip_prefix('#') {
+        Some(tag) => RegistryIngredient::Tag(Namespaced::parse(tag).ok()?),
+        None => RegistryIngredient::Item(Namespaced::parse(text).ok()?),
+    };
+    let expanded = recipe.expand(&ingredient);
+    (!expanded.is_empty()).then_some(expanded)
 }

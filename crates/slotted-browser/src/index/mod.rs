@@ -51,36 +51,52 @@ pub struct Entry {
 #[derive(Debug, Clone, Default)]
 pub struct StringBitsetMap {
     map: BTreeMap<String, Bitset>,
+    /// The same sets filed under the part after the first `:`.
+    by_path: BTreeMap<String, Bitset>,
     entries: usize,
 }
 
 impl StringBitsetMap {
-    /// Builds from `(entry id, value)` pairs.
+    /// Builds from `(entry id, value)` pairs. Values holding a `:` are also
+    /// filed under the part after it, so `@demo` and `@slotted:demo` both hit.
     pub fn build(entries: usize, values: impl IntoIterator<Item = (u32, String)>) -> Self {
         let mut map: BTreeMap<String, Bitset> = BTreeMap::new();
+        let mut by_path: BTreeMap<String, Bitset> = BTreeMap::new();
         for (id, v) in values {
-            map.entry(v.to_lowercase())
+            let v = v.to_lowercase();
+            if let Some((_, path)) = v.split_once(':') {
+                by_path
+                    .entry(path.to_owned())
+                    .or_insert_with(|| Bitset::new(entries))
+                    .insert(id as usize);
+            }
+            map.entry(v)
                 .or_insert_with(|| Bitset::new(entries))
                 .insert(id as usize);
         }
-        Self { map, entries }
+        Self {
+            map,
+            by_path,
+            entries,
+        }
     }
 
     /// Entries whose value starts with `prefix` (case-insensitive) or, when
     /// the value contains a `:`, whose path after the colon starts with it.
+    /// Two `BTreeMap` range scans: `O(log d + matches)`.
     pub fn find(&self, prefix: &str) -> Bitset {
         let prefix = prefix.to_lowercase();
         let mut out = Bitset::new(self.entries);
-        for (k, set) in self
-            .map
-            .range::<str, _>((Bound::Included(prefix.as_str()), Bound::Unbounded))
-        {
-            if !k.starts_with(&prefix) {
-                break;
+        for source in [&self.map, &self.by_path] {
+            for (k, set) in
+                source.range::<str, _>((Bound::Included(prefix.as_str()), Bound::Unbounded))
+            {
+                if !k.starts_with(&prefix) {
+                    break;
+                }
+                out.or(set);
             }
-            out.or(set);
         }
-        // PHASE3-IMPL: A — path-after-colon matches need a second scan.
         out
     }
 
@@ -92,6 +108,11 @@ impl StringBitsetMap {
     /// Whether no value was indexed.
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
+    }
+
+    /// The distinct values, in order.
+    pub fn values(&self) -> impl Iterator<Item = &String> {
+        self.map.keys()
     }
 }
 
@@ -114,6 +135,9 @@ pub struct BrowserIndex {
     pub categories: StringBitsetMap,
     /// Position of each ingredient, for reverse lookups.
     pub by_ingredient: std::collections::HashMap<Ingredient, EntryId>,
+    /// Ingredient types in registration order, so `SortStage::IngredientType`
+    /// can rank an entry without reaching for the resource.
+    pub type_order: Vec<crate::ingredient::IngredientTypeId>,
 }
 
 impl BrowserIndex {
@@ -125,6 +149,14 @@ impl BrowserIndex {
     /// The id of an ingredient.
     pub fn id_of(&self, ingredient: &Ingredient) -> Option<EntryId> {
         self.by_ingredient.get(ingredient).copied()
+    }
+
+    /// Where a type sits in registration order; unknown types sort last.
+    pub fn type_rank(&self, ty: &crate::ingredient::IngredientTypeId) -> usize {
+        self.type_order
+            .iter()
+            .position(|t| t == ty)
+            .unwrap_or(usize::MAX)
     }
 
     /// Number of entries.
@@ -177,8 +209,13 @@ pub struct HiddenEntries {
 
 impl HiddenEntries {
     /// Hides or shows an entry.
+    ///
+    /// The set grows to fit the id: the blacklist is edited before the index
+    /// is built as often as after it, and a fixed-capacity set sized from a
+    /// `Default` would silently swallow every hide.
     pub fn set_hidden(&mut self, id: EntryId, hidden: bool) {
         if hidden {
+            self.set.grow(id.index() + 1);
             self.set.insert(id.index());
         } else {
             self.set.remove(id.index());

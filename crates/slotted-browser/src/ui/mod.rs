@@ -15,8 +15,11 @@ pub mod hotkeys;
 pub mod panel;
 pub mod recipe_view;
 pub mod search_field;
+pub mod status_line;
 
 use bevy::prelude::*;
+use slotted_ecs::Registries;
+use slotted_model::ItemStack;
 use slotted_theme::Role;
 use slotted_ui::{Layout, LayoutDirection, ScreenKind, Side, Tags, UiNodeDef, WidgetKind};
 
@@ -25,6 +28,7 @@ pub use dock::BrowserLayout;
 pub use panel::BrowserPanel;
 
 use crate::index::EntryId;
+use crate::ingredient::{Ingredient, IngredientTypes, IngredientValue};
 use crate::plugin::BrowserSet;
 
 /// Widget kinds the panel is built from.
@@ -51,6 +55,10 @@ pub mod kinds {
     pub fn recipe_view() -> WidgetKind {
         WidgetKind::new("slotted:recipe_view")
     }
+    /// `slotted:status_line`.
+    pub fn status_line() -> WidgetKind {
+        WidgetKind::new("slotted:status_line")
+    }
 }
 
 /// The screen kind of every browser panel root.
@@ -74,8 +82,46 @@ pub mod roles {
     pub const CHIP_ACTIVE: Role = Role::new_static("browser.chip.active");
     /// The search field.
     pub const SEARCH: Role = Role::new_static("browser.search");
+    /// The search field while it holds keyboard focus.
+    pub const SEARCH_FOCUS: Role = Role::new_static("browser.search.focus");
     /// A recipe slot with no source, after a failed transfer.
     pub const SLOT_MISSING: Role = Role::new_static("browser.slot.missing");
+    /// A recipe slot at rest.
+    pub const SLOT: Role = Role::new_static("browser.slot");
+    /// The arrow between a recipe's inputs and its output.
+    pub const ARROW: Role = Role::new_static("browser.recipe.arrow");
+    /// The moving part of the arrow.
+    pub const ARROW_PROGRESS: Role = Role::new_static("browser.recipe.arrow.progress");
+    /// One entry in the bookmark strip.
+    pub const BOOKMARK: Role = Role::new_static("browser.bookmark");
+    /// A recipe category tab.
+    pub const TAB: Role = Role::new_static("browser.tab");
+    /// The open recipe category tab.
+    pub const TAB_ACTIVE: Role = Role::new_static("browser.tab.active");
+    /// The mod-namespace badge on a card.
+    pub const BADGE: Role = Role::new_static("browser.badge");
+    /// A button the current state refuses, such as `+` with no handler.
+    pub const BUTTON_DISABLED: Role = Role::new_static("browser.button.disabled");
+    /// A card's display name.
+    pub const CARD_NAME: Role = Role::new_static("browser.card.name");
+    /// The rarity strip across the top of a card.
+    pub const RARITY: Role = Role::new_static("browser.rarity");
+    /// A chip's or tab's label text.
+    pub const CHIP_TEXT: Role = Role::new_static("browser.chip.text");
+    /// A selected chip's or tab's label text.
+    pub const CHIP_TEXT_ACTIVE: Role = Role::new_static("browser.chip.text.active");
+    /// The recipe view's title.
+    pub const TITLE: Role = Role::new_static("browser.title");
+    /// The footer's result count and index state.
+    pub const STATUS: Role = Role::new_static("browser.status");
+    /// The footer's hotkey hint and the "used in" line.
+    pub const HINT: Role = Role::new_static("browser.hint");
+    /// A small pill button: transfer, back, forward.
+    pub const PILL: Role = Role::new_static("browser.pill");
+    /// A small pill button's label.
+    pub const PILL_TEXT: Role = Role::new_static("browser.pill.text");
+    /// The stand-in glyph an iconless card draws.
+    pub const GLYPH: Role = Role::new_static("browser.glyph");
 }
 
 /// The panel's tree. `side` becomes the root's `side=` tag.
@@ -90,8 +136,8 @@ pub fn panel_def(side: Side) -> UiNodeDef {
         role: Role::new_static("browser.panel"),
         layout: Layout {
             direction: LayoutDirection::Column,
-            gap: 1.0,
-            padding: 1.0,
+            gap: dock::PANEL_GAP,
+            padding: dock::PANEL_PADDING,
             ..Layout::default()
         },
         children: vec![
@@ -100,21 +146,57 @@ pub fn panel_def(side: Side) -> UiNodeDef {
             custom(kinds::card_grid(), "browser.cards"),
             custom(kinds::bookmarks_strip(), "browser.bookmarks"),
             custom(kinds::recipe_view(), "browser.recipes"),
+            custom(kinds::status_line(), "browser.footer"),
         ],
         tags: Tags::new().with("side", side.as_str()),
     }
+}
+
+/// The theme role of a card's rarity strip: `browser.rarity.<rarity>`, the
+/// same naming the slot's rarity ring uses one level up.
+pub fn rarity_strip_role(rarity: slotted_registry::Rarity) -> Role {
+    Role::new(format!("browser.rarity.{}", rarity.as_str()))
 }
 
 /// Which entry a card or recipe slot shows right now; `None` is an empty cell.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ShowsEntry(pub Option<EntryId>);
 
+/// Which ingredient a card, bookmark or recipe slot currently shows.
+///
+/// Hotkeys, tooltips and the ghost drag all resolve what is under the pointer
+/// through this one component, so a card, a bookmark and a recipe slot look
+/// the same to them.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct ShowsIngredient(pub Ingredient);
+
+/// The stack an ingredient renders as, or `None` when its type has none.
+pub fn ingredient_stack(
+    types: &IngredientTypes,
+    ing: &Ingredient,
+    count: u32,
+) -> Option<ItemStack> {
+    types.get(&ing.ty).and_then(|ty| ty.as_stack(ing, count))
+}
+
+/// The stable string an `entry=` tag carries: `minecraft:coal` for an item,
+/// `#c:ingots` for a tag, the namespaced id for anything else.
+///
+/// Locators match on this (`by::role(Card).tag("entry", "minecraft:coal")`),
+/// so it has to read well and not depend on dense ids.
+pub fn ingredient_key(registries: Option<&Registries>, ing: &Ingredient) -> String {
+    match &ing.value {
+        IngredientValue::Item(id) => registries
+            .and_then(|r| r.items.name_of(*id).map(ToString::to_string))
+            .unwrap_or_else(|| format!("item#{}", id.0)),
+        IngredientValue::Fluid(ns) | IngredientValue::Info(ns) => ns.to_string(),
+        IngredientValue::Tag(ns) => format!("#{ns}"),
+    }
+}
+
 /// Registers widgets, observers and systems. Called by the plugin when
 /// `BrowserConfig::ui` is on.
 pub fn register(app: &mut App) {
-    // PHASE3-IMPL: B — register the five widgets in `WidgetRegistry`, the
-    // attach/detach observers and every set's systems. The skeleton wires the
-    // widgets and the no-op systems so the sets exist and the tree has shape.
     if let Some(mut registry) = app
         .world_mut()
         .get_resource_mut::<slotted_ui::WidgetRegistry>()
@@ -127,25 +209,38 @@ pub fn register(app: &mut App) {
             bookmarks_strip::BookmarksStripWidget,
         );
         registry.register(kinds::recipe_view(), recipe_view::RecipeViewWidget);
+        registry.register(kinds::status_line(), status_line::StatusLineWidget);
     }
-    app.add_observer(panel::attach_panel)
+    app.init_resource::<hotkeys::HoverTarget>()
+        .add_observer(panel::attach_panel)
         .add_observer(panel::detach_panel)
+        .add_observer(ghost_drag::on_ghost_drop)
         .add_systems(
             Update,
             (
                 (
                     hotkeys::track_keyboard_focus,
+                    hotkeys::track_hover_target,
                     hotkeys::browser_hotkeys,
+                    card_grid::page_card_grid,
                     search_field::diff_search_field,
                 )
                     .chain()
                     .in_set(BrowserSet::Input),
                 (
+                    card_grid::size_card_pool,
                     card_grid::rebind_cards,
-                    recipe_view::render_recipe_view,
-                    recipe_view::cycle_alternatives,
-                    bookmarks_strip::render_bookmarks,
+                    card_grid::card_state_roles,
                     chip_row::render_chips,
+                    bookmarks_strip::render_bookmarks,
+                    recipe_view::render_recipe_view,
+                    recipe_view::toggle_browse_regions,
+                    recipe_view::cycle_alternatives,
+                    recipe_view::animate_arrow,
+                    recipe_view::update_transfer_button,
+                    recipe_view::paint_missing_slots,
+                    search_field::search_field_state_role,
+                    status_line::render_status,
                 )
                     .chain()
                     .in_set(BrowserSet::Render),

@@ -75,7 +75,53 @@ fn the_screen_tree_matches_the_ron_file() {
         Some("9 / 27 slots")
     );
 
-    assert_tree_snapshot!(harness.screen_tree());
+    // The browser panel is a screen root of its own and has its own snapshot
+    // in `slotted-browser`, so this one stays about the RON file: it drops the
+    // panel and keeps the chest and the carried layer.
+    let mut tree = harness.screen_tree();
+    tree.roots
+        .retain(|root| root.screen.as_deref() != Some("slotted:browser"));
+    assert_tree_snapshot!(tree);
+    harness.assert_conserved();
+}
+
+/// The one line a game writes to get an overlay: registering a
+/// `ScreenHandler` for its screen kind. The panel docks beside the chest
+/// rather than over it.
+#[test]
+fn the_browser_panel_docks_beside_the_chest() {
+    let (mut harness, opened) = open_demo_chest();
+    harness.browser().wait_for_index();
+    harness.settle();
+
+    assert!(harness.browser().is_attached(opened.screen));
+    let layout = harness.browser().layout(opened.screen).expect("docked");
+    let chest = harness.rect_of(harness.find(&by::test_id("title")));
+    assert!(
+        layout.rect.min.x >= chest.max.x || layout.rect.max.x <= chest.min.x,
+        "the panel and the chest do not overlap"
+    );
+    assert!(harness.try_find(&by::test_id("browser.search")).is_some());
+    assert!(!harness.find_all(&by::role(SemanticRole::Card)).is_empty());
+    harness.assert_conserved();
+}
+
+/// Typing into the panel's search field narrows the cards, over the demo's
+/// own content files rather than a fixture.
+#[test]
+fn a_search_in_the_panel_narrows_the_demo_content() {
+    let (mut harness, _) = open_demo_chest();
+    harness.browser().wait_for_index();
+    harness.settle();
+
+    let all = harness.browser().visible_entries().len();
+    assert!(all > 5, "the demo registers thirteen items and nine tags");
+
+    harness.browser().search("ender");
+    let narrowed = harness.browser().visible_entries();
+    assert!(!narrowed.is_empty() && narrowed.len() < all);
+    let cards = harness.browser().visible_cards();
+    assert_eq!(cards, vec!["minecraft:ender_pearl".to_owned()]);
     harness.assert_conserved();
 }
 

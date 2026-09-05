@@ -1,6 +1,6 @@
 ---
 source: examples/chest/tests/ui.rs
-expression: harness.screen_tree()
+expression: tree
 ---
 ScreenTree(
   roots: [

@@ -2,7 +2,7 @@
 //! registries at the `Runtime` phase. Contract section 3. Package A.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use bevy::prelude::Resource;
 use slotted_model::Namespaced;
@@ -12,7 +12,7 @@ use crate::category::{
     CategoryId, CraftingCategory, LayoutBuilder, ProcessingCategory, RecipeCategory, RecipeLayout,
     RecipeRef, RecipeView,
 };
-use crate::ingredient::{Ingredient, IngredientTypes};
+use crate::ingredient::{Ingredient, IngredientTypes, IngredientValue};
 
 /// Registered categories, in tab order. Filled in
 /// [`BrowserPhase::Categories`](crate::BrowserPhase::Categories).
@@ -83,6 +83,9 @@ impl Categories {
 pub struct RecipeStore {
     by_category: BTreeMap<CategoryId, Vec<RecipeRef>>,
     category_of: HashMap<RecipeRef, CategoryId>,
+    /// Laid-out recipes, keyed by recipe and focus. Shared between clones so
+    /// the panel and the runtime warm the same cache.
+    layouts: Arc<RwLock<HashMap<(RecipeRef, Option<Ingredient>), Arc<RecipeLayout>>>>,
 }
 
 impl RecipeStore {
@@ -131,19 +134,47 @@ impl RecipeStore {
     }
 
     /// Recipes that consume this ingredient (as input or catalyst), grouped
-    /// by category in tab order.
+    /// by category in tab order. A tag ingredient is the union over its
+    /// members; a category listing the ingredient among its `catalysts`
+    /// contributes every recipe it holds.
     pub fn uses(
         &self,
         ingredient: &Ingredient,
         registries: &FrozenRegistries,
         categories: &Categories,
     ) -> Vec<(CategoryId, Vec<RecipeRef>)> {
-        // PHASE3-IMPL: A — tag ingredients: union over members; catalysts.
-        let Some(item) = ingredient.item_id() else {
-            return Vec::new();
-        };
-        let ids = registries.recipe_index.uses(item);
-        self.group(ids.iter().map(|r| RecipeRef(*r)), categories)
+        let mut direct: Vec<RecipeRef> = Vec::new();
+        match &ingredient.value {
+            IngredientValue::Item(item) => {
+                direct.extend(
+                    registries
+                        .recipe_index
+                        .uses(*item)
+                        .iter()
+                        .map(|r| RecipeRef(*r)),
+                );
+            }
+            IngredientValue::Tag(tag) => {
+                for item in registries.items_with(tag) {
+                    direct.extend(
+                        registries
+                            .recipe_index
+                            .uses(*item)
+                            .iter()
+                            .map(|r| RecipeRef(*r)),
+                    );
+                }
+            }
+            IngredientValue::Fluid(_) | IngredientValue::Info(_) => {}
+        }
+        for category in categories.iter() {
+            if category.catalysts().iter().any(|c| c == ingredient) {
+                direct.extend(self.in_category(&category.id()).iter().copied());
+            }
+        }
+        direct.sort_unstable();
+        direct.dedup();
+        self.group(direct.into_iter(), categories)
     }
 
     fn group(
@@ -163,7 +194,8 @@ impl RecipeStore {
             .collect()
     }
 
-    /// Lays out one recipe through its category.
+    /// Lays out one recipe through its category, memoised per recipe and
+    /// focus. The focus only reorders alternatives, so it is part of the key.
     pub fn layout(
         &self,
         recipe: RecipeRef,
@@ -172,7 +204,25 @@ impl RecipeStore {
         categories: &Categories,
         types: &IngredientTypes,
     ) -> Option<RecipeLayout> {
-        // PHASE3-IMPL: A — memoise per (recipe, focus.is_some()).
+        self.layout_shared(recipe, focus, registries, categories, types)
+            .map(|l| (*l).clone())
+    }
+
+    /// The memoised layout without the final clone, for hot paths.
+    pub fn layout_shared(
+        &self,
+        recipe: RecipeRef,
+        focus: Option<&Ingredient>,
+        registries: &FrozenRegistries,
+        categories: &Categories,
+        types: &IngredientTypes,
+    ) -> Option<Arc<RecipeLayout>> {
+        let key = (recipe, focus.cloned());
+        if let Ok(cache) = self.layouts.read()
+            && let Some(hit) = cache.get(&key)
+        {
+            return Some(hit.clone());
+        }
         let def = registries.recipes.get(recipe.0)?;
         let category = categories.get(self.category_of(recipe)?)?;
         let view = RecipeView {
@@ -184,7 +234,18 @@ impl RecipeStore {
         };
         let mut builder = LayoutBuilder::new();
         category.layout(&view, &mut builder);
-        Some(builder.finish())
+        let layout = Arc::new(builder.finish());
+        if let Ok(mut cache) = self.layouts.write() {
+            cache.insert(key, layout.clone());
+        }
+        Some(layout)
+    }
+
+    /// Drops every memoised layout; call after a category changes.
+    pub fn clear_layout_cache(&self) {
+        if let Ok(mut cache) = self.layouts.write() {
+            cache.clear();
+        }
     }
 
     /// Total recipes filed.

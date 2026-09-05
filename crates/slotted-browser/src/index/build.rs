@@ -121,12 +121,14 @@ impl BrowserIndex {
             tags,
             categories,
             by_ingredient,
+            type_order: inputs.types.iter().map(|t| t.id()).collect(),
         }
     }
 }
 
 /// Starts a build on the compute pool and sets `IndexState::Building`.
 pub fn start_index_build(world: &mut World) {
+    sync_info_pages(world);
     let Some(registries) = world.get_resource::<slotted_ecs::Registries>() else {
         tracing::warn!("no Registries resource; the browser index stays empty");
         return;
@@ -140,6 +142,19 @@ pub fn start_index_build(world: &mut World) {
     };
     let task = AsyncComputeTaskPool::get().spawn(async move { BrowserIndex::build(&inputs) });
     world.insert_resource(IndexState::Building(task));
+}
+
+/// Re-registers [`InfoType`] carrying the current [`InfoPages`], so pages
+/// registered in any phase are in the index. `IngredientType` methods take
+/// only an `IngredientCtx`, which has no page list, so the type holds it.
+fn sync_info_pages(world: &mut World) {
+    let pages = world
+        .get_resource::<crate::ingredient::InfoPages>()
+        .map(|p| p.0.clone())
+        .unwrap_or_default();
+    if let Some(mut types) = world.get_resource_mut::<IngredientTypes>() {
+        types.register(std::sync::Arc::new(crate::ingredient::InfoType::new(pages)));
+    }
 }
 
 /// `BrowserSet::Index`: moves a finished build into `Ready` and writes

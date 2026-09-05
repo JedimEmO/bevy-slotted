@@ -149,4 +149,9 @@ impl ScreenHandlers {
     pub fn kinds(&self) -> impl Iterator<Item = &ScreenKind> {
         self.map.keys()
     }
+
+    /// Drops one registration; validation removes dangling ones.
+    pub fn remove(&mut self, kind: &ScreenKind) -> Option<Arc<dyn ScreenHandler>> {
+        self.map.remove(kind)
+    }
 }

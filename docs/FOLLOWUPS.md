@@ -92,3 +92,36 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   screen forever. `despawn_orphan_tooltips` now sweeps them. The same shape applies to anything
   else a screen parks in a shared layer; a "owned by screen" relationship would be sturdier than
   a sweep. **Phase 3**.
+
+## From Phase 3
+
+- **`BrowserRuntime::visibility_version` invalidates nothing.** `apply_search` recomputes only
+  when the query changed, the index landed or `HiddenEntries` changed; a bump of
+  `visibility_version` alone leaves `visible` stale even though the field is part of the
+  `SearchCache` key. Nothing in Phase 3 writes it (cheat mode and dev items are Phase 6), so no
+  test can fail today. Add it to the dirty check when the first writer arrives. **Phase 6**.
+- **The recipe view's header changes the contract's tree order.** Section 7 pins
+  `RecipeView > Tab*, RecipeSlot*, Button[browser.transfer], Button[browser.back],
+  Button[browser.forward], Panel[browser.uses]`. The moodboard's header puts the back button and
+  the focus's title above the tabs, so `browser.back` now comes first and `browser.forward` sits
+  beside `+` under the recipe. Amend section 7 to match, or move the header behind a theme
+  option. **Phase 4**, with the first contract revision.
+- **The panel does not react to `UiScale`.** `PANEL_WIDTH`, `CARD_WIDTH` and `CHROME_HEIGHT` are
+  logical pixels at scale 1, and `dock::choose` never reads `UiScale`, so a scaled UI gets a panel
+  that is the right number of pixels but the wrong number of cards. The contract already lists
+  `Changed<UiScale>` as a dock input. **Phase 4**.
+- **`CHROME_HEIGHT` is a measured constant, not a measurement.** The card grid's row count is
+  derived from a fixed 190 px allowance for the search field, chips, bookmarks and footer. A theme
+  that changes those font sizes gets a row too many or too few; the grid scrolls either way, so
+  nothing breaks, but the last row can end up half visible. Deriving rows from the grid's own
+  `ComputedNode` after the first layout would be exact. **Phase 4**.
+- **The arrow sweeps from its centre, not its left edge.** `animate_arrow` writes only
+  `UiTransform::scale`, because `UiHarness::settle` watches translation and a left-anchored sweep
+  never settles. A `Node::width` animation excluded from the settle fingerprint, or a settle that
+  ignores nodes marked as decorative, would let the arrow fill the way the moodboard's does.
+  **Phase 4**, with the motion pass.
+- **The dev feature is still empty.** `slotted-browser`'s `dev` feature is declared but the
+  exclusion highlighter, the id tooltips and copy-recipe-id are not implemented (notes B, section
+  10). **Phase 6**.
+- **`ScreenHandler::clickable_areas` has no caller.** No Phase 3 handler returns one and nothing
+  reads them; the furnace arrow they exist for is a Phase 6 screen. **Phase 6**.

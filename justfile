@@ -30,10 +30,12 @@ ci: fmt-check lint test
 run-chest:
     cargo run -p chest
 
-# Recapture the example's two reference screenshots.
+# Recapture the example's four reference screenshots.
 shot-chest:
     cargo run -p chest -- --shot examples/chest/shots/chest.png
     cargo run -p chest -- --hover 0 --shot examples/chest/shots/chest-hover.png
+    cargo run -p chest -- --shot examples/chest/shots/chest-browser.png
+    cargo run -p chest -- --recipe minecraft:coal --shot examples/chest/shots/chest-recipe.png
 
 # Phase 5 (web playground) enables these.
 # wasm-build example:

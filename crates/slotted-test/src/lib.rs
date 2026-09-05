@@ -19,6 +19,7 @@
 //! exists; locators read the same semantic components `bevy_a11y` reads.
 
 pub mod actions;
+pub mod browser;
 pub mod fixture;
 pub mod fixtures;
 pub mod harness;
@@ -26,6 +27,7 @@ pub mod locator;
 pub mod queries;
 pub mod tree;
 
+pub use browser::Browser;
 pub use fixture::{MenuFixture, Opened, ScreenSource};
 pub use fixtures::{ChestFixture, PlayerFixture, TestRegistries};
 pub use harness::{SettleTimeout, UiHarness, UiHarnessBuilder};
@@ -79,8 +81,9 @@ pub use insta;
 /// Everything a test needs.
 pub mod prelude {
     pub use crate::{
-        ChestFixture, Locator, MenuFixture, Opened, PlayerFixture, ScreenTree, TestRegistries,
-        TreeNode, UiHarness, UiHarnessBuilder, assert_tree_snapshot, assert_tree_text_snapshot, by,
+        Browser, ChestFixture, Locator, MenuFixture, Opened, PlayerFixture, ScreenTree,
+        TestRegistries, TreeNode, UiHarness, UiHarnessBuilder, assert_tree_snapshot,
+        assert_tree_text_snapshot, by,
     };
     pub use slotted::prelude::*;
     pub use slotted_ecs::Modifiers;

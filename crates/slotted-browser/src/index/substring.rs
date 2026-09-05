@@ -15,6 +15,10 @@ pub struct SubstringIndex {
     suffixes: Vec<u32>,
     /// `owner[i]` is the entry id of the text containing char `i`.
     owner: Vec<u32>,
+    /// `ends[i]` is the first `\0` at or after `i`, so a suffix is a slice
+    /// rather than a scan. Without it every comparison in the sort walks to
+    /// the end of its text, which dominates the build.
+    ends: Vec<u32>,
     entries: usize,
 }
 
@@ -32,19 +36,28 @@ impl SubstringIndex {
             text.push('\0');
             owner.push(id);
         }
+        let mut ends = vec![0u32; text.len()];
+        let mut end = text.len();
+        for i in (0..text.len()).rev() {
+            if text[i] == '\0' {
+                end = i;
+            }
+            ends[i] = u32::try_from(end).unwrap_or(u32::MAX);
+        }
         let mut suffixes: Vec<u32> = (0..text.len())
             .filter(|i| text[*i] != '\0')
             .map(|i| u32::try_from(i).unwrap_or(u32::MAX))
             .collect();
         suffixes.sort_unstable_by(|a, b| {
-            let sa = suffix(&text, *a as usize);
-            let sb = suffix(&text, *b as usize);
+            let sa = &text[*a as usize..ends[*a as usize] as usize];
+            let sb = &text[*b as usize..ends[*b as usize] as usize];
             sa.cmp(sb)
         });
         Self {
             text,
             suffixes,
             owner,
+            ends,
             entries,
         }
     }
@@ -56,15 +69,20 @@ impl SubstringIndex {
         let mut out = Bitset::new(self.entries);
         let lo = self
             .suffixes
-            .partition_point(|s| starts_before(suffix(&self.text, *s as usize), &needle));
+            .partition_point(|s| starts_before(self.suffix(*s), &needle));
         for s in &self.suffixes[lo..] {
-            let suf = suffix(&self.text, *s as usize);
+            let suf = self.suffix(*s);
             if !suf.starts_with(&needle) {
                 break;
             }
             out.insert(self.owner[*s as usize] as usize);
         }
         out
+    }
+
+    /// The suffix starting at `at`, ending at the next text boundary.
+    fn suffix(&self, at: u32) -> &[char] {
+        &self.text[at as usize..self.ends[at as usize] as usize]
     }
 
     /// Number of indexed characters.
@@ -76,15 +94,6 @@ impl SubstringIndex {
     pub fn is_empty(&self) -> bool {
         self.text.is_empty()
     }
-}
-
-/// The suffix starting at `i`, ending at the next `\0` or the end.
-fn suffix(text: &[char], i: usize) -> &[char] {
-    let end = text[i..]
-        .iter()
-        .position(|c| *c == '\0')
-        .map_or(text.len(), |p| i + p);
-    &text[i..end]
 }
 
 /// Whether `s` sorts strictly before every string with prefix `needle`.

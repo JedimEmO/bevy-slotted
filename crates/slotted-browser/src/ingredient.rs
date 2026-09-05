@@ -214,6 +214,11 @@ impl Subtypes {
     pub fn items(&self) -> impl Iterator<Item = &Namespaced> {
         self.by_item.keys()
     }
+
+    /// Drops one registration; validation removes dangling ones.
+    pub fn remove(&mut self, item: &Namespaced) -> Option<Arc<dyn SubtypeInterpreter>> {
+        self.by_item.remove(item)
+    }
 }
 
 /// A family of ingredients: how to name, group, tag, draw and match them.
@@ -285,7 +290,7 @@ impl IngredientTypes {
         types.register(Arc::new(ItemType));
         types.register(Arc::new(FluidType));
         types.register(Arc::new(TagType));
-        types.register(Arc::new(InfoType));
+        types.register(Arc::new(InfoType::default()));
         types
     }
 }
@@ -330,8 +335,24 @@ impl IngredientType for ItemType {
     }
 
     fn tooltip_text(&self, ing: &Ingredient, ctx: &IngredientCtx<'_>) -> Vec<String> {
-        // PHASE3-IMPL: A — display name, rarity, declared component keys.
-        vec![self.display_name(ing, ctx)]
+        // `TooltipParts` lives in the ui crate and needs a world, so the index
+        // uses what the item definition itself declares: the name, the rarity
+        // and the `slotted:*` component keys.
+        let mut out = vec![self.display_name(ing, ctx)];
+        let Some(def) = ing.item_id().and_then(|id| ctx.registries.items.get(id)) else {
+            return out;
+        };
+        out.push(def.rarity.as_str().to_owned());
+        out.extend(
+            def.components
+                .keys()
+                .filter(|k| k.namespace() == "slotted")
+                .map(ToString::to_string),
+        );
+        if !ing.subtype.is_none() {
+            out.push(ing.subtype.0.clone());
+        }
+        out
     }
 
     fn icon(&self, ing: &Ingredient, icons: &dyn IconSource) -> IconRef {
@@ -435,11 +456,21 @@ impl IngredientType for TagType {
         }
     }
     fn tooltip_text(&self, ing: &Ingredient, ctx: &IngredientCtx<'_>) -> Vec<String> {
-        // PHASE3-IMPL: A — member names.
-        vec![self.display_name(ing, ctx)]
+        let mut out = vec![self.display_name(ing, ctx)];
+        if let IngredientValue::Tag(name) = &ing.value {
+            out.extend(
+                ctx.registries
+                    .items_with(name)
+                    .iter()
+                    .filter_map(|id| ctx.registries.items.name_of(*id))
+                    .map(ToString::to_string),
+            );
+        }
+        out
     }
+    /// A tag has no icon of its own. `icon` sees no registries, so the panel
+    /// draws the members it cycles through instead of asking here.
     fn icon(&self, _ing: &Ingredient, _icons: &dyn IconSource) -> IconRef {
-        // PHASE3-IMPL: A — first member's icon, cycling in the panel.
         IconRef::Missing
     }
     fn entries(&self, ctx: &IngredientCtx<'_>) -> Vec<Ingredient> {
@@ -475,16 +506,40 @@ pub struct InfoPage {
 pub struct InfoPages(pub Vec<InfoPage>);
 
 /// `slotted:info`: entries from [`InfoPages`]; matches nothing.
+///
+/// The pages are carried by the type rather than looked up through
+/// [`IngredientCtx`], which holds registries and subtypes only. The index
+/// builder re-registers this type from the [`InfoPages`] resource before every
+/// build, so a page registered in any phase is indexed.
 #[derive(Debug, Default, Clone)]
-pub struct InfoType;
+pub struct InfoType {
+    pages: Arc<Vec<InfoPage>>,
+}
+
+impl InfoType {
+    /// A type over these pages.
+    pub fn new(pages: impl Into<Arc<Vec<InfoPage>>>) -> Self {
+        Self {
+            pages: pages.into(),
+        }
+    }
+
+    fn page(&self, ing: &Ingredient) -> Option<&InfoPage> {
+        let IngredientValue::Info(id) = &ing.value else {
+            return None;
+        };
+        self.pages.iter().find(|p| p.id == *id)
+    }
+}
 
 impl IngredientType for InfoType {
     fn id(&self) -> IngredientTypeId {
         types::info()
     }
     fn display_name(&self, ing: &Ingredient, _ctx: &IngredientCtx<'_>) -> String {
-        // PHASE3-IMPL: A — resolve the title through `InfoPages`, which the
-        // index builder passes in via `IngredientCtx` once it grows the field.
+        if let Some(page) = self.page(ing) {
+            return page.title.clone();
+        }
         match &ing.value {
             IngredientValue::Info(n) => n.path().to_owned(),
             _ => String::new(),
@@ -499,14 +554,17 @@ impl IngredientType for InfoType {
     fn tags(&self, _ing: &Ingredient, _ctx: &IngredientCtx<'_>) -> Vec<String> {
         Vec::new()
     }
-    fn tooltip_text(&self, _ing: &Ingredient, _ctx: &IngredientCtx<'_>) -> Vec<String> {
-        Vec::new() // PHASE3-IMPL: A
+    fn tooltip_text(&self, ing: &Ingredient, _ctx: &IngredientCtx<'_>) -> Vec<String> {
+        self.page(ing).map(|p| p.body.clone()).unwrap_or_default()
     }
     fn icon(&self, _ing: &Ingredient, _icons: &dyn IconSource) -> IconRef {
         IconRef::Missing
     }
     fn entries(&self, _ctx: &IngredientCtx<'_>) -> Vec<Ingredient> {
-        Vec::new() // PHASE3-IMPL: A — from `InfoPages`.
+        self.pages
+            .iter()
+            .map(|p| Ingredient::info(p.id.clone()))
+            .collect()
     }
     fn matches(&self, _ing: &Ingredient, _stack: &ItemStack, _ctx: &IngredientCtx<'_>) -> bool {
         false

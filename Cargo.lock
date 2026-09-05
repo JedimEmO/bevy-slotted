@@ -5098,6 +5098,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "criterion",
+ "insta",
  "pretty_assertions",
  "ron",
  "serde",
@@ -5105,6 +5106,8 @@ dependencies = [
  "slotted-icons",
  "slotted-model",
  "slotted-registry",
+ "slotted-test",
+ "slotted-testutils",
  "slotted-theme",
  "slotted-ui",
  "thiserror 2.0.20",

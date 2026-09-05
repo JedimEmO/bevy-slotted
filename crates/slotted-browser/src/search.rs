@@ -140,37 +140,154 @@ pub struct Token {
     pub or_group: u32,
 }
 
+/// One character of a raw term with the flag that says whether it arrived
+/// quoted or escaped. Only unquoted, unescaped leading characters are read as
+/// the `-` negation or a field prefix, so `"-iron"` and `\@demo` are text.
+#[derive(Debug, Clone, Copy)]
+struct RawChar {
+    ch: char,
+    literal: bool,
+}
+
+/// A term as the scanner found it, before `-` and prefixes are peeled off.
+#[derive(Debug, Default)]
+struct RawTerm {
+    chars: Vec<RawChar>,
+    /// A `|` sat between this term and the previous one.
+    joined: bool,
+}
+
 /// Splits a query into tokens. See the module docs for the grammar.
+///
+/// One pass over the characters. Whitespace ends a term, `|` ends a term and
+/// marks the next one as belonging to the same OR group, `"` toggles quoting
+/// and `\` makes the next character literal. Terms that end up empty (a lone
+/// `-`, a stray `|`, trailing whitespace) produce no token.
 pub fn tokenize(query: &str, config: &SearchConfig) -> Vec<Token> {
-    // PHASE3-IMPL: A — full grammar with quotes, escapes, `|` and prefixes.
-    // The skeleton splits on whitespace and reads `-` and a prefix char so
-    // the plain cases already work.
+    let raw = scan(query);
     let mut out = Vec::new();
-    for (group, term) in query.split_whitespace().enumerate() {
-        let mut rest = term;
-        let negate = rest.starts_with('-');
-        if negate {
-            rest = &rest[1..];
+    let mut group = 0u32;
+    let mut emitted = false;
+    for term in &raw {
+        if emitted && !term.joined {
+            group = group.saturating_add(1);
         }
-        let mut field = Field::Name;
-        if let Some(c) = rest.chars().next()
-            && let Some(f) = Field::from_prefix(c)
-            && config.mode(f) != PrefixMode::Disabled
-        {
-            field = f;
-            rest = &rest[c.len_utf8()..];
-        }
-        if rest.is_empty() {
+        let Some(mut token) = peel(term, config) else {
+            // An empty term still separates OR groups when it was not joined.
             continue;
-        }
-        out.push(Token {
-            field,
-            text: rest.to_owned(),
-            negate,
-            or_group: u32::try_from(group).unwrap_or(u32::MAX),
-        });
+        };
+        token.or_group = group;
+        out.push(token);
+        emitted = true;
     }
     out
+}
+
+/// Character scan: quotes, escapes, whitespace and `|`.
+fn scan(query: &str) -> Vec<RawTerm> {
+    let mut terms: Vec<RawTerm> = Vec::new();
+    let mut current = RawTerm::default();
+    let mut started = false;
+    let mut quoted = false;
+    let mut join_next = false;
+    let mut chars = query.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' => {
+                if let Some(next) = chars.next() {
+                    current.chars.push(RawChar {
+                        ch: next,
+                        literal: true,
+                    });
+                    started = true;
+                }
+            }
+            '"' => {
+                quoted = !quoted;
+                started = true;
+            }
+            '|' if !quoted => {
+                end_term(&mut current, &mut started, &mut join_next, &mut terms, true);
+            }
+            c if c.is_whitespace() && !quoted => {
+                end_term(
+                    &mut current,
+                    &mut started,
+                    &mut join_next,
+                    &mut terms,
+                    false,
+                );
+            }
+            c => {
+                current.chars.push(RawChar {
+                    ch: c,
+                    literal: quoted,
+                });
+                started = true;
+            }
+        }
+    }
+    end_term(
+        &mut current,
+        &mut started,
+        &mut join_next,
+        &mut terms,
+        false,
+    );
+    terms
+}
+
+/// Ends the term under construction, remembering whether a `|` followed.
+fn end_term(
+    current: &mut RawTerm,
+    started: &mut bool,
+    join_next: &mut bool,
+    terms: &mut Vec<RawTerm>,
+    join_after: bool,
+) {
+    if *started {
+        let mut term = std::mem::take(current);
+        term.joined = *join_next;
+        terms.push(term);
+        *started = false;
+        *join_next = join_after;
+    } else if join_after {
+        // `a | b`: the whitespace between the terms ends nothing, so it must
+        // not forget the `|` that came before it.
+        *join_next = true;
+    }
+}
+
+/// Peels `-` and a field prefix off a raw term. `None` when nothing is left.
+fn peel(term: &RawTerm, config: &SearchConfig) -> Option<Token> {
+    let mut rest = term.chars.as_slice();
+    let mut negate = false;
+    if let Some(first) = rest.first()
+        && first.ch == '-'
+        && !first.literal
+    {
+        negate = true;
+        rest = &rest[1..];
+    }
+    let mut field = Field::Name;
+    if let Some(first) = rest.first()
+        && !first.literal
+        && let Some(f) = Field::from_prefix(first.ch)
+        && config.mode(f) != PrefixMode::Disabled
+    {
+        field = f;
+        rest = &rest[1..];
+    }
+    let text: String = rest.iter().map(|c| c.ch).collect();
+    if text.is_empty() {
+        return None;
+    }
+    Some(Token {
+        field,
+        text,
+        negate,
+        or_group: 0,
+    })
 }
 
 /// Entries matching every OR-group and no negated term, minus `hidden`.
@@ -238,24 +355,25 @@ pub enum SortStage {
     Rarity,
 }
 
-/// Orders a result set.
+/// Orders a result set. Stages apply lexicographically and the [`EntryId`]
+/// breaks every tie, so the order is total and stable across runs.
 pub fn sort(index: &BrowserIndex, set: &Bitset, stages: &[SortStage]) -> Vec<EntryId> {
     let mut ids: Vec<EntryId> = set
         .iter()
         .map(|i| EntryId(u32::try_from(i).unwrap_or(u32::MAX)))
         .collect();
-    // PHASE3-IMPL: A — IngredientType and ModName stages; the skeleton
-    // handles Registration, Alphabetical and Rarity.
     ids.sort_by(|a, b| {
         let (ea, eb) = (&index.entries[a.index()], &index.entries[b.index()]);
         for stage in stages {
             let ord = match stage {
-                SortStage::Registration | SortStage::IngredientType | SortStage::ModName => {
-                    a.cmp(b)
-                }
+                SortStage::Registration => a.cmp(b),
                 SortStage::Alphabetical => {
                     ea.display.to_lowercase().cmp(&eb.display.to_lowercase())
                 }
+                SortStage::IngredientType => index
+                    .type_rank(&ea.ingredient.ty)
+                    .cmp(&index.type_rank(&eb.ingredient.ty)),
+                SortStage::ModName => ea.mod_ns.cmp(&eb.mod_ns),
                 SortStage::Rarity => (ea.rarity as u8).cmp(&(eb.rarity as u8)),
             };
             if ord != std::cmp::Ordering::Equal {

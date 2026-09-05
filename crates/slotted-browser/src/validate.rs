@@ -6,7 +6,8 @@ use slotted_model::Namespaced;
 use slotted_ui::ScreenKind;
 
 use crate::category::CategoryId;
-use crate::ingredient::IngredientTypeId;
+use crate::handlers::ScreenHandlers;
+use crate::ingredient::{IngredientTypeId, IngredientTypes, Subtypes};
 use crate::plugin::BrowserConfig;
 use crate::recipes::Categories;
 use crate::transfer::TransferHandlers;
@@ -57,14 +58,45 @@ impl BrowserValidation {
     }
 }
 
-/// Last system of `BrowserPhase::Subtypes`.
-pub fn validate_subtypes(_config: Res<BrowserConfig>, _validation: ResMut<BrowserValidation>) {
-    // PHASE3-IMPL: A — `UnknownItem` for every registered interpreter.
+/// Last system of `BrowserPhase::Subtypes`: an interpreter registered for an
+/// item the registries do not have would silently never run, so it is dropped.
+pub fn validate_subtypes(
+    registries: Option<Res<slotted_ecs::Registries>>,
+    mut subtypes: ResMut<Subtypes>,
+    config: Res<BrowserConfig>,
+    mut validation: ResMut<BrowserValidation>,
+) {
+    let Some(registries) = registries else { return };
+    let dangling: Vec<Namespaced> = subtypes
+        .items()
+        .filter(|item| !registries.items.contains(item))
+        .cloned()
+        .collect();
+    for item in dangling {
+        subtypes.remove(&item);
+        validation.report(ValidationError::UnknownItem(item), &config);
+    }
 }
 
-/// Last system of `BrowserPhase::IngredientTypes`.
-pub fn validate_ingredient_types() {
-    // PHASE3-IMPL: A — duplicate ids are already collapsed by `register`.
+/// Last system of `BrowserPhase::IngredientTypes`: every ingredient type an
+/// `ingredient_types` registry entry names must have been registered in Rust.
+/// Duplicate ids are collapsed by `IngredientTypes::register` itself.
+pub fn validate_ingredient_types(
+    registries: Option<Res<slotted_ecs::Registries>>,
+    types: Res<IngredientTypes>,
+    config: Res<BrowserConfig>,
+    mut validation: ResMut<BrowserValidation>,
+) {
+    let Some(registries) = registries else { return };
+    let missing: Vec<IngredientTypeId> = registries
+        .ingredient_types
+        .iter()
+        .map(|(_, name, _)| IngredientTypeId(name.clone()))
+        .filter(|id| types.get(id).is_none())
+        .collect();
+    for id in missing {
+        validation.report(ValidationError::UnknownIngredientType(id), &config);
+    }
 }
 
 /// Last system of `BrowserPhase::Categories`: binds defaults for unclaimed
@@ -97,9 +129,25 @@ pub fn validate_categories(
     }
 }
 
-/// Last system of `BrowserPhase::Recipes`.
-pub fn validate_recipes() {
-    // PHASE3-IMPL: A — `UnboundRecipeType` for every type without a category.
+/// Last system of `BrowserPhase::Recipes`: a recipe type no category claims
+/// would hide every recipe of that type. `Categories::bind_defaults` has
+/// already run, so this only fires when a default was refused.
+pub fn validate_recipes(
+    registries: Option<Res<slotted_ecs::Registries>>,
+    categories: Res<Categories>,
+    config: Res<BrowserConfig>,
+    mut validation: ResMut<BrowserValidation>,
+) {
+    let Some(registries) = registries else { return };
+    let unbound: Vec<Namespaced> = registries
+        .recipe_types
+        .iter()
+        .map(|(_, name, _)| name.clone())
+        .filter(|name| categories.for_recipe_type(name).is_none())
+        .collect();
+    for name in unbound {
+        validation.report(ValidationError::UnboundRecipeType(name), &config);
+    }
 }
 
 /// Last system of `BrowserPhase::Transfer`.
@@ -125,7 +173,28 @@ pub fn validate_transfer(
     }
 }
 
-/// Last system of `BrowserPhase::ScreenHandlers`.
-pub fn validate_screen_handlers() {
-    // PHASE3-IMPL: A — `UnknownScreenKind` against `slotted_ui::Screens`.
+/// Last system of `BrowserPhase::ScreenHandlers`: a handler for a screen kind
+/// nobody registered can never attach, so it is dropped.
+///
+/// An app with no screens at all (a headless test, a dedicated server) is not
+/// an error, so an empty `Screens` skips the check entirely.
+pub fn validate_screen_handlers(
+    screens: Option<Res<slotted_ui::Screens>>,
+    mut handlers: ResMut<ScreenHandlers>,
+    config: Res<BrowserConfig>,
+    mut validation: ResMut<BrowserValidation>,
+) {
+    let Some(screens) = screens else { return };
+    if screens.0.is_empty() {
+        return;
+    }
+    let unknown: Vec<ScreenKind> = handlers
+        .kinds()
+        .filter(|kind| screens.get(kind).is_none())
+        .cloned()
+        .collect();
+    for kind in unknown {
+        handlers.remove(&kind);
+        validation.report(ValidationError::UnknownScreenKind(kind), &config);
+    }
 }

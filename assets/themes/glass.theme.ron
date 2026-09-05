@@ -88,6 +88,67 @@
         "rail": Solid(fill: "#0B0E14A6", border: "$hairline", radius: 12.0),
         "rail.button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),
 
+        // The item and recipe browser (Phase 3). The panel is a second sheet
+        // of the same glass, one step darker than a screen so it reads as
+        // beside rather than on top.
+        "browser.panel": Glass(
+            tint: "#0F141EA6",
+            border: "#FFFFFF14",
+            radius: 12.0,
+            elevation: Some("mid"),
+        ),
+        // A card is the moodboard's `.icard`: an 8 px tile that lifts and
+        // brightens under the pointer, with the display name and the mod
+        // namespace legible on it.
+        "browser.card": Solid(fill: "#FFFFFF0D", border: "#FFFFFF14", radius: 8.0),
+        "browser.card.hover": Solid(fill: "#FFFFFF1A", border: "$accent", radius: 8.0),
+        "browser.card.name": Text(color: "$text", size: 11.0),
+        "browser.badge": Text(color: "#8A97AD", size: 9.0),
+        "browser.glyph": Text(color: "#8A97AD", size: 22.0),
+
+        // The rarity strip across the top of a card. `common` is transparent,
+        // so an ordinary item shows no strip at all.
+        "browser.rarity": Solid(fill: "#00000000", radius: 1.0),
+        "browser.rarity.common": Solid(fill: "#00000000", radius: 1.0),
+        "browser.rarity.uncommon": Solid(fill: "#7FD1FF", radius: 1.0),
+        "browser.rarity.rare": Solid(fill: "#B48CFF", radius: 1.0),
+        "browser.rarity.epic": Solid(fill: "#FFB454", radius: 1.0),
+        "browser.rarity.legendary": Solid(fill: "#FF6B6B", radius: 1.0),
+
+        // Chips and tabs are pills; the selected one inverts to the accent.
+        "browser.chip": Solid(fill: "#FFFFFF0F", border: "#FFFFFF1A", radius: 999.0),
+        "browser.chip.active": Solid(fill: "$accent", border: "$accent", radius: 999.0),
+        "browser.chip.text": Text(color: "#C6D0DD", size: 12.0),
+        "browser.chip.text.active": Text(color: "$base", size: 12.0),
+
+        "browser.search": Solid(fill: "#00000059", border: "#FFFFFF1F", radius: 10.0),
+        "browser.search.focus": Solid(fill: "#00000073", border: "$accent", radius: 10.0),
+
+        "browser.tab": Solid(fill: "#FFFFFF0F", border: "#FFFFFF1A", radius: 999.0),
+        "browser.tab.active": Solid(fill: "$accent", border: "$accent", radius: 999.0),
+
+        "browser.bookmark": Solid(fill: "#2A241A99", border: "$warm", radius: 6.0),
+
+        // The recipe view's header title and the small pill buttons under it.
+        "browser.title": Text(color: "$text", size: 18.0),
+        "browser.pill": Solid(fill: "#FFFFFF14", border: "#FFFFFF1F", radius: 8.0),
+        "browser.pill.text": Text(color: "$text", size: 12.0),
+
+        // The footer: the result count on the left, the hotkey hint and the
+        // "used in" line in the quieter tone.
+        "browser.status": Text(color: "#8A97AD", size: 12.0),
+        "browser.hint": Text(color: "#8A97AD", size: 11.0),
+
+        // Recipe slots reuse the slot geometry; a slot the transfer could not
+        // fill turns the danger colour until the next successful dry run.
+        "browser.slot": Solid(fill: "#0B0E1499", border: "#FFFFFF1F", radius: 8.0),
+        "browser.slot.missing": Solid(fill: "#2A1414CC", border: "$danger", radius: 8.0),
+
+        "browser.recipe.arrow": Solid(fill: "#FFFFFF1F", radius: 5.0),
+        "browser.recipe.arrow.progress": Solid(fill: "$accent", radius: 5.0),
+
+        "browser.button.disabled": Solid(fill: "#FFFFFF08", border: "#FFFFFF14", radius: 8.0),
+
         // Anchors and layer roots are laid out but never painted.
         "invisible": Solid(fill: "#00000000"),
     },

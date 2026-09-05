@@ -55,8 +55,18 @@ slotted-test = { path = "crates/slotted-test", version = "0.1.0" }
 slotted = { path = "crates/slotted", version = "0.1.0" }
 
 # Bevy is slow in a plain dev profile; optimise dependencies as the spikes did.
+# Keep dev builds fast to run but small on disk: dependencies optimised, and
+# debuginfo limited to line tables. Full debuginfo grew target/ past 250 GB
+# with several feature permutations compiled side by side.
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
+
+[profile.test]
+debug = "line-tables-only"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

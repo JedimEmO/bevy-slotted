@@ -42,6 +42,12 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+# A dev-dependency cycle: `slotted-test` depends on this crate, and the panel
+# tests drive the panel through the harness. Cargo allows the cycle because
+# dev-dependencies never enter the library's own build graph.
+slotted-test = { workspace = true }
+slotted-testutils = { workspace = true }
+insta = { workspace = true }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
 bevy = { workspace = true, features = ["std", "default_font", "bevy_state"] }

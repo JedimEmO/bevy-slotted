@@ -1,0 +1,18 @@
+---
+source: crates/slotted-browser/tests/panel.rs
+expression: browser.to_string()
+---
+Browser screen=slotted:browser #browser tags[side=right]
+  TextField #browser.search "Search" tags[test_id=browser.search] widget=slotted:search_field (focused)
+  Panel #browser.chips tags[test_id=browser.chips] widget=slotted:chip_row
+    Chip "crafting" tags[category=demo:crafting]
+    Chip "smelting" tags[category=demo:smelting]
+  Grid #browser.cards tags[test_id=browser.cards] widget=slotted:card_grid
+    Card "Coal" [minecraft:coal x1] tags[entry=minecraft:coal]
+    Card "#c:coal" tags[entry=#c:coal]
+  Panel #browser.bookmarks tags[test_id=browser.bookmarks] widget=slotted:bookmarks_strip
+  RecipeView #browser.recipes tags[test_id=browser.recipes] widget=slotted:recipe_view (hidden)
+    Button #browser.back "<" (hidden)
+    Button #browser.transfer "+" (hidden)
+    Button #browser.forward ">" (hidden)
+    Panel #browser.uses (hidden)

@@ -4,6 +4,8 @@
 //! cargo run -p chest                          play with it
 //! cargo run -p chest -- --shot shots/chest.png     capture and exit
 //! cargo run -p chest -- --hover 0 --shot shots/chest-hover.png
+//! cargo run -p chest -- --cheat                  browser Ctrl+click gives
+//! cargo run -p chest -- --recipe minecraft:coal --shot shots/chest-recipe.png
 //! ```
 //!
 //! What to try once it is up: left-click a stack to pick it up and right-click
@@ -12,6 +14,10 @@
 //! swap it with that hotbar slot; hover for a tooltip and hold shift to expand
 //! it; Tab and the arrow keys move a focus ring; the rail on the right sorts
 //! and moves stacks in bulk; `Esc` closes the screen and `E` opens it again.
+//! The browser panel docks beside the chest: type in its search field, press
+//! `R` over a card for its recipes, `U` for its uses, `A` to bookmark it, and
+//! `Backspace` to go back. The `+` button stays disabled because a chest has
+//! no crafting grid to fill.
 //!
 //! The scene, the orbit and the screenshot plumbing are lifted from
 //! `spikes/glass-ui`. Everything else comes out of `lib.rs`, which the headless
@@ -42,6 +48,11 @@ struct Cli {
     shot: Option<PathBuf>,
     /// Park a synthetic mouse pointer over this menu slot.
     hover: Option<u16>,
+    /// Open the chest as a player who may cheat, so the browser's Ctrl+click
+    /// give is allowed.
+    cheat: bool,
+    /// Open the browser's recipe page for this item before capturing.
+    recipe: Option<String>,
 }
 
 fn main() {
@@ -50,6 +61,8 @@ fn main() {
     let cli = Cli {
         shot: value("--shot").map(PathBuf::from),
         hover: value("--hover").and_then(|v| v.parse().ok()),
+        cheat: args.iter().any(|a| a == "--cheat"),
+        recipe: value("--recipe"),
     };
 
     let registries = chest::load_registries();
@@ -92,11 +105,18 @@ fn main() {
     })
     .add_plugins(ChestDemoPlugin)
     .insert_resource(ClearColor(Color::srgb(0.043, 0.055, 0.078)))
+    .insert_resource(chest::CheatMode(cli.cheat))
     .insert_resource(cli)
     .add_systems(Startup, (setup_scene, setup_screen).chain())
     .add_systems(
         Update,
-        (orbit_camera, spin_cubes, park_pointer, shot_and_exit),
+        (
+            orbit_camera,
+            spin_cubes,
+            park_pointer,
+            open_recipe_page,
+            shot_and_exit,
+        ),
     );
 
     app.run();
@@ -181,10 +201,11 @@ fn setup_screen(
     assets: Res<AssetServer>,
     mut screens: ResMut<Screens>,
     registries: Res<Registries>,
+    cheat: Res<chest::CheatMode>,
 ) {
     commands.insert_resource(ActiveTheme(assets.load("themes/glass.theme.ron")));
     screens.register(chest::demo_screen());
-    chest::open_chest(&mut commands, &registries);
+    chest::open_chest(&mut commands, &registries, cheat.0);
 }
 
 fn orbit_camera(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainCamera>>) {
@@ -228,6 +249,34 @@ fn park_pointer(
             PointerAction::Move { delta: Vec2::ZERO },
         ));
     }
+}
+
+/// `--recipe <ns:item>`: open the browser's recipe page once, before the shot.
+fn open_recipe_page(
+    cli: Res<Cli>,
+    time: Res<Time>,
+    registries: Res<Registries>,
+    mut out: MessageWriter<slotted::browser::OpenRecipes>,
+    mut done: Local<bool>,
+) {
+    let Some(name) = cli.recipe.clone() else {
+        return;
+    };
+    if *done || time.elapsed_secs() < SHOT_AT * 0.5 {
+        return;
+    }
+    *done = true;
+    let Ok(id) = slotted_model::Namespaced::parse(&name) else {
+        warn!("--recipe {name} is not a namespaced id");
+        return;
+    };
+    let Some(item) = registries.item_id(&id) else {
+        warn!("--recipe {name} is not a registered item");
+        return;
+    };
+    out.write(slotted::browser::OpenRecipes(
+        slotted::browser::Ingredient::item(item),
+    ));
 }
 
 /// `--shot`: capture at [`SHOT_AT`] seconds, then leave.

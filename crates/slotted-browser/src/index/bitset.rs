@@ -35,6 +35,16 @@ impl Bitset {
         self.words.iter().all(|w| *w == 0)
     }
 
+    /// Grows the set to address at least `len` bits. Existing bits keep
+    /// their positions and the new ones start cleared; shrinking is a no-op.
+    pub fn grow(&mut self, len: usize) {
+        if len <= self.len {
+            return;
+        }
+        self.words.resize(len.div_ceil(64), 0);
+        self.len = len;
+    }
+
     /// Sets bit `i`; out of range is ignored.
     pub fn insert(&mut self, i: usize) {
         if i < self.len {
