@@ -49,7 +49,8 @@ pub use screen::{
     emit_screen_layout, spawn_screen,
 };
 pub use semantic::{
-    AnchorNode, ScreenRoot, SemanticLabel, SemanticRole, TestId, WidgetNode, sync_accessibility,
+    AnchorNode, LocText, ScreenRoot, SemanticLabel, SemanticRole, TestId, WidgetNode,
+    sync_accessibility,
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,

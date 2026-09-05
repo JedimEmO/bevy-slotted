@@ -1,0 +1,28 @@
+[package]
+name = "modded"
+description = "slotted example: loads mods/ from disk, runs their data.lua and control.lua, hot reloads scripts and RON, shows a script console."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+slotted = { workspace = true, features = ["blur", "dev"] }
+slotted-packs = { workspace = true, features = ["watch"] }
+slotted-script = { workspace = true }
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true, features = ["std-fs"] }
+chest = { path = "../chest", version = "0.1.0" }
+bevy = { version = "0.19.1", features = ["bevy_ui_widgets", "png", "file_watcher"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+slotted-test = { workspace = true, features = ["script"] }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

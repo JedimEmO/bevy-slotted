@@ -1,0 +1,7 @@
+id = "appleskin_like"
+name = "AppleSkin-like"
+version = "0.1.0"
+api_version = 1
+
+[entry]
+data = "data.lua"

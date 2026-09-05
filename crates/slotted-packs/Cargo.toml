@@ -1,0 +1,45 @@
+[package]
+name = "slotted-packs"
+description = "Mods and resource packs for slotted: mod.toml discovery, a layered asset source and `pack://` reader, the data/control lifecycle that runs mod scripts, hot reload, Fluent localisation."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# Hot reload of scripts, RON and locale files through Bevy's file watcher.
+watch = ["bevy/file_watcher"]
+
+[dependencies]
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true, features = ["std-fs"] }
+slotted-ecs = { workspace = true }
+slotted-ui = { workspace = true }
+slotted-icons = { workspace = true }
+slotted-browser = { workspace = true }
+slotted-script = { workspace = true }
+bevy = { workspace = true, features = [
+    "std",
+    "bevy_asset",
+    "bevy_log",
+    "bevy_state",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_widgets",
+] }
+serde = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+fluent-bundle = { workspace = true }
+unic-langid = { workspace = true }
+
+[dev-dependencies]
+slotted-testutils = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

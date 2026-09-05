@@ -19,6 +19,8 @@
 pub mod app;
 pub mod authority;
 pub mod builders;
+#[cfg(feature = "conformance")]
+pub mod conformance;
 
 pub use app::{ecs_app_with, minimal_ecs_app};
 pub use authority::{RecordingAuthority, RejectingAuthority, Submitted};

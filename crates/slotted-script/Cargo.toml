@@ -1,0 +1,21 @@
+[package]
+name = "slotted-script"
+description = "The ScriptRuntime port, the slotted.* Lua API surface and the event/command types every adapter shares. No Bevy, no Lua."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+slotted-model = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+ron = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

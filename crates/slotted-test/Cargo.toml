@@ -10,6 +10,9 @@ authors.workspace = true
 
 [features]
 default = []
+# `UiHarness::load_mods` and friends (Phase 4 contract section 3). The
+# runtime comes from the facade's `script-mlua` feature, never named here.
+script = ["dep:slotted-packs", "dep:slotted-script", "slotted/packs"]
 # Run the real renderer with a software adapter and compare pixels. Phase 7.
 render = []
 
@@ -22,6 +25,8 @@ slotted-theme = { workspace = true }
 slotted-ui = { workspace = true }
 slotted-icons = { workspace = true }
 slotted-browser = { workspace = true }
+slotted-packs = { workspace = true, optional = true }
+slotted-script = { workspace = true, optional = true }
 # `debug` so a failing system parameter names itself (ADR 0002).
 bevy = { workspace = true, features = [
     "std",

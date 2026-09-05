@@ -9,7 +9,16 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[features]
+default = []
+# The script conformance suite (Phase 4 contract section 1.7). Pulls in
+# `slotted-script` and `ron`; adapters enable it from their dev-dependencies.
+conformance = ["dep:slotted-script", "dep:ron"]
+
 [dependencies]
+slotted-script = { workspace = true, optional = true }
+ron = { workspace = true, optional = true }
+thiserror = { workspace = true }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
 slotted-ecs = { workspace = true }

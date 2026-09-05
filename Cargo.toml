@@ -33,6 +33,12 @@ wgpu-types = { version = "29.0.3", default-features = false }
 # Pinned to the version bevy_a11y 0.19 uses; slotted-ui builds AccessKit nodes.
 accesskit = { version = "0.24", default-features = false }
 uuid = { version = "1", features = ["v4"] }
+# Luau through mlua: the native script adapter (ADR 0001). The feature set is
+# the one the Phase 0 spike verified; `serialize` is the serde bridge.
+mlua = { version = "0.11", features = ["luau", "vendored", "serialize", "send"] }
+# Own `.ftl` loader for mod localisation (Phase 4 contract section 2.7).
+fluent-bundle = "0.16"
+unic-langid = { version = "0.9", features = ["macros"] }
 
 # Dev-only, shared so every crate tests with the same versions.
 proptest = "1.11.0"
@@ -52,6 +58,9 @@ slotted-ui = { path = "crates/slotted-ui", version = "0.1.0" }
 slotted-icons = { path = "crates/slotted-icons", version = "0.1.0" }
 slotted-browser = { path = "crates/slotted-browser", version = "0.1.0" }
 slotted-test = { path = "crates/slotted-test", version = "0.1.0" }
+slotted-script = { path = "crates/slotted-script", version = "0.1.0" }
+slotted-script-mlua = { path = "crates/slotted-script-mlua", version = "0.1.0" }
+slotted-packs = { path = "crates/slotted-packs", version = "0.1.0" }
 slotted = { path = "crates/slotted", version = "0.1.0" }
 
 # Bevy is slow in a plain dev profile; optimise dependencies as the spikes did.

@@ -44,6 +44,14 @@ impl PluginGroup for SlottedPlugins {
         {
             group = group.add(slotted_browser::SlottedBrowserPlugin::default());
         }
+        #[cfg(feature = "script-mlua")]
+        {
+            group = group.add(MluaHostPlugin);
+        }
+        #[cfg(feature = "packs")]
+        {
+            group = group.add(slotted_packs::SlottedPacksPlugin::default());
+        }
         group
     }
 }
@@ -95,6 +103,8 @@ impl PluginGroup for HeadlessBevyPlugins {
             .add(bevy::app::TaskPoolPlugin::default())
             .add(bevy::diagnostic::FrameCountPlugin)
             .add(bevy::time::TimePlugin)
+            // `slotted-packs` records its lifecycle in a `States` enum.
+            .add(bevy::state::app::StatesPlugin)
             .add(bevy::app::ScheduleRunnerPlugin::run_once())
             .add(bevy::transform::TransformPlugin)
             .add(bevy::asset::AssetPlugin::default())
@@ -138,5 +148,23 @@ impl Plugin for HeadlessRenderAssets {
         app.init_asset::<bevy::image::TextureAtlasLayout>();
         app.init_asset::<bevy::mesh::Mesh>();
         app.init_asset::<bevy::mesh::skinning::SkinnedMeshInverseBindposes>();
+    }
+}
+
+/// Inserts `slotted_packs::ScriptHost` holding an `MluaRuntime` unless the
+/// app already provided a host. Added before `SlottedPacksPlugin` so the
+/// `PreStartup` load finds it.
+#[cfg(feature = "script-mlua")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MluaHostPlugin;
+
+#[cfg(feature = "script-mlua")]
+impl Plugin for MluaHostPlugin {
+    fn build(&self, app: &mut App) {
+        if !app.world().contains_resource::<slotted_packs::ScriptHost>() {
+            app.insert_resource(slotted_packs::ScriptHost::new(
+                slotted_script_mlua::MluaRuntime::default(),
+            ));
+        }
     }
 }

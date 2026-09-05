@@ -394,6 +394,35 @@ impl DataStage {
     /// item nobody registered is a [`Warning`] in the report instead, because a
     /// mod pack missing an optional mod still has to boot.
     pub fn load(&self, source: &dyn AssetSource) -> Result<Loaded, LoadError> {
+        let mut registries = Registries::new();
+        let mut report = self.load_into(source, &mut registries)?;
+        let (frozen, warnings) = registries.freeze()?;
+        report.warnings.extend(warnings);
+        Ok(Loaded {
+            registries: frozen,
+            report,
+        })
+    }
+
+    /// Everything [`load`](Self::load) does except the freeze, into a caller's
+    /// [`Registries`].
+    ///
+    /// This is the seam the script data stage uses: `slotted-packs` runs the
+    /// RON side here, then applies every `Register*` command a mod's `data.lua`
+    /// emitted into the same builders, and freezes once (Phase 4 contract
+    /// section 2.2). Files override each other by name before anything is
+    /// installed, exactly as in `load`; a name the caller had already
+    /// registered is a [`RegistryError::Duplicate`], so callers install their
+    /// own entries afterwards.
+    ///
+    /// # Errors
+    ///
+    /// As [`load`](Self::load).
+    pub fn load_into(
+        &self,
+        source: &dyn AssetSource,
+        registries: &mut Registries,
+    ) -> Result<LoadReport, LoadError> {
         let mut report = LoadReport {
             mods: self.load_order.clone(),
             ..LoadReport::default()
@@ -410,21 +439,15 @@ impl DataStage {
             self.apply_round(source, round, &mut raw, &mut report)?;
         }
 
-        let mut registries = Registries::new();
         for kind in RegistryKind::ALL {
             let entries = raw.remove(&kind).unwrap_or_default();
             report.entries.insert(kind, entries.len());
             for (name, value) in entries {
-                install(&mut registries, kind, &name, value)?;
+                install(registries, kind, &name, value)?;
             }
         }
 
-        let (frozen, warnings) = registries.freeze()?;
-        report.warnings.extend(warnings);
-        Ok(Loaded {
-            registries: frozen,
-            report,
-        })
+        Ok(report)
     }
 
     /// Reads every entry file of every mod, in load order.

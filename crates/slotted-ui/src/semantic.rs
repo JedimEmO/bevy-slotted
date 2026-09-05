@@ -107,6 +107,15 @@ pub struct ScreenRoot {
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct WidgetNode(pub WidgetKind);
 
+/// The localisation key a `Text` node was spawned from.
+///
+/// `spawn_text` writes the key verbatim into `Text`; `slotted-packs` resolves
+/// it through the layered Fluent bundles and rewrites `Text` when a locale
+/// loads or changes (Phase 4 contract section 2.7). `SemanticLabel` keeps the
+/// key so locators and snapshots do not depend on a language.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct LocText(pub crate::def::LocKey);
+
 /// On an anchor node.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct AnchorNode(pub AnchorId);

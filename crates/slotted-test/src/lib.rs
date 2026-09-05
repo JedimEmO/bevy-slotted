@@ -24,6 +24,8 @@ pub mod fixture;
 pub mod fixtures;
 pub mod harness;
 pub mod locator;
+#[cfg(feature = "script")]
+pub mod mods;
 pub mod queries;
 pub mod tree;
 

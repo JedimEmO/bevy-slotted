@@ -23,7 +23,7 @@ use crate::input::{
 };
 use crate::item::{ItemView, spawn_item_view_children};
 use crate::screen::{SpawnCtx, Widget, WidgetRegistry};
-use crate::semantic::{AnchorNode, SemanticLabel, SemanticRole, WidgetNode};
+use crate::semantic::{AnchorNode, LocText, SemanticLabel, SemanticRole, WidgetNode};
 use crate::tooltip::on_slot_over;
 
 /// Edge length of a slot in logical pixels. Not a theme token in Phase 2.
@@ -148,6 +148,7 @@ pub fn spawn_text(ctx: &mut SpawnCtx<'_>, key: &LocKey, style: TextRole) -> Enti
         SemanticRole::Text,
         SemanticLabel(key.0.clone()),
         WidgetNode(kinds::text()),
+        LocText(key.clone()),
     ))
 }
 
