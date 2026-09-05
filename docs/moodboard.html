@@ -1,0 +1,843 @@
+<title>bevy_slotted Moodboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#f1f3f7; --bg-2:#e7eaf0; --panel:#ffffff; --panel-2:#f6f7fa; --line:#d8dde7; --line-2:#c3cad8;
+  --ink:#121722; --ink-2:#2b3446; --muted:#5f6b80;
+  --accent:#2570c9; --accent-soft:#e3eefb; --warm:#b86a00; --warm-soft:#fff1dc;
+  --good:#1f8a3b; --warn:#a86a00; --bad:#b83232;
+  --code:#eef1f6; --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.08);
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0e14; --bg-2:#0f131b; --panel:#141a24; --panel-2:#1a2130; --line:#232c3c; --line-2:#2f3a4f;
+    --ink:#e6edf3; --ink-2:#c6d0dd; --muted:#8a97ad;
+    --accent:#7fd1ff; --accent-soft:#12283a; --warm:#ffb454; --warm-soft:#2b2110;
+    --good:#7ed37e; --warn:#ffc35c; --bad:#ff7b7b;
+    --code:#0e1219; --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0e14; --bg-2:#0f131b; --panel:#141a24; --panel-2:#1a2130; --line:#232c3c; --line-2:#2f3a4f;
+  --ink:#e6edf3; --ink-2:#c6d0dd; --muted:#8a97ad;
+  --accent:#7fd1ff; --accent-soft:#12283a; --warm:#ffb454; --warm-soft:#2b2110;
+  --good:#7ed37e; --warn:#ffc35c; --bad:#ff7b7b;
+  --code:#0e1219; --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.55}
+a{color:var(--accent)}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 22px 90px}
+h1,h2,h3,.disp{font-family:"Barlow Condensed","Arial Narrow",sans-serif;text-wrap:balance;margin:0;line-height:1.05}
+h1{font-size:clamp(48px,7vw,84px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:38px;font-weight:600}
+h3{font-size:21px;font-weight:600;margin-bottom:6px;letter-spacing:.005em}
+p{margin:0 0 12px;max-width:68ch}
+.eyebrow{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+code{font-size:.86em;background:var(--code);padding:1px 6px;border-radius:5px;border:1px solid var(--line)}
+pre{background:var(--code);border:1px solid var(--line);padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.55;margin:0;border-radius:10px}
+pre code{background:none;border:0;padding:0;font-size:inherit}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;box-shadow:var(--shadow)}
+.card p:last-child,.card ul:last-child{margin-bottom:0}
+.card ul{margin:0;padding-left:18px}.card li{margin:4px 0}
+.flat{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:920px){.g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:620px){.g2,.g3,.g4{grid-template-columns:1fr}}
+section{margin-top:64px}
+.sec-head{display:flex;gap:16px;align-items:baseline;margin-bottom:14px}
+.sec-head .num{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--accent);letter-spacing:.1em}
+.sec-intro{color:var(--ink-2);max-width:74ch;margin-bottom:20px;font-size:17px}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--panel-2)}
+tr:last-child td{border-bottom:0}
+.chip{display:inline-block;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid currentColor}
+.alive{color:var(--good)}.dead{color:var(--bad)}.lag{color:var(--warn)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:18px}
+.tag{font-family:"JetBrains Mono",monospace;font-size:11px;padding:5px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--ink-2)}
+.spec{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:14px;font-variant-numeric:tabular-nums}
+.spec dt{font-family:"JetBrains Mono",monospace;color:var(--muted);font-size:12px}.spec dd{margin:0}
+.small{font-size:13px;color:var(--muted)}
+.callout{padding:16px 20px;border-radius:var(--r);background:var(--accent-soft);border:1px solid var(--line)}
+.callout p:last-child{margin:0}
+.q{font-family:"Barlow Condensed";font-size:20px;color:var(--accent);margin-right:8px;font-weight:700}
+ul.plain{padding-left:18px;margin:0}ul.plain li{margin:6px 0}
+.refs{columns:2;column-gap:28px;font-size:13.5px}@media(max-width:800px){.refs{columns:1}}
+.refs li{break-inside:avoid;margin:3px 0}
+.keep-drop{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:800px){.keep-drop{grid-template-columns:1fr}}
+.kd h3{display:flex;align-items:center;gap:8px}
+.kd .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.sw{display:flex;gap:6px;margin:8px 0 10px}.sw i{width:26px;height:26px;border-radius:7px;border:1px solid rgba(0,0,0,.15)}
+.refwall{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}@media(max-width:920px){.refwall{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.refwall{grid-template-columns:1fr}}
+.ref{padding:14px 15px;font-size:13.5px}.ref h3{font-size:19px;margin-bottom:4px}.ref .idiom{color:var(--ink-2)}.ref .juice{color:var(--muted);margin-top:4px}
+.motion{display:grid;grid-template-columns:auto 1fr auto;gap:6px 14px;font-size:14px;align-items:center}
+.motion .bar{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--accent),transparent)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+/* ===================== DEMO ===================== */
+.stage{position:relative;border-radius:18px;overflow:hidden;min-height:560px;isolation:isolate;
+  background:
+    radial-gradient(1200px 400px at 70% -10%,#ffd9a0 0%,transparent 60%),
+    linear-gradient(180deg,#5aa3e6 0%,#8cc4f2 38%,#3d7c3a 40%,#2c5a2a 62%,#4b3a2a 63%,#2d2218 100%);
+  color:#e6edf3;font-family:"Manrope",system-ui,sans-serif}
+.stage::before{content:"";position:absolute;inset:0;z-index:0;opacity:.85;
+  background-image:
+    linear-gradient(90deg,rgba(0,0,0,.08) 1px,transparent 1px),linear-gradient(rgba(0,0,0,.08) 1px,transparent 1px),
+    radial-gradient(60px 40px at 20% 28%,rgba(255,255,255,.9),transparent 70%),radial-gradient(90px 44px at 32% 22%,rgba(255,255,255,.85),transparent 70%),
+    radial-gradient(70px 40px at 78% 30%,rgba(255,255,255,.8),transparent 70%);
+  background-size:48px 48px,48px 48px,auto,auto,auto}
+.stage .trees{position:absolute;left:0;right:0;top:40%;height:60%;z-index:0;
+  background:
+    linear-gradient(90deg,transparent 0 6%,#1f4d1f 6% 12%,transparent 12% 30%,#245a22 30% 38%,transparent 38% 62%,#1f4d1f 62% 66%,transparent 66% 84%,#245a22 84% 92%,transparent 92%);
+  background-size:100% 30%;background-repeat:no-repeat;background-position:0 -8%;
+  mask:linear-gradient(#000 0 30%,transparent 30%)}
+.ui{position:relative;z-index:1;display:grid;grid-template-columns:1fr auto;gap:18px;padding:22px;align-items:start}
+@media (max-width:1000px){.ui{grid-template-columns:1fr}}
+.glass{background:rgba(14,18,26,.62);backdrop-filter:blur(14px) saturate(120%);-webkit-backdrop-filter:blur(14px) saturate(120%);
+  border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.14)}
+.win{padding:16px 18px 18px;display:grid;grid-template-columns:1fr auto;gap:16px}
+.win .title{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.win .title h3{font-size:24px;margin:0;font-weight:600;letter-spacing:.01em}
+.win .title .cap{font-family:"JetBrains Mono",monospace;font-size:11px;color:#8a97ad}
+.slots{display:grid;grid-template-columns:repeat(9,44px);gap:4px;margin:0 0 14px}
+.slots.hot{margin-bottom:0;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}
+.slot{width:44px;height:44px;border-radius:8px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.08);position:relative;cursor:pointer;
+  transition:transform 120ms cubic-bezier(.2,0,0,1),border-color 120ms,background 120ms;outline:none}
+.slot:hover,.slot:focus-visible{transform:scale(1.05);border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.11);z-index:2}
+.slot:focus-visible{box-shadow:0 0 0 3px rgba(127,209,255,.9),0 0 0 6px rgba(14,18,26,.9)}
+.slot:active{transform:scale(.96)}
+.slot canvas,.icon canvas{position:absolute;left:6px;top:6px;width:32px;height:32px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.55))}
+.slot .cnt{position:absolute;right:5px;bottom:2px;font-family:"Barlow Condensed";font-weight:700;font-size:15px;color:#fff;text-shadow:0 1px 2px #000;font-variant-numeric:tabular-nums;pointer-events:none}
+.slot .dur{position:absolute;left:6px;right:6px;bottom:4px;height:3px;border-radius:2px;background:rgba(0,0,0,.6);overflow:hidden;pointer-events:none}
+.slot .dur i{display:block;height:100%;border-radius:2px}
+.slot.r-uncommon{box-shadow:inset 0 0 0 1.5px #57c86a}.slot.r-rare{box-shadow:inset 0 0 0 1.5px #4ea6ff}.slot.r-epic{box-shadow:inset 0 0 0 1.5px #b57bff}
+.slot.r-legendary{box-shadow:inset 0 0 0 1.5px #ffb454;background:linear-gradient(135deg,rgba(255,180,84,.18),rgba(255,255,255,.04))}
+.slot .rg{position:absolute;left:4px;top:4px;width:6px;height:6px;border-radius:2px;pointer-events:none}
+.rail{display:flex;flex-direction:column;gap:8px;padding-left:4px;align-self:stretch;justify-content:flex-start;padding-top:38px}
+.rail button{font:inherit;font-weight:600;font-size:13px;color:#e6edf3;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:9px 12px;cursor:pointer;display:flex;justify-content:space-between;gap:14px;align-items:center;min-width:150px;transition:background 120ms,transform 120ms}
+.rail button:hover{background:rgba(255,255,255,.14)}.rail button:active{transform:scale(.97)}
+.rail button:focus-visible{outline:2px solid #7fd1ff;outline-offset:2px}
+.rail kbd{font-family:"JetBrains Mono",monospace;font-size:10px;color:#8a97ad;border:1px solid rgba(255,255,255,.15);border-radius:5px;padding:1px 5px}
+.browser{width:352px;padding:14px;display:flex;flex-direction:column;gap:10px;max-height:520px}
+@media (max-width:1000px){.browser{width:100%}}
+.search{display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:8px 10px}
+.search input{flex:1;font:inherit;font-size:14px;background:none;border:0;color:#e6edf3;outline:none}
+.search input::placeholder{color:#7b879c}
+.search kbd{font-family:"JetBrains Mono",monospace;font-size:10px;color:#8a97ad;border:1px solid rgba(255,255,255,.15);border-radius:5px;padding:1px 5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{font:inherit;font-size:12px;font-weight:600;color:#c6d0dd;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:4px 10px;cursor:pointer}
+.chips button[aria-pressed="true"]{background:#7fd1ff;color:#0b0e14;border-color:#7fd1ff}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;overflow:auto;flex:1;min-height:0;align-content:start;padding-right:2px;scrollbar-width:thin}
+.icard{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 6px 7px;text-align:center;cursor:pointer;position:relative;transition:transform 120ms cubic-bezier(.2,0,0,1),background 120ms;outline:none}
+.icard:hover,.icard:focus-visible{transform:translateY(-2px) scale(1.03);background:rgba(255,255,255,.1)}
+.icard:focus-visible{box-shadow:0 0 0 2px #7fd1ff}
+.icard .icon{position:relative;width:44px;height:44px;margin:0 auto 4px}
+.icard .nm{font-size:11px;font-weight:600;line-height:1.2;color:#e6edf3;height:26px;overflow:hidden}
+.icard .mod{font-family:"JetBrains Mono",monospace;font-size:9px;color:#8a97ad;margin-top:3px}
+.icard .rb{position:absolute;left:8px;right:8px;top:0;height:2px;border-radius:0 0 2px 2px}
+.bfoot{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#8a97ad;padding-top:4px}
+.recipe{display:none;flex-direction:column;gap:10px}
+.recipe.open{display:flex}
+.recipe .hdr{display:flex;align-items:center;gap:10px}
+.recipe .hdr button{font:inherit;font-size:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#e6edf3;border-radius:8px;padding:4px 9px;cursor:pointer}
+.recipe .hdr h4{margin:0;font-family:"Barlow Condensed";font-size:20px;font-weight:600}
+.rbody{display:grid;grid-template-columns:auto auto auto;gap:14px;align-items:center;justify-content:center;padding:6px 0}
+.rgrid{display:grid;grid-template-columns:repeat(3,40px);gap:4px}
+.rgrid .slot,.rout .slot{width:40px;height:40px;cursor:default}.rgrid .slot canvas,.rout .slot canvas{left:4px;top:4px}
+.arrow{width:40px;height:10px;border-radius:5px;background:rgba(255,255,255,.12);position:relative;overflow:hidden}
+.arrow i{position:absolute;inset:0;background:#7fd1ff;transform-origin:left;animation:prog 2.4s linear infinite}
+@keyframes prog{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.rout .slot{border-color:rgba(127,209,255,.5)}
+.usedin{font-size:12px;color:#c6d0dd}.usedin b{color:#e6edf3}
+.rnone{font-size:13px;color:#8a97ad;text-align:center;padding:20px 0}
+#ghost{position:fixed;pointer-events:none;width:40px;height:40px;z-index:50;display:none;transform:translate(-50%,-50%) scale(1.1)}
+#ghost canvas{position:absolute;left:0;top:0;width:40px;height:40px;filter:drop-shadow(0 8px 10px rgba(0,0,0,.6))}
+#ghost .cnt{position:absolute;right:-6px;bottom:-8px;font-family:"Barlow Condensed";font-weight:700;font-size:16px;color:#fff;text-shadow:0 1px 2px #000}
+#tip{position:fixed;z-index:60;pointer-events:none;display:none;width:240px;background:rgba(14,18,26,.92);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 14px;color:#e6edf3;box-shadow:0 14px 40px rgba(0,0,0,.5);font-family:"Manrope",system-ui,sans-serif}
+#tip .n{font-family:"Barlow Condensed";font-size:20px;font-weight:600;line-height:1.1}
+#tip .r{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+#tip .row{display:flex;justify-content:space-between;font-size:12.5px;color:#c6d0dd;margin-top:6px}
+#tip .row b{color:#e6edf3;font-variant-numeric:tabular-nums}
+#tip .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.1);margin-top:6px;overflow:hidden}#tip .bar i{display:block;height:100%}
+#tip .more{margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.1);font-size:12px;color:#c6d0dd}
+#tip .hint{margin-top:8px;font-size:11px;color:#8a97ad}
+#tip .id{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:#7b879c;margin-top:6px}
+#tip .badge{display:inline-block;font-family:"JetBrains Mono",monospace;font-size:10px;padding:1px 6px;border-radius:5px;background:rgba(255,255,255,.08);color:#c6d0dd;margin-right:4px}
+.fly{position:fixed;z-index:55;pointer-events:none;width:32px;height:32px}
+.fly canvas{width:32px;height:32px;filter:drop-shadow(0 4px 6px rgba(0,0,0,.6))}
+.demo-help{font-size:13.5px;color:var(--muted);margin-top:12px;max-width:80ch}
+.demo-help kbd{font-family:"JetBrains Mono",monospace;font-size:11px;background:var(--code);padding:1px 6px;border:1px solid var(--line);border-radius:5px}
+
+/* ---- direction mockups ---- */
+.mock{border-radius:12px;padding:14px;margin-top:12px;display:flex;gap:6px;align-items:center}
+.mock .ms{width:40px;height:40px;position:relative;flex:none}
+.mock .ms canvas{position:absolute;left:5px;top:5px;width:30px;height:30px}
+.mock .ms .c{position:absolute;right:4px;bottom:1px;font-size:12px;font-weight:700}
+.m-glass{background:linear-gradient(135deg,#0b0e14,#182131);border:1px solid #2a3446}
+.m-glass .ms{border-radius:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.m-glass .ms canvas{filter:drop-shadow(0 3px 3px rgba(0,0,0,.6))}.m-glass .c{color:#fff;font-family:"Barlow Condensed"}
+.m-glass .ms.rare{box-shadow:inset 0 0 0 1.5px #4ea6ff}
+.m-paper{background:#ede6d6;border:1px solid #c9bfa8;background-image:radial-gradient(#c9bfa8 .8px,transparent .8px);background-size:8px 8px}
+.m-paper .ms{border-radius:2px;background:#f7f2e6;border:1px solid #1e1b18;box-shadow:2px 2px 0 #1e1b18}
+.m-paper .c{color:#1e1b18;font-family:"IBM Plex Mono",monospace;font-size:11px}
+.m-paper .ms.rare{outline:2px dashed #e0672b;outline-offset:-4px}
+.m-neon{background:#1a1c22;border:1px solid #2e3340}
+.m-neon .ms{background:#262a33;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));border-radius:0}
+.m-neon .ms::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:#3a3f4c}
+.m-neon .ms.rare::after{background:#38e8ff;box-shadow:0 0 10px #38e8ff}
+.m-neon .c{color:#f5f7fa;font-family:"Barlow Condensed";font-size:14px}
+.m-neon .ms canvas{filter:drop-shadow(0 2px 0 rgba(0,0,0,.8))}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">technical moodboard · exploration, not a plan · revised 2026-09-05</div>
+  <h1 style="margin:6px 0 10px">bevy_slotted</h1>
+  <p class="sec-intro" style="font-size:19px;max-width:64ch">Minecraft's inventory model and its modding freedom, without its pixel-art skin. Reusable Bevy plugins for a modern, visually rich take on slot grids, containers, machine screens, an item and recipe browser layered over any screen, and a Lua modding surface with the same UI creativity Minecraft mods enjoy.</p>
+  <div class="tags"><span class="tag">keep the interaction model</span><span class="tag">drop the 176×166 canvas</span><span class="tag">glass · paper · neon directions</span><span class="tag">screen injection API</span><span class="tag">bevy 0.19.1</span><span class="tag">Luau via mlua</span></div>
+</header>
+
+<!-- ============ DEMO ============ -->
+<section style="margin-top:28px">
+  <div class="stage" id="stage">
+    <div class="trees"></div>
+    <div class="ui">
+      <div class="glass win">
+        <div>
+          <div class="title"><h3>Copper Chest</h3><span class="cap" id="cap">0 / 27</span></div>
+          <div class="slots" id="chest"></div>
+          <div class="title"><h3 style="font-size:18px;color:#c6d0dd">Inventory</h3></div>
+          <div class="slots" id="inv"></div>
+          <div class="slots hot" id="hotbar"></div>
+        </div>
+        <div class="rail">
+          <button id="b-sort">Sort <kbd>S</kbd></button>
+          <button id="b-quick">Quick stack <kbd>Q</kbd></button>
+          <button id="b-deposit">Deposit all <kbd>D</kbd></button>
+          <button id="b-loot">Loot all <kbd>L</kbd></button>
+        </div>
+      </div>
+      <div class="glass browser">
+        <div class="search"><span style="color:#8a97ad">⌕</span><input id="search" placeholder="Search items, @mod, #tag" aria-label="Search items"><kbd>Ctrl F</kbd></div>
+        <div class="chips" id="chips"></div>
+        <div class="cards" id="cards"></div>
+        <div class="recipe" id="recipe"></div>
+        <div class="bfoot"><span id="count"></span><span>Hover <kbd style="font-family:'JetBrains Mono';font-size:10px;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:0 4px">R</kbd> recipes · Shift details</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-help">A working sketch of the model with a new skin. Left click picks up or places, right click splits or places one, <kbd>Shift</kbd>+click quick-moves and animates the item across, <kbd>1</kbd>–<kbd>9</kbd> swaps with the hotbar. The rail exposes shift-click behaviours as buttons so gamepad and touch get parity. Hold <kbd>Shift</kbd> over an item for the expanded tooltip, press <kbd>R</kbd> for its recipe. Clicking a browser card gives a stack. Tab through slots to see the gamepad focus ring.</div>
+  <div id="ghost"><canvas width="16" height="16"></canvas><span class="cnt"></span></div>
+  <div id="tip"></div>
+</section>
+
+<!-- ============ 01 KEEP / DROP ============ -->
+<section>
+  <div class="sec-head"><span class="num">01</span><h2>What we keep, what we drop</h2></div>
+  <p class="sec-intro">Minecraft's UI is two things fused together: a very good interaction and extension model, and a 2011 pixel-art skin the model happens to wear. Hytale is the existence proof that they separate. Mojang's own Ore UI is the second proof, and it has not reached the container screens yet.</p>
+  <div class="keep-drop">
+    <div class="card kd">
+      <h3><span class="dot" style="background:var(--good)"></span>Keep as DNA</h3>
+      <ul>
+        <li><strong>The slot mental model.</strong> Carried stack, left/right/shift semantics, drag painting, number-key swaps, double-click collect. Seven click modes, implemented once.</li>
+        <li><strong>Menu / Screen split.</strong> Server-side slot logic with client prediction and a state-id resync. Screens only draw and translate input.</li>
+        <li><strong>Container slots first, then player slots.</strong> One index space, one routing table for quick-move.</li>
+        <li><strong>Item stack = id + count + component patch.</strong> Mergeable iff same id and same patch; stack size is data.</li>
+        <li><strong>Theming as data.</strong> The 9-slice-as-sidecar idea generalises to a token file: roles like panel, slot, slot-hover, tooltip-frame map to materials a pack can swap.</li>
+        <li><strong>Resource packs and datapacks.</strong> Layered asset overrides, namespaced ids, JSON recipes and tags, composable patch lists from Bedrock's JSON-UI.</li>
+        <li><strong>The modding surface.</strong> Screen injection, exclusion zones, tooltip components, HUD layers, custom widgets. Section 05.</li>
+        <li><strong>The item browser lineage.</strong> R/U lookup, prefix search, bookmarks, transfer with dry-run, recipe categories. Section 08.</li>
+      </ul>
+    </div>
+    <div class="card kd">
+      <h3><span class="dot" style="background:var(--bad)"></span>Drop as skin</h3>
+      <ul>
+        <li><strong>The 320×240 virtual canvas and integer GUI scale.</strong> Keep a UI scale knob, but layout is flex and grid in real pixels, responsive to window height like AE2's tall terminal.</li>
+        <li><strong>18 px slot pitch, 176×166 panels.</strong> Slots become a token, 40 or 48 px, gap 4. Panels size to content.</li>
+        <li><strong>Bevels.</strong> Depth comes from soft shadows at three elevation levels and a 1 px inner top highlight, not from two-tone borders.</li>
+        <li><strong>Bitmap 8 px font.</strong> A grotesque for body and a condensed face for counts and headings, tabular numerals, variable weights.</li>
+        <li><strong>16 px sprites.</strong> 3D-rendered icons with a fixed rim-lit rig, baked once to an atlas. Diablo IV documented exactly this move for legibility.</li>
+        <li><strong>Purple gradient tooltip box.</strong> A two-tier tooltip card: compact on hover, expanded on dwell or Shift, clamped to the viewport.</li>
+        <li><strong>Fixed hardcoded slot coordinates.</strong> Slot positions come from layout, and both logic and rendering read the same slot definition.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="flat"><h3>Measurements become tokens</h3><dl class="spec"><dt>slot</dt><dd>40 or 48 px, gap 4, radius 8</dd><dt>spacing</dt><dd>4 / 8 grid</dd><dt>radii</dt><dd>4 · 8 · 12 · 16</dd><dt>elevation</dt><dd>panel · popover · drag ghost</dd><dt>blur</dt><dd>one token, panel level only</dd><dt>durations</dt><dd>slot 120–200 ms · panel 200–280 ms</dd></dl></div>
+    <div class="flat"><h3>Hytale, the proof</h3><p>Early access since January 2026. Minecraft interaction model, modern skin, crafting folded into the inventory screen, cursor highlight that follows across every grid (Update 5), redesigned tooltip cards (Chapter 1 preview). Its GUI system is data-driven and skinnable, as the HyUI mod shows.</p></div>
+    <div class="flat"><h3>Ore UI, the gap</h3><p>Bedrock's React-based UI defines Mojang's new language: rounded, flat, translucent dark panels, green hero buttons, controller hints. Menus and settings have migrated. Container and inventory screens have not. The Modern UI mod for Java, with 8.5M downloads, shows the audience wants blur, rounded tooltips and smooth fonts.</p></div>
+  </div>
+</section>
+
+<!-- ============ 02 DIRECTIONS ============ -->
+<section>
+  <div class="sec-head"><span class="num">02</span><h2>Three directions to pitch</h2></div>
+  <p class="sec-intro">Glass, paper and neon each demand different icon lighting and different motion. They should not be mixed. The slot rows below are live CSS, using the same procedural icons as the demo.</p>
+  <div class="grid g3">
+    <div class="card">
+      <div class="eyebrow">direction a</div><h3>Obsidian Glass</h3>
+      <div class="sw"><i style="background:#0b0e14"></i><i style="background:#141a24"></i><i style="background:#2a3446"></i><i style="background:#7fd1ff"></i><i style="background:#ffb454"></i><i style="background:#e6edf3"></i></div>
+      <p class="small"><strong>Type</strong> Manrope body, Barlow Condensed counts and titles.<br><strong>Materials</strong> Frosted dark glass outer panel, opaque matte slots, 1 px inner top highlight, rarity as an inner ring plus a corner glyph.<br><strong>Motion</strong> Springy. Hover 1.04, drop squash, items fly to slot on quick-move, particle burst on quick stack.<br><strong>Browser</strong> Right-hand glass column, category chips, 3D icon cards, detail card slides in.</p>
+      <div class="mock m-glass"><div class="ms" data-item="minecraft:iron_ingot" data-c="12"></div><div class="ms rare" data-item="minecraft:diamond" data-c="7"></div><div class="ms" data-item="minecraft:oak_planks" data-c="40"></div><div class="ms" data-item="copper_chest:chest" data-c="2"></div><div class="ms"></div></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">direction b</div><h3>Field Manual</h3>
+      <div class="sw"><i style="background:#ede6d6"></i><i style="background:#1e1b18"></i><i style="background:#c9bfa8"></i><i style="background:#e0672b"></i><i style="background:#2b8c86"></i><i style="background:#f7f2e6"></i></div>
+      <p class="small"><strong>Type</strong> IBM Plex Sans, Plex Mono counts, small-caps labels.<br><strong>Materials</strong> Opaque paper with soft shadow, square slots on a dotted grid, ink rules, rarity as stamps and dashed outlines. Icons lit flat and top-down like a technical drawing.<br><strong>Motion</strong> Crisp and short, 120–160 ms, stamp-down on drop, page turn in the browser, no springs.<br><strong>Browser</strong> A Factoriopedia: merged item, block and recipe entries, Alt-click deep link, back and forward history, "used in".</p>
+      <div class="mock m-paper"><div class="ms" data-item="minecraft:iron_ingot" data-c="12"></div><div class="ms rare" data-item="minecraft:diamond" data-c="7"></div><div class="ms" data-item="minecraft:oak_planks" data-c="40"></div><div class="ms" data-item="copper_chest:chest" data-c="2"></div><div class="ms"></div></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">direction c</div><h3>Neon Workshop</h3>
+      <div class="sw"><i style="background:#1a1c22"></i><i style="background:#262a33"></i><i style="background:#c7f464"></i><i style="background:#ff5fa2"></i><i style="background:#38e8ff"></i><i style="background:#f5f7fa"></i></div>
+      <p class="small"><strong>Type</strong> Manrope body, Rajdhani display and counts.<br><strong>Materials</strong> Opaque charcoal, diagonal cut corners, rarity as a glowing bottom bar, hard rim light and drop shadow on icons. Deep Rock Galactic and Palworld energy.<br><strong>Motion</strong> Punchy, 90–140 ms, squash on drop, staggered grid reveal, shimmer shader on legendaries, a click per slot.<br><strong>Browser</strong> Full-height panel, big search bar, category icon strip, magenta focus ring for gamepad.</p>
+      <div class="mock m-neon"><div class="ms" data-item="minecraft:iron_ingot" data-c="12"></div><div class="ms rare" data-item="minecraft:diamond" data-c="7"></div><div class="ms" data-item="minecraft:oak_planks" data-c="40"></div><div class="ms" data-item="copper_chest:chest" data-c="2"></div><div class="ms"></div></div>
+    </div>
+  </div>
+
+  <h3 style="margin:26px 0 10px">Reference wall</h3>
+  <div class="refwall">
+    <div class="flat ref"><h3>Hytale</h3><div class="idiom">Muted dark, soft depth, 3D item art on rounded slots, crafting inside the inventory.</div><div class="juice">Cursor highlight across all grids, styled tooltip cards.</div></div>
+    <div class="flat ref"><h3>Ore UI</h3><div class="idiom">Rounded, flat, translucent dark, green hero buttons, white secondary, red destructive.</div><div class="juice">Controller hints everywhere; mostly static motion.</div></div>
+    <div class="flat ref"><h3>Destiny 2</h3><div class="idiom">Hairlines on dark translucency, rarity as a solid tile behind a 3D icon, big hover detail card.</div><div class="juice">Gamepad cursor slows and the item bulges: "stickiness".</div></div>
+    <div class="flat ref"><h3>Diablo IV</h3><div class="idiom">Icons rebuilt from 3D models for small-size legibility, desaturated slot backgrounds.</div><div class="juice">Rarity encoded in border decoration too, for accessibility.</div></div>
+    <div class="flat ref"><h3>Factorio 2.0</h3><div class="idiom">Flat, dense, technical. Factoriopedia merges item, recipe and entity into one entry.</div><div class="juice">Alt-click any object to open its page; history; "used in".</div></div>
+    <div class="flat ref"><h3>Terraria 1.4.4</h3><div class="idiom">Pixel skin, but the chest toolbar to copy: Loot All, Deposit All, Quick Stack, Sort, Favorite.</div><div class="juice">Quick-stacked items visibly fly to the chests they land in.</div></div>
+    <div class="flat ref"><h3>Satisfactory</h3><div class="idiom">Industrial orange on dark, sharp corners. "Relevant items" strip for the machine you face.</div><div class="juice">Toggleable slot size; tooltip delay complaints, so keep it near 150 ms.</div></div>
+    <div class="flat ref"><h3>Deep Rock Galactic</h3><div class="idiom">Chunky, saturated orange and cyan, diagonal cuts, readable at TV distance.</div><div class="juice">A "bigger UI" pass drew PC pushback: ship a UI scale option.</div></div>
+    <div class="flat ref"><h3>Hades II</h3><div class="idiom">Painted, gold hairlines, god-coloured gradient cards.</div><div class="juice">Staggered slide-in, hover 1.05 with bright rim, chime on select.</div></div>
+    <div class="flat ref"><h3>No Man's Sky</h3><div class="idiom">Flat high-chroma rounded slots with soft inner glow, hold-to-confirm radials.</div><div class="juice">Pop on pickup. A scaling bug shows motion must run in UI units.</div></div>
+    <div class="flat ref"><h3>Cobblemon</h3><div class="idiom">The modern counterexample inside Minecraft: PC boxes with tabs and wallpapers, stat hexagons.</div><div class="juice">Battle UI health bars slide in; draggable, resizable log.</div></div>
+    <div class="flat ref"><h3>Tarkov · RE4</h3><div class="idiom">Tetris grids. Not our model, but the drag ghost with a green or red footprint is worth borrowing.</div><div class="juice">Items snap and click into place; case opens as a physical object.</div></div>
+  </div>
+</section>
+
+<!-- ============ 03 VOCABULARY ============ -->
+<section>
+  <div class="sec-head"><span class="num">03</span><h2>Vocabulary and motion</h2></div>
+  <div class="grid g3">
+    <div class="card"><h3>Glass over a world</h3><p>Blur alone fails on a busy scene. Tint the panel 10–30%, keep one shared border token, keep slots opaque, and measure text contrast against the tinted panel, not the raw scene. Blur is a panel-level effect: render the scene, downsample to a quarter, run a dual Kawase pass, sample it in a <code>UiMaterial</code>. Never blur per node.</p></div>
+    <div class="card"><h3>Rarity, twice</h3><p>WoW, Diablo and Destiny converge on grey, white, green, blue, purple, gold. Colour alone fails colour-blind players, so encode rarity a second way: an inner ring plus a corner glyph, a stamp, or a bottom bar. Make the colours user-configurable.</p></div>
+    <div class="card"><h3>Two-tier tooltips</h3><p>Compact card at 120–150 ms hover: name, rarity, count, mod badge. Expanded on dwell or Shift: stats, tags, id, "used in". Alt-click opens the encyclopedia page. Clamp to the viewport, Stardew's known flaw.</p></div>
+    <div class="card">
+      <h3>Motion budget</h3>
+      <div class="motion">
+        <span class="mono small">hover</span><div class="bar" style="width:40%"></div><span class="small">120 ms · scale 1.04</span>
+        <span class="mono small">press</span><div class="bar" style="width:30%"></div><span class="small">90 ms · scale 0.96</span>
+        <span class="mono small">drop</span><div class="bar" style="width:60%"></div><span class="small">180 ms · squash then spring</span>
+        <span class="mono small">fly-to-slot</span><div class="bar" style="width:80%"></div><span class="small">200–260 ms · emphasized ease</span>
+        <span class="mono small">panel</span><div class="bar" style="width:90%"></div><span class="small">200–280 ms · cubic-bezier(.2,0,0,1)</span>
+        <span class="mono small">stagger</span><div class="bar" style="width:12%"></div><span class="small">20–30 ms per row</span>
+      </div>
+      <p class="small" style="margin-top:10px">Reduced motion: durations to 0–80 ms, no fly-to-slot.</p>
+    </div>
+    <div class="card"><h3>Gamepad changes the slot</h3><p>Snap-focus grids need a nav graph between panels and a focus ring drawn outside the slot so rarity borders stay visible. Slots need focused, focused-and-held for split, and selected-for-move states. Expose Sort, Quick Stack, Deposit and Loot as buttons with glyph hints. A Destiny-style magnetic cursor suits the browser better than the grid. Tap targets 40 px and up for Steam Deck touch.</p></div>
+    <div class="card"><h3>Icons and type</h3><p>3D-rendered icons with a fixed three-point rig and a cool rim from behind, baked once at 64–128 px to an atlas and cached to disk. Flat items become extruded quads for the same treatment. Body in a grotesque, counts and headers in a condensed face with tabular numerals. Keep a flat monochrome icon set for chrome.</p></div>
+  </div>
+</section>
+
+<!-- ============ 04 WHAT MODS BUILD ============ -->
+<section>
+  <div class="sec-head"><span class="num">04</span><h2>What Minecraft mods actually build</h2></div>
+  <p class="sec-intro">The creativity we need to preserve is concrete. Most of it is bolted onto a container screen; the rest is books, canvases, HUD layers and things drawn into the world. Every example below implies a primitive.</p>
+  <div class="grid g4">
+    <div class="card"><div class="eyebrow">machines & storage</div><h3>Thermal · Mekanism · GregTech</h3><ul><li>Side tabs that slide out and host child widgets: augments, redstone mode, side config</li><li>Fluid and gas tanks with tiled tinted textures and unit tooltips</li><li>Energy bars, dial gauges, several parallel progress bars</li><li>Face-config 3×3 widget, 16-colour swatch picker</li><li>Ghost and filter slots, numeric thresholds</li></ul></div>
+    <div class="card"><div class="eyebrow">storage terminals</div><h3>AE2 · Refined Storage</h3><ul><li>Virtualised grid over thousands of stacks, rows computed from window height (small / tall / full)</li><li>Search with hotkey focus and the JEI prefix grammar, synced with the browser</li><li>Grouped rows with headers, ghost slots for pattern encoding</li><li>Sophisticated Backpacks: nested tabs that publish their rectangles so overlays move aside</li></ul></div>
+    <div class="card"><div class="eyebrow">knowledge</div><h3>Patchouli · GuideME · Ponder</h3><ul><li>JSON books: categories, entries, page types (text, image, crafting, multiblock, entity, spotlight), templates, macros, unlock conditions</li><li>GuideME: Markdown pages with embedded 3D scenes and inline recipes</li><li>Ponder: scripted mini-world tutorials inside a screen</li><li>Tinkers: 3D tool preview, stat deltas in tooltips</li></ul></div>
+    <div class="card"><div class="eyebrow">quests & canvases</div><h3>FTB Quests · Modonomicon · Psi</h3><ul><li>Infinite pan-zoom canvas, draggable nodes, dependency connectors, context menus</li><li>Node-view books, advancement trees</li><li>Psi: visual programming on a 9×9 grid with typed ports</li><li>Hex Casting: freehand strokes on a hex lattice over a translucent full-screen overlay</li></ul></div>
+    <div class="card"><div class="eyebrow">hud</div><h3>AppleSkin · Jade · Xaero</h3><ul><li>Draw at the exact anchor of a built-in HUD element, layered above it</li><li>Named HUD layer stack: insert above, below or replace (NeoForge GuiLayers)</li><li>Plugin-extensible info panels with element providers</li><li>Render-to-texture minimap, world-to-screen labels, waypoint beams, drag-to-position editors</li></ul></div>
+    <div class="card"><div class="eyebrow">equipment</div><h3>Curios · Trinkets</h3><ul><li>Extra slot groups injected into the player inventory screen and its menu</li><li>Expanding side panel per group, render toggles per slot</li><li>Must move alongside the recipe book: layout-aware anchors</li></ul></div>
+    <div class="card"><div class="eyebrow">config & menus</div><h3>YACL · FancyMenu · Cobblemon</h3><ul><li>Generated option screens: categories, groups, typed widgets, description pane with images</li><li>FancyMenu: data-driven rebuild of vanilla screens, enumerating and moving existing widgets</li><li>Cobblemon PC: tabs, wallpapers, sort dropdowns, stat hexagons</li></ul></div>
+    <div class="card"><div class="eyebrow">in-world</div><h3>Create · ComputerCraft · Litematica</h3><ul><li>Text on blocks, glyph-buffer terminals on monitor blocks</li><li>Placement ghosts, wireframes, translucent structure previews</li><li>Health bars above entities, goggles overlay next to the crosshair</li><li>All of it is the same widget tree drawn on billboards or block faces</li></ul></div>
+  </div>
+
+  <div class="tbl" style="margin-top:14px"><table>
+    <thead><tr><th>Primitive</th><th>Example mods</th><th>Bevy note</th></tr></thead>
+    <tbody>
+      <tr><td>Slot variants: real, ghost, filter, output, locked, disabled</td><td>AE2 pattern terminal, GTCEu filters, Sophisticated memory slots</td><td>Slot entity with a behaviour enum; ghost accepts a drop without transfer</td></tr>
+      <tr><td>Slot grid, arbitrary size, scroll-clipped</td><td>Iron Chests, Expanded Storage 108-slot</td><td>Grid layout plus <code>Overflow::scroll</code>, index remap on scroll</td></tr>
+      <tr><td>Virtualised grid over a data source</td><td>AE2, Refined Storage, Tom's Storage, Chisel</td><td>Render visible rows only; data-source trait; scrollbar widget</td></tr>
+      <tr><td>Tank, energy bar, dial, masked progress</td><td>Mekanism, Thermal, PneumatiCraft</td><td><code>UiMaterial</code> with fill fraction, direction, tiled tint</td></tr>
+      <tr><td>Sliding side tab hosting children</td><td>Thermal, Mekanism, Sophisticated</td><td>Animated size via tween; publishes an exclusion rect</td></tr>
+      <tr><td>Toggle / cycling icon button</td><td>Redstone mode, sort mode, AE2 view buttons</td><td>State enum to sprite map; shift-click cycles backward</td></tr>
+      <tr><td>Rich text with inline icons, links, hold-key expansion</td><td>Patchouli macros, Create tooltips</td><td>Pickable text sections (0.18) plus inline image spans</td></tr>
+      <tr><td>Tooltip component registry</td><td>Bundle, Shulker preview, AppleSkin, Legendary Tooltips</td><td>Trait with measure and build; frame decoration hooks</td></tr>
+      <tr><td>Data-driven book, page-type registry</td><td>Patchouli, Modonomicon, GuideME</td><td>RON or Markdown loader; unlock conditions; bookmarks</td></tr>
+      <tr><td>Pan-zoom canvas with draggable nodes and connectors</td><td>FTB Quests, node-view books, advancements, Psi</td><td>Camera-transform node; canvas-space hit test; line renderer</td></tr>
+      <tr><td>3D viewport widget</td><td>Patchouli, Tinkers, Ponder, GuideME, Cobblemon</td><td><code>ViewportNode</code> with camera controls and layer slicing</td></tr>
+      <tr><td>Anchored HUD element, named layer stack, position editor</td><td>AppleSkin, Xaero, Jade, Inventory HUD+</td><td>Nine anchors plus offset; ordered registry with built-in layer ids</td></tr>
+      <tr><td>Screen injection: init, tick, before/after render, mouse, keyboard, widget list</td><td>Fabric ScreenEvents, Forge ScreenEvent, JEI, Curios, IPN</td><td>Per-screen-type entity events; screen root exposes anchors</td></tr>
+      <tr><td>Exclusion zone publication</td><td>JEI, REI, EMI, Sophisticated tabs</td><td>Component on any node; overlays query the union</td></tr>
+      <tr><td>Glyph-buffer terminal, also drawable in world</td><td>ComputerCraft, OpenComputers</td><td>Char grid widget; render to texture for block faces</td></tr>
+      <tr><td>In-world UI root</td><td>Create displays, Litematica, ToroHealth, Xaero beams</td><td>Same widget tree on billboards; depends on Bevy's unified-UI work (#22345)</td></tr>
+      <tr><td>Declarative layouts with hot reload, theme files</td><td>owo-ui XML, LibGui JSON themes, FancyMenu</td><td>RON assets now, <code>.bsn</code> when its loader ships</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 05 EXTENSION POINTS ============ -->
+<section>
+  <div class="sec-head"><span class="num">05</span><h2>Extension points the plugin set must expose</h2></div>
+  <p class="sec-intro">Screen injection is the single most important one. Mods add buttons, slots and overlays to screens they do not own. Everything else is a registry.</p>
+  <div class="grid g3">
+    <div class="card"><h3>Screen lifecycle events</h3><p>Fabric fires <code>BEFORE_INIT</code> and <code>AFTER_INIT</code> per screen instance and lets you subscribe to before and after render, tick, remove, mouse and keyboard with allow-cancel semantics; <code>Screens.getButtons</code> is a mutable widget list. Forge adds <code>Init.Post</code> with <code>addListener</code> and <code>ContainerScreenEvent.Render</code> with the panel origin.</p><p class="small">Bevy: <code>ScreenOpened&lt;T&gt;</code>, <code>ScreenLayout</code>, <code>ScreenClosed</code> as entity events on the screen root, with named anchor children a mod can parent into.</p></div>
+    <div class="card"><h3>Exclusion zones</h3><p>Sophisticated Backpacks registers its tabs "as UI elements so recipe viewers can reposition their overlays". JEI draws a debug shadow over them. This is a first-class query, not a plugin courtesy.</p><p class="small">Bevy: an <code>ExclusionZone</code> marker on any node; the browser and HUD union them per frame.</p></div>
+    <div class="card"><h3>Custom widget trait</h3><p>owo-ui's <code>Component</code> and LibGui's <code>WWidget</code> show the shape: measure, layout, draw, input, tooltip. owo-ui also has flow, grid and stack layouts with fixed, content, fill and expand sizing, insets, <code>.animate()</code> on any property, and XML models with hot reload.</p><p class="small">Bevy: entities with <code>Node</code> already give layout for free. The trait is about behaviour and theming hooks, not drawing.</p></div>
+    <div class="card"><h3>Tooltip components</h3><p><code>ClientTooltipComponent</code> lets a tooltip contain arbitrary drawn content: bundle grids, shulker previews, map previews, food icons, rarity frames. Tooltips can be multi-column and positioned away from the cursor.</p><p class="small">Bevy: tooltip is a scene built from a list of components each with a builder; frame decorators wrap the result.</p></div>
+    <div class="card"><h3>HUD layers</h3><p>NeoForge's <code>RegisterGuiLayersEvent</code> names every vanilla layer and lets mods insert above, below or replace by id. Fabric's <code>HudLayerRegistrationCallback</code> does the same. Position editors (Jade, MiniHUD) write anchors to config.</p><p class="small">Bevy: an ordered layer registry with built-in ids; each layer is a UI root with an anchor component.</p></div>
+    <div class="card"><h3>Slot injection</h3><p>Curios and Trinkets add slot groups to the player inventory menu and screen, and break when another mod replaces that screen. The menu extension and the screen anchor have to be one registration.</p><p class="small">Bevy: a <code>SlotGroupProvider</code> registry consumed by both the menu builder and the screen template.</p></div>
+  </div>
+</section>
+
+<!-- ============ 06 INTERACTION ============ -->
+<section>
+  <div class="sec-head"><span class="num">06</span><h2>The interaction model, unchanged</h2></div>
+  <p class="sec-intro">Vanilla, valence and azalea implement the same seven-mode state machine over a slot list. This is the contract the model crate implements once, generically; individual menus only supply slot rules and a quick-move routing table.</p>
+  <div class="grid g2">
+    <div class="tbl"><table>
+      <thead><tr><th>Input</th><th>Effect</th><th>Mode</th></tr></thead>
+      <tbody>
+        <tr><td>Left click</td><td>Pick up all, place all, swap if incompatible, merge if same</td><td><code>PICKUP</code></td></tr>
+        <tr><td>Right click</td><td>Pick up half (ceil) or place one</td><td><code>PICKUP</code> btn 1</td></tr>
+        <tr><td>Shift + click</td><td>Quick-move via routing table</td><td><code>QUICK_MOVE</code></td></tr>
+        <tr><td>1–9 / F</td><td>Swap with hotbar N or offhand</td><td><code>SWAP</code></td></tr>
+        <tr><td>Middle (creative)</td><td>Clone a full stack</td><td><code>CLONE</code></td></tr>
+        <tr><td>Q / Ctrl+Q</td><td>Drop one / drop all</td><td><code>THROW</code></td></tr>
+        <tr><td>Drag L / R / M</td><td>Distribute evenly / one each / full each</td><td><code>QUICK_CRAFT</code></td></tr>
+        <tr><td>Double click</td><td>Collect all matching into cursor</td><td><code>PICKUP_ALL</code></td></tr>
+      </tbody>
+    </table></div>
+    <div class="card"><h3>Plus the chest toolbar</h3><ul>
+      <li><strong>Sort</strong> must group by category then name; Enshrouded's gap-removing sort is the anti-pattern.</li>
+      <li><strong>Quick stack</strong> moves stacks into containers that already hold that item, animated (Terraria).</li>
+      <li><strong>Deposit all</strong> excludes hotbar, armour and offhand; <strong>Loot all</strong> is the inverse.</li>
+      <li><strong>Favorite lock</strong> via Alt-click: skipped by sort, trash and quick stack.</li>
+      <li>Mouse Tweaks behaviours (drag-paint, wheel move) are expected, not optional.</li>
+      <li>Stack size, mergeability and result-slot rules are data on the item and slot, as in vanilla's component model and valence's <code>validate_click_slot</code>.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ============ 07 ARCHITECTURE ============ -->
+<section>
+  <div class="sec-head"><span class="num">07</span><h2>Architecture precedents</h2></div>
+  <div class="grid g3">
+    <div class="card"><h3>Menu vs Screen</h3><p>Server-side menu owns slots, carried stack, click rules and quick-move. Client screen draws and translates input. Client predicts, sends <code>ClickContainer { state_id, slot, button, mode, changed_slots, carried }</code>, server diffs and resyncs on mismatch. Ghost items are what happens when this races with hopper ticks.</p></div>
+    <div class="card"><h3>valence_inventory</h3><pre><code>Inventory { kind, slots: Box&lt;[ItemStack]&gt;,
+            changed: u64 /* dirty bitmask */ }
+OpenInventory { entity, client_changed }
+ClickSlotEvent { slot_id, button,
+  mode: ClickMode, slot_changes, carried }</code></pre><p class="small">Validation is a pure function per mode with a conservation-of-items check. Best Rust reference.</p></div>
+    <div class="card"><h3>Bedrock JSON-UI bindings</h3><p>Grids bind to engine collections (<code>inventory_items</code>, <code>hotbar_items</code>), controls inherit via <code>child@namespace.parent</code>, packs compose through <code>modifications</code> lists, inputs are abstract actions. The data-binding and patch ideas survive into a modern skin untouched.</p></div>
+    <div class="card"><h3>Datapack shape</h3><pre><code>{ "id": "minecraft:diamond_sword",
+  "components": {
+    "minecraft:damage": 100,
+    "minecraft:enchantments":
+      { "minecraft:sharpness": 3 } } }</code></pre><p class="small">Recipes, tags and loot as JSON under namespaced paths. RON assets can mirror this one to one.</p></div>
+    <div class="card"><h3>Factorio lifecycle</h3><p>Data stage: all mods share one Lua state, run <code>data.lua</code> → updates → final-fixes in dependency order, then prototypes <strong>freeze</strong>. Control stage: per-mod VM, event bus, serialised storage. NeoForge does the same with registry events. Frozen registries are what make browser lookups pure and cacheable.</p></div>
+    <div class="card"><h3>Pain to design out</h3><ul><li>Slot coordinates duplicated between menu and screen</li><li>Quick-move boilerplate per menu</li><li>Two constructors per menu</li><li>16-bit container properties</li><li>Texture API churn breaking every GUI mod each release</li></ul></div>
+  </div>
+</section>
+
+<!-- ============ 08 BROWSER ============ -->
+<section>
+  <div class="sec-head"><span class="num">08</span><h2>The item browser</h2></div>
+  <p class="sec-intro">Fifteen years of convergent design from TooManyItems to EMI, plus Factorio's answer. The modern version is Factoriopedia-shaped: merged entries, deep links, history, "used in", rendered as cards with 3D icons rather than a wall of 16 px sprites.</p>
+  <div class="grid g3">
+    <div class="card"><h3>What survived every generation</h3><ul><li>Side panel with paging and a search box; <code>@mod</code>, <code>#tag</code>, <code>$tooltip</code> prefixes, <code>-</code> negation, quotes, OR</li><li>R for recipes, U for uses, A to bookmark, Backspace to go back</li><li>Recipe categories with catalysts, ingredient cycling, focus highlight</li><li>Transfer button with dry-run, red highlights on missing slots</li><li>Ghost drag from the list into filter slots; cheat mode gated by server permission</li></ul></div>
+    <div class="card"><h3>Plugin API lessons</h3><ul><li>Ordered registration phases: subtypes → ingredient types → categories → recipes → transfer → screen handlers → runtime</li><li>The unit is an <strong>ingredient</strong>, a typed comparable key, not an item stack. Fluids, energy and info pages flow through the same index</li><li>Screen handlers per screen kind: bounds, exclusions, clickable areas, stack under cursor, ghost drop</li><li>A runtime object (filter text, visible entries, bookmarks, key mappings) so AE2-style terminals can sync</li></ul></div>
+    <div class="card"><h3>Scale and juice</h3><ul><li>Tens of thousands of entries once variants expand: per-prefix indexes, suffix tree or trigrams for names, bitsets for mod and tag, results cached until filter or visibility changes, built off-thread</li><li>Render only the visible page; icons from the baked atlas</li><li>EMI's recipe tree with base-ingredient totals, craftable-only mode, recipe favorites, quick-craft binds</li><li>Card hover pop, detail pane slide-in, staggered reveal on page change</li></ul></div>
+  </div>
+</section>
+
+<!-- ============ 09 BEVY ============ -->
+<section>
+  <div class="sec-head"><span class="num">09</span><h2>What Bevy 0.19 gives us</h2></div>
+  <p class="sec-intro">Current release 0.19.1. The sibling crates here pin 0.17 and the jump is a real migration. The good news for a modern skin: the primitives are SDF and shader based, not texture based, so the look we want is cheaper here than a pixel-faithful one would be.</p>
+  <div class="grid g2">
+    <div class="card"><h3>Rendering the look</h3><ul>
+      <li><code>BorderRadius</code> and <code>BoxShadow</code> are SDF-based: rounded slots and three elevation levels with no atlases</li>
+      <li><code>BackgroundGradient</code>, <code>BorderGradient</code>, per-side <code>BorderColor</code>: rarity rings and hero buttons</li>
+      <li><code>UiMaterial</code>: one quad per slot with SDF border, glow falloff and an animated legendary shimmer; tanks and progress fills</li>
+      <li>Panel blur: scene → quarter-res dual Kawase → sampled in a <code>UiMaterial</code></li>
+      <li><code>ViewportNode</code>: live 3D preview for the hovered item, books and tool stations; bake the grid icons offline</li>
+      <li>Parley text with variable fonts, underline, <code>FontSmoothing</code>; <code>TextShadow</code>; pickable text sections</li>
+      <li>Known corner-bleed artifact with rounded children over differently coloured parents (#17561)</li>
+    </ul></div>
+    <div class="card"><h3>Interaction and structure</h3><ul>
+      <li><code>Pointer&lt;Press/Click/Drag*/DragDrop&gt;</code> bubbling entity events; <code>Hovered</code>, <code>Pressed</code>, <code>Checked</code>, <code>InteractionDisabled</code> state components</li>
+      <li>Headless <code>bevy_ui_widgets</code>: button, slider, checkbox, scrollbar, list box, menu, popover; <code>EditableText</code> for search fields</li>
+      <li><code>TabGroup</code>, <code>TabIndex</code>, <code>AutoDirectionalNavigation</code>: gamepad grid focus nearly free</li>
+      <li><code>ZIndex</code>, <code>GlobalZIndex</code>, <code>UiTargetCamera</code> for layering; UI ignores <code>RenderLayers</code></li>
+      <li><code>bsn!</code> templates with patches and inline observers; no <code>.bsn</code> file loader yet</li>
+      <li>bevy_tweening 0.16 for lenses over <code>Node</code>, <code>UiTransform</code>, colours; core <code>Val</code> and <code>Color</code> interpolation</li>
+      <li>Unified 2D/3D UI is an open design issue (#22345); in-world UI today means render-to-texture on quads</li>
+    </ul></div>
+  </div>
+  <div class="tbl" style="margin-top:14px"><table>
+    <thead><tr><th>Crate</th><th>Latest</th><th>Bevy</th><th>Status</th><th>Relevance</th></tr></thead>
+    <tbody>
+      <tr><td>bevy_flair</td><td>0.8 · Aug 2026</td><td>0.19</td><td><span class="chip alive">alive</span></td><td>CSS selectors, :hover, var(), transitions, hot reload. A real option for the theme layer.</td></tr>
+      <tr><td>bevy_lunex</td><td>0.7 · Aug 2026</td><td>0.19</td><td><span class="chip alive">alive</span></td><td>Only living alternative layout engine, worldspace UI. Lock-in risk.</td></tr>
+      <tr><td>pyri_tooltip · bevy_modal</td><td>Aug 2026</td><td>0.19</td><td><span class="chip alive">alive</span></td><td>Tooltip placement and delays; overlay stack with scrim.</td></tr>
+      <tr><td>bevy_tweening · bevy_easings</td><td>Jun 2026</td><td>0.19</td><td><span class="chip alive">alive</span></td><td>Motion budget implementation.</td></tr>
+      <tr><td>bevy_asset_loader · bevy_common_assets</td><td>Jun 2026</td><td>0.19</td><td><span class="chip alive">alive</span></td><td>RON items, recipes, themes; loading states.</td></tr>
+      <tr><td>bevy_replicon · lightyear</td><td>0.44 / 0.29</td><td>0.19</td><td><span class="chip alive">alive</span></td><td>Authoritative slots with optimistic client and state-id resync.</td></tr>
+      <tr><td>bevy_egui</td><td>0.42</td><td>0.19</td><td><span class="chip alive">alive</span></td><td>Debug only.</td></tr>
+      <tr><td>bevy_cobweb_ui</td><td>0.22 · Jan 2026</td><td>0.17</td><td><span class="chip dead">archived</span></td><td>COB format remains the best reference for hot-reloaded UI assets.</td></tr>
+      <tr><td>sickle, kayak, belly, quill, ninepatch</td><td>2023–24</td><td>≤0.14</td><td><span class="chip dead">dead</span></td><td>Absorbed into bevy_ui.</td></tr>
+      <tr><td>bevy_inventory</td><td>0.1 · May 2026</td><td>0.18</td><td><span class="chip lag">tiny</span></td><td>Name taken. <code>bevy_item</code>, <code>bevy_slot</code>, <code>bevy_hotbar</code>, <code>bevy_crafting</code> free.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 10 SCRIPTING ============ -->
+<section>
+  <div class="sec-head"><span class="num">10</span><h2>Scripting shape</h2></div>
+  <p class="sec-intro">Four shapes exist in long-lived moddable games. Data plus named hooks fits an ECS best, with an imperative escape hatch for dynamic content. Screen injection from section 05 has to be reachable from scripts, or modders will lose the freedom the catalogue documents.</p>
+  <div class="grid g4">
+    <div class="card"><h3>String DSL</h3><div class="eyebrow">Luanti formspec</div><pre><code>list[current_player;
+     main;0,4.85;8,1;]
+listring[]</code></pre><p class="small">Easy to transmit, no retained state. Luanti is replacing it with a retained styled tree. <code>listring</code> is worth keeping.</p></div>
+    <div class="card"><h3>Imperative tree</h3><div class="eyebrow">Factorio LuaGuiElement</div><pre><code>gui.relative.add{
+  type="frame",
+  anchor={gui=defines
+    .relative_gui_type
+    .container_gui,
+    position="right"},
+  tags={id="sorter"}}</code></pre><p class="small">Relative GUIs anchored to vanilla screens are Factorio's screen injection. Copy <code>tags</code> and <code>anchor</code>.</p></div>
+    <div class="card"><h3>Data + hooks</h3><div class="eyebrow">WoW · Starbound · Balatro</div><pre><code>{ n = G.UIT.R,
+  config = { align="cm" },
+  nodes = { … } }</code></pre><p class="small">Layout as data with <code>inherits</code>, behaviour as named callbacks. WoW's taint model is a 20-year-old permission system for scripted UIs.</p></div>
+    <div class="card"><h3>Data only</h3><div class="eyebrow">JSON-UI · datapacks · Patchouli</div><p>No sandbox concern, no language to learn, composable by patch lists. The floor of the pyramid: every data-only mod, including whole books and themes, should need no script.</p></div>
+  </div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="tbl"><table>
+      <thead><tr><th>Runtime</th><th>Sandbox</th><th>Perf</th><th>Familiar</th></tr></thead>
+      <tbody>
+        <tr><td>Luau via mlua</td><td>strong, built for UGC</td><td>very good, opt. JIT</td><td>Roblox: very high</td></tr>
+        <tr><td>Lua 5.4 via mlua</td><td>weak (hooks, memory cap)</td><td>good</td><td>WoW, Factorio, Luanti</td></tr>
+        <tr><td>piccolo</td><td>strongest by design</td><td>medium</td><td>experimental 0.3</td></tr>
+        <tr><td>Rhai · Rune</td><td>strong · medium</td><td>low · medium</td><td>low</td></tr>
+        <tr><td>WASM component model</td><td>highest</td><td>high, copy interop</td><td>toolchain heavy</td></tr>
+      </tbody>
+    </table></div>
+    <div class="card"><h3>Embedding</h3><p><strong>bevy_mod_scripting 0.20</strong>: reflection-driven bindings, scripts as hot-reloaded assets, callback labels, per-script contexts, dynamic components. Tracks Bevy 0.18, no wasm. <strong>bevy_scriptum 0.11</strong> is the smaller model where exposed functions are Bevy systems.</p><p class="small">Recommendation from the research: Luau behind a curated, versioned API namespace; data stage → freeze → control stage; scripts declare screens as data and answer events with commands, never direct mutation; a chained <code>AssetReader</code> for resource packs; Fluent for strings.</p></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>A modded screen as a Lua table, sketch</h3>
+    <div class="grid g2">
+<pre><code>-- mods/sorter/data.lua  (data stage)
+slotted.register_widget("sorter:button", {
+  inherits = "slotted:icon_button",
+  icon = "sorter:icons/sort.png",
+  tooltip = { key = "sorter.tooltip" },
+})
+-- inject into every container screen we don't own
+slotted.inject("slotted:container_screen", {
+  anchor = "title_end",            -- named anchor
+  children = {{ type = "sorter:button", tags = {act="sort"} }},
+  exclusion = true,                -- publish our rect
+})</code></pre>
+<pre><code>-- mods/sorter/control.lua  (control stage)
+slotted.on("widget_activate", function(ev)
+  if ev.tags.act == "sort" then
+    -- command, validated by the authority
+    return slotted.cmd.sort(ev.screen.inventory("block"),
+                         { by = {"category","name"} })
+  end
+end)
+
+slotted.on("tooltip_build", function(ev)
+  if ev.item.tags["c:foods"] then
+    ev.add({ type="appleskin:food_row", item=ev.item })
+  end
+end)</code></pre>
+    </div>
+    <p class="small" style="margin-top:10px">Named anchors and <code>exclusion</code> come from section 05; <code>inherits</code> from WoW; <code>tags</code> from Factorio; the tooltip component hook from Fabric's <code>TooltipComponentCallback</code>. The same trees are expressible as RON for script-free mods.</p>
+  </div>
+</section>
+
+<!-- ============ 11 SHAPE ============ -->
+<section>
+  <div class="sec-head"><span class="num">11</span><h2>A shape that is starting to show</h2></div>
+  <p class="sec-intro">Not a plan. The outline the research keeps pointing toward, revised for the modern direction.</p>
+  <div class="grid g4">
+    <div class="card"><div class="eyebrow">model</div><h3>Slots and stacks</h3><p>UI-free, network-agnostic. Stack as id + count + patch, inventories as slot lists with a dirty bitmask, seven click modes plus sort, quick stack, deposit and loot, quick-move routing, slot behaviour enum (real, ghost, filter, output, locked), state-id resync.</p></div>
+    <div class="card"><div class="eyebrow">ui</div><h3>Widgets, theme, motion</h3><p>On bevy_ui 0.19. Slot grid and virtual grid, item renderer with baked 3D icons, tank and bar materials, side tabs, tooltip composer, carried-stack layer, HUD layer stack, 3D viewport widget, pan-zoom canvas. A token-based theme (roles → materials) loaded from RON, with the three directions as shipped themes. One motion system with a reduced-motion switch.</p></div>
+    <div class="card"><div class="eyebrow">browser</div><h3>Factoriopedia layer</h3><p>Depends only on the ui crate's screen handler API. Ingredient registry, recipe categories with layout builders, ordered phases, exclusion zones, dry-run transfer, prefix search over bitsets and a substring index off-thread, typed bookmarks, recipe tree.</p></div>
+    <div class="card"><div class="eyebrow">script</div><h3>Mods</h3><p>Luau through a curated API. <code>mod.toml</code>, namespaced ids interned at freeze, data → freeze → control, screens and injections as data trees with named anchors, events out and commands in, tooltip and HUD hooks, chained asset reader for packs, Fluent.</p></div>
+  </div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h3>Open questions</h3><ul class="plain">
+      <li><span class="q">?</span>Which direction do we commit to first? Glass is the most expected; paper is the most distinctive; neon is the most fun. The theme system must make the other two cheap later.</li>
+      <li><span class="q">?</span>Blur behind panels needs a scene-side pass. Is it a feature of the ui crate or an optional companion, since not every game wants to pay for it?</li>
+      <li><span class="q">?</span>Where does the screen-injection API live: on the screen root entity as events plus anchors, or as a registry consulted at template spawn? Both, probably, but which is primary?</li>
+      <li><span class="q">?</span>Do we bake 3D icons at startup, at asset-processing time, or ship a bake tool? Cache invalidation on model or texture change matters for modders.</li>
+      <li><span class="q">?</span>bevy_flair CSS versus our own RON token theme. Flair gives selectors and transitions now; our own format gives control and BSN alignment later.</li>
+      <li><span class="q">?</span>Is a pan-zoom canvas and a Markdown book engine in scope for v1, or are they the first "mod-like" crates built on the extension API to prove it?</li>
+      <li><span class="q">?</span>In-world UI: wait for Bevy's unified UI, or ship render-to-texture-on-a-quad now for terminals and displays?</li>
+    </ul></div>
+    <div>
+      <div class="callout" style="margin-bottom:14px"><p><strong>Where the six research passes agree.</strong> Keep the interaction model and the extension model, drop the skin. Slot layout lives in one place for logic and rendering. Theme is data with role tokens. The browser's unit is an ingredient. Registries freeze before play. Screens publish their rectangles and anchors so anything can be injected. Scripts declare and react, never mutate. Motion has a budget and an off switch.</p></div>
+      <div class="card"><h3>Go look at next</h3><ul class="plain">
+        <li><a href="https://hytale-docs.pages.dev/gui/">Hytale GUI docs</a> and the HyUI mod, for a shipping modern-Minecraft UI system</li>
+        <li><a href="https://docs.wispforest.io/owo/ui/index">owo-ui</a> layouts, surfaces, sizing and XML models, for the widget and layout API shape</li>
+        <li><a href="https://maven.fabricmc.net/docs/fabric-api-0.97.9+1.21/net/fabricmc/fabric/api/client/screen/v1/ScreenEvents.html">Fabric ScreenEvents</a>, for the injection contract</li>
+        <li><a href="https://github.com/valence-rs/valence/tree/main/crates/valence_inventory">valence_inventory</a> validate.rs, for the click state machine</li>
+        <li><a href="https://www.factorio.com/blog/post/fff-397">FFF-397 Factoriopedia</a> and <a href="https://github.com/emilyploszaj/emi">EMI</a>, for the browser</li>
+        <li><a href="https://blog.frost.kiwi/dual-kawase/">Dual Kawase blur</a> and Bevy's <a href="https://bevy.org/examples/ui-user-interface/ui-material/">UiMaterial</a>, <a href="https://bevy.org/examples/ui-user-interface/viewport-node/">ViewportNode</a> examples</li>
+        <li><a href="https://gdcvault.com/play/1023460/Tenacious-Design-and-The-Interface">Destiny GDC talk</a> and <a href="https://news.blizzard.com/en-us/article/23308274/diablo-iv-quarterly-updatefebruary-2020">Diablo IV icon rework</a>, for icons and gamepad</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12 READING ============ -->
+<section>
+  <div class="sec-head"><span class="num">12</span><h2>Reading list</h2></div>
+  <ul class="refs plain">
+    <li><a href="https://hytale.com/news/2018/12/a-sneak-peek-at-hytale-s-user-interface">Hytale UI sneak peek</a> · <a href="https://hytale.com/news/2026/5/update-5-patch-notes">Update 5 notes</a></li>
+    <li><a href="https://minecraft.wiki/w/Ore_UI">Ore UI</a> · <a href="https://github.com/BloCamLimb/ModernUI-MC">Modern UI mod</a></li>
+    <li><a href="https://minecraft.wiki/w/Java_Edition_protocol/Inventory">Protocol: Inventory</a> · <a href="https://minecraft.wiki/w/Client-server_desync">Client-server desync</a> · <a href="https://minecraft.wiki/w/Data_component_format">Data components</a></li>
+    <li><a href="https://docs.neoforged.net/docs/1.21.1/gui/menus/">NeoForge Menus</a> · <a href="https://wiki.fabricmc.net/tutorial:screenhandler">Fabric ScreenHandler</a></li>
+    <li><a href="https://wiki.bedrock.dev/json-ui/json-ui-documentation">Bedrock JSON-UI</a></li>
+    <li><a href="https://github.com/mezz/JustEnoughItems">JEI</a> · <a href="https://github.com/shedaniel/RoughlyEnoughItems">REI</a> · <a href="https://github.com/emilyploszaj/emi">EMI</a> · <a href="https://overminddl1.com/minecraft/sites/ChickenBonesMods.html">NEI original page</a></li>
+    <li><a href="https://github.com/YaLTeR/MouseTweaks">Mouse Tweaks</a> · <a href="https://inventory-tweaks.readthedocs.io">Inventory Tweaks</a> · <a href="https://terraria.wiki.gg/wiki/1.4.4">Terraria 1.4.4</a></li>
+    <li><a href="https://docs.wispforest.io/owo/ui/index">owo-ui</a> · <a href="https://github.com/CottonMC/LibGui">LibGui</a> · <a href="https://vazkiimods.github.io/Patchouli/docs/patchouli-basics/page-types/">Patchouli</a> · <a href="https://guideme.appliedenergistics.org/">GuideME</a></li>
+    <li><a href="https://guide.appliedenergistics.org/1.20.1/items-blocks-machines/terminals">AE2 terminals</a> · <a href="https://docs.feed-the-beast.com/mod-docs/mods/suite/Quests/Player/Questbook/Navigating/">FTB Quests</a> · <a href="https://jademc.readthedocs.io/">Jade</a> · <a href="https://modrinth.com/mod/trinkets">Trinkets</a></li>
+    <li><a href="https://maven.fabricmc.net/docs/fabric-api-0.95.3+1.20.5/net/fabricmc/fabric/api/client/rendering/v1/TooltipComponentCallback.html">TooltipComponentCallback</a> · <a href="https://github.com/MinecraftForge/MinecraftForge/blob/1.19.x/src/main/java/net/minecraftforge/client/event/ScreenEvent.java">Forge ScreenEvent</a></li>
+    <li><a href="https://hexcasting.hexxy.media/">Hex Casting</a> · <a href="https://github.com/VazkiiMods/Psi">Psi</a> · <a href="https://wiki.cobblemon.com/index.php/PC">Cobblemon PC</a> · <a href="https://github.com/Creators-of-Create/Ponder">Ponder</a></li>
+    <li><a href="https://gdcvault.com/play/1023460/Tenacious-Design-and-The-Interface">Destiny: Tenacious Design</a> · <a href="https://news.blizzard.com/en-us/article/23308274/diablo-iv-quarterly-updatefebruary-2020">Diablo IV Feb 2020 update</a></li>
+    <li><a href="https://www.factorio.com/blog/post/fff-397">FFF-397 Factoriopedia</a> · <a href="https://factorio.com/blog/post/fff-426">FFF-426</a> · <a href="https://lua-api.factorio.com/latest/classes/LuaGuiElement.html">LuaGuiElement</a></li>
+    <li><a href="https://m3.material.io/styles/motion/easing-and-duration/tokens-specs">M3 motion tokens</a> · <a href="https://learn.microsoft.com/en-us/gaming/accessibility/xbox-accessibility-guidelines/102">Xbox accessibility 102</a> · <a href="https://blog.frost.kiwi/dual-kawase/">Dual Kawase</a></li>
+    <li><a href="https://bevy.org/news/bevy-0-19/">Bevy 0.19</a> · <a href="https://bevy.org/learn/migration-guides/0-18-to-0-19/">0.18 → 0.19 migration</a> · <a href="https://docs.rs/bevy_ui_widgets/latest/">bevy_ui_widgets</a> · <a href="https://github.com/bevyengine/bevy/issues/22345">Unified UI issue</a> · <a href="https://github.com/bevyengine/bevy/issues/17561">corner bleed #17561</a></li>
+    <li><a href="https://github.com/eckz/bevy_flair">bevy_flair</a> · <a href="https://github.com/bytestring-net/bevy_lunex">bevy_lunex</a> · <a href="https://github.com/UkoeHB/bevy_cobweb_ui">bevy_cobweb_ui</a></li>
+    <li><a href="https://github.com/makspll/bevy_mod_scripting">bevy_mod_scripting</a> · <a href="https://github.com/jarkonik/bevy_scriptum">bevy_scriptum</a> · <a href="https://github.com/mlua-rs/mlua">mlua</a> · <a href="https://luau.org/sandbox">Luau sandbox</a> · <a href="https://github.com/kyren/piccolo">piccolo</a></li>
+    <li><a href="https://api.luanti.org/formspec/">Luanti formspec</a> · <a href="https://github.com/minetest-mods/unified_inventory">unified_inventory</a> · <a href="https://warcraft.wiki.gg/wiki/Secure_Execution_and_Tainting">WoW taint</a></li>
+    <li><a href="https://github.com/valence-rs/valence">valence</a> · <a href="https://github.com/bevyengine/bevy/pull/9885">Bevy multiple asset sources</a> · <a href="https://lib.rs/crates/bevy_fluent">bevy_fluent</a></li>
+  </ul>
+</section>
+</div>
+
+<script>
+(function(){
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // ---------- registry ----------
+  const R = {common:null, uncommon:'#57c86a', rare:'#4ea6ff', epic:'#b57bff', legendary:'#ffb454'};
+  const ITEMS = [
+    ['minecraft:cobblestone','Cobblestone','#8a8a8a','block',64,['c:stones'],'blocks'],
+    ['minecraft:oak_planks','Oak Planks','#b48a4c','planks',64,['minecraft:planks'],'blocks'],
+    ['minecraft:dirt','Dirt','#8b5a2b','block',64,[],'blocks'],
+    ['minecraft:sand','Sand','#dbd3a0','block',64,[],'blocks'],
+    ['minecraft:iron_ingot','Iron Ingot','#d8d8d8','ingot',64,['c:ingots'],'materials'],
+    ['minecraft:gold_ingot','Gold Ingot','#f7d346','ingot',64,['c:ingots'],'materials','uncommon'],
+    ['minecraft:diamond','Diamond','#5fe3e0','gem',64,['c:gems'],'materials','rare'],
+    ['minecraft:emerald','Emerald','#39d353','gem',64,['c:gems'],'materials','rare'],
+    ['minecraft:redstone','Redstone Dust','#d4261a','dust',64,['c:dusts'],'materials'],
+    ['minecraft:coal','Coal','#4d4d4d','gem',64,['c:coal'],'materials'],
+    ['minecraft:egg','Egg','#efe6d2','gem',16,[],'food'],
+    ['minecraft:ender_pearl','Ender Pearl','#1a8f8a','gem',16,[],'materials','epic'],
+    ['minecraft:iron_pickaxe','Iron Pickaxe','#d8d8d8','tool',1,['c:tools'],'tools','common',250],
+    ['minecraft:diamond_sword','Diamond Sword','#5fe3e0','tool',1,['c:tools'],'tools','rare',1561],
+    ['minecraft:apple','Apple','#e0312d','gem',64,['c:foods'],'food'],
+    ['minecraft:bread','Bread','#c98d4a','ingot',64,['c:foods'],'food'],
+    ['copper_chest:chest','Copper Chest','#c67c4e','block',64,['c:chests'],'blocks','uncommon'],
+    ['copper_chest:copper_ingot','Copper Ingot','#c67c4e','ingot',64,['c:ingots'],'materials'],
+    ['slotted:debug_stick','Debug Stick','#8a5cff','tool',1,['slotted:dev'],'tools','legendary',100],
+    ['slotted:ghost_item','Ghost Item','#b7b7ff','dust',64,['slotted:dev'],'materials'],
+  ].map(a=>({id:a[0],name:a[1],color:a[2],pat:a[3],max:a[4],tags:a[5],cat:a[6],rar:a[7]||'common',dur:a[8]||0,mod:a[0].split(':')[0]}));
+  const byId = Object.fromEntries(ITEMS.map(i=>[i.id,i]));
+  const RECIPES = {
+    'minecraft:iron_pickaxe':{grid:['minecraft:iron_ingot','minecraft:iron_ingot','minecraft:iron_ingot',null,'minecraft:oak_planks',null,null,'minecraft:oak_planks',null],cat:'Crafting'},
+    'minecraft:diamond_sword':{grid:[null,'minecraft:diamond',null,null,'minecraft:diamond',null,null,'minecraft:oak_planks',null],cat:'Crafting'},
+    'copper_chest:chest':{grid:Array(9).fill('copper_chest:copper_ingot').map((v,i)=>i===4?null:v),cat:'Crafting'},
+    'minecraft:oak_planks':{grid:[null,null,null,null,'minecraft:dirt',null,null,null,null],cat:'Crafting',note:'(sketch)'},
+    'minecraft:iron_ingot':{grid:[null,null,null,null,'minecraft:cobblestone',null,null,null,null],cat:'Smelting',note:'(sketch)'},
+  };
+  const usedIn = id => Object.entries(RECIPES).filter(([k,r])=>r.grid.includes(id)).map(([k])=>byId[k].name);
+
+  // ---------- icons: procedural pixels + fake rim light ----------
+  function hash(s){let h=2166136261;for(const c of s){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+  function rng(seed){let x=seed||1;return()=>{x^=x<<13;x>>>=0;x^=x>>>17;x^=x<<5;x>>>=0;return (x>>>0)/4294967296}}
+  function shade(hex,f){const n=parseInt(hex.slice(1),16);let r=(n>>16)&255,g=(n>>8)&255,b=n&255;r=Math.min(255,r*f|0);g=Math.min(255,g*f|0);b=Math.min(255,b*f|0);return `rgb(${r},${g},${b})`}
+  const cache={};
+  function icon(it){
+    if(cache[it.id])return cache[it.id];
+    const c=document.createElement('canvas');c.width=64;c.height=64;const x=c.getContext('2d');const r=rng(hash(it.id));
+    const px=(i,j,f)=>{x.fillStyle=shade(it.color,f);x.fillRect(i*4,j*4,4,4)};
+    if(it.pat==='block'){for(let j=1;j<15;j++)for(let i=1;i<15;i++)px(i,j,.75+r()*.45)}
+    else if(it.pat==='planks'){for(let j=1;j<15;j++)for(let i=1;i<15;i++)px(i,j,(j%4===0)?.5:.85+r()*.3)}
+    else if(it.pat==='ingot'){for(let j=6;j<12;j++)for(let i=2+((11-j)/2|0);i<14-((11-j)/2|0);i++)px(i,j,j<8?1.2:(j>10?.65:.95))}
+    else if(it.pat==='gem'){for(let j=3;j<13;j++){const w=j<8?(j-2):(13-j);for(let i=8-w;i<8+w;i++)px(i,j,i<8?1.2:.75)}}
+    else if(it.pat==='dust'){for(let k=0;k<28;k++)px(3+r()*10|0,4+r()*9|0,.8+r()*.5)}
+    else if(it.pat==='tool'){for(let k=0;k<9;k++){x.fillStyle='#6b4a2b';x.fillRect((3+k)*4,(12-k)*4,4,4);x.fillStyle='#8a6238';x.fillRect((4+k)*4,(12-k)*4,4,4)}for(let j=1;j<6;j++)for(let i=9;i<15-(j>3?j-3:0);i++)px(i,j,1+(i%3?0:.2))}
+    // rim light + key light gradient over the shape (fake 3-point rig)
+    x.globalCompositeOperation='source-atop';
+    const g=x.createLinearGradient(0,0,64,64);g.addColorStop(0,'rgba(255,255,255,.35)');g.addColorStop(.5,'rgba(255,255,255,0)');g.addColorStop(1,'rgba(0,0,0,.35)');x.fillStyle=g;x.fillRect(0,0,64,64);
+    const rim=x.createLinearGradient(64,0,40,24);rim.addColorStop(0,'rgba(127,209,255,.55)');rim.addColorStop(1,'rgba(127,209,255,0)');x.fillStyle=rim;x.fillRect(0,0,64,64);
+    x.globalCompositeOperation='source-over';
+    cache[it.id]=c;return c;
+  }
+  const cv=it=>{const c=document.createElement('canvas');c.width=64;c.height=64;c.getContext('2d').drawImage(icon(it),0,0);return c};
+
+  // ---------- model ----------
+  const chest=Array(27).fill(null), inv=Array(27).fill(null), hot=Array(9).fill(null);
+  const lists={chest,inv,hot}; let cursor=null;
+  const st=(id,count,dmg)=>({id,count,dmg:dmg||0});
+  chest[0]=st('minecraft:cobblestone',64);chest[1]=st('minecraft:cobblestone',23);chest[2]=st('minecraft:oak_planks',40);
+  chest[4]=st('minecraft:iron_ingot',12);chest[5]=st('minecraft:gold_ingot',3);chest[9]=st('minecraft:diamond',7);
+  chest[10]=st('minecraft:redstone',64);chest[13]=st('copper_chest:copper_ingot',31);chest[20]=st('minecraft:ender_pearl',16);
+  inv[0]=st('minecraft:dirt',64);inv[1]=st('minecraft:sand',30);inv[11]=st('minecraft:apple',9);inv[26]=st('minecraft:coal',48);inv[14]=st('minecraft:cobblestone',9);inv[7]=st('minecraft:iron_ingot',5);
+  hot[0]=st('minecraft:iron_pickaxe',1,140);hot[1]=st('minecraft:diamond_sword',1,300);hot[2]=st('minecraft:bread',5);hot[8]=st('copper_chest:chest',2);hot[4]=st('slotted:debug_stick',1,10);
+  const same=(a,b)=>a&&b&&a.id===b.id&&(a.dmg||0)===(b.dmg||0);
+  const maxOf=s=>byId[s.id].max;
+
+  // move stack from (list,i) into target lists; returns [{to:[list,idx],count}] moves for animation
+  function moveInto(src,i,targets){
+    const s=src[i]; if(!s)return[]; const moves=[]; let rem={...s};
+    const tryList=(t,mergeOnly)=>{ const name=Object.keys(lists).find(k=>lists[k]===t);
+      for(let k=0;k<t.length&&rem.count>0;k++){
+        if(mergeOnly){ if(same(t[k],rem)){const n=Math.min(rem.count,maxOf(rem)-t[k].count); if(n>0){t[k].count+=n;rem.count-=n;moves.push({to:[name,k],n})}} }
+        else if(!t[k]){t[k]={...rem};moves.push({to:[name,k],n:rem.count});rem.count=0}
+      }};
+    targets.forEach(t=>tryList(t,true)); targets.forEach(t=>tryList(t,false));
+    src[i]=rem.count>0?rem:null; return moves;
+  }
+  function click(list,i,button,shift){
+    const arr=lists[list], s=arr[i];
+    if(shift){ if(!s)return; const from=[list,i]; const moves=moveInto(arr,i,list==='chest'?[hot,inv]:[chest]); flyMany(from,moves); return; }
+    if(button===0){
+      if(!cursor){ if(s){cursor=s;arr[i]=null} }
+      else if(!s){ arr[i]=cursor;cursor=null; squash(list,i) }
+      else if(same(s,cursor)){ const n=Math.min(cursor.count,maxOf(s)-s.count); s.count+=n; cursor.count-=n; if(cursor.count<=0)cursor=null; squash(list,i) }
+      else { arr[i]=cursor;cursor=s; squash(list,i) }
+    } else if(button===2){
+      if(!cursor){ if(s){const half=Math.ceil(s.count/2);cursor={...s,count:half};s.count-=half;if(s.count<=0)arr[i]=null} }
+      else if(!s){ arr[i]={...cursor,count:1};cursor.count--;if(cursor.count<=0)cursor=null; squash(list,i) }
+      else if(same(s,cursor)&&s.count<maxOf(s)){ s.count++;cursor.count--;if(cursor.count<=0)cursor=null; squash(list,i) }
+    }
+  }
+  function swapHot(list,i,n){ if(list==='hot'&&i===n)return; const arr=lists[list]; const t=hot[n]; hot[n]=arr[i]; arr[i]=t; }
+  const CAT_ORDER={blocks:0,materials:1,tools:2,food:3};
+  function sortList(arr){ // group by category, then name, then count desc; favorites would be pinned here
+    const items=arr.filter(Boolean).sort((a,b)=>{const A=byId[a.id],B=byId[b.id];return (CAT_ORDER[A.cat]-CAT_ORDER[B.cat])||A.name.localeCompare(B.name)||(b.count-a.count)});
+    // merge partial stacks
+    const merged=[];for(const s of items){const last=merged[merged.length-1];if(last&&same(last,s)&&last.count<maxOf(s)){const n=Math.min(s.count,maxOf(s)-last.count);last.count+=n;s.count-=n;if(s.count>0)merged.push({...s})}else merged.push({...s})}
+    for(let k=0;k<arr.length;k++)arr[k]=merged[k]||null;
+  }
+  function quickStack(){ // inv -> chest only where chest already has the item
+    const moves=[];const have=new Set(chest.filter(Boolean).map(s=>s.id));
+    for(let i=0;i<inv.length;i++){ if(inv[i]&&have.has(inv[i].id)){const from=['inv',i];const m=moveInto(inv,i,[chest]);moves.push([from,m])} }
+    moves.forEach(([f,m],k)=>setTimeout(()=>flyMany(f,m),k*25)); render();
+  }
+  function depositAll(){ const moves=[];for(let i=0;i<inv.length;i++){if(inv[i]){const from=['inv',i];moves.push([from,moveInto(inv,i,[chest])])}} moves.forEach(([f,m],k)=>setTimeout(()=>flyMany(f,m),k*20)); render(); }
+  function lootAll(){ const moves=[];for(let i=0;i<chest.length;i++){if(chest[i]){const from=['chest',i];moves.push([from,moveInto(chest,i,[hot,inv])])}} moves.forEach(([f,m],k)=>setTimeout(()=>flyMany(f,m),k*20)); render(); }
+
+  // ---------- view ----------
+  const roots={chest:document.getElementById('chest'),inv:document.getElementById('inv'),hot:document.getElementById('hotbar')};
+  for(const k in roots){for(let i=0;i<lists[k].length;i++){const d=document.createElement('div');d.className='slot';d.dataset.list=k;d.dataset.i=i;d.tabIndex=0;d.setAttribute('role','button');d.setAttribute('aria-label',`${k} slot ${i+1}`);roots[k].appendChild(d)}}
+  function fill(el,s){
+    el.innerHTML='';el.className='slot';
+    if(!s)return; const it=byId[s.id]; el.classList.add('r-'+it.rar); el.appendChild(cv(it));
+    if(R[it.rar]){const g=document.createElement('i');g.className='rg';g.style.background=R[it.rar];el.appendChild(g)}
+    if(s.count>1){const c=document.createElement('span');c.className='cnt';c.textContent=s.count;el.appendChild(c)}
+    if(it.dur){const d=document.createElement('div');d.className='dur';const f=Math.max(0,1-s.dmg/it.dur);const b=document.createElement('i');b.style.width=(f*100)+'%';b.style.background=`hsl(${f*120},80%,55%)`;d.appendChild(b);el.appendChild(d)}
+  }
+  const ghost=document.getElementById('ghost');
+  function render(){
+    for(const k in roots)[...roots[k].children].forEach((el,i)=>fill(el,lists[k][i]));
+    document.getElementById('cap').textContent=`${chest.filter(Boolean).length} / 27`;
+    if(cursor){ghost.style.display='block';ghost.querySelector('canvas').replaceWith(cv(byId[cursor.id]));ghost.querySelector('.cnt').textContent=cursor.count>1?cursor.count:''}else ghost.style.display='none';
+  }
+  const slotEl=(list,i)=>roots[list].children[i];
+  function squash(list,i){ if(reduced)return; const el=slotEl(list,i); requestAnimationFrame(()=>{el.animate([{transform:'scale(1.12,.9)'},{transform:'scale(.96,1.04)'},{transform:'scale(1)'}],{duration:180,easing:'cubic-bezier(.2,0,0,1)'})}) }
+  function flyMany(from,moves){ if(reduced||!moves.length)return; const a=slotEl(from[0],from[1]).getBoundingClientRect(); const it=lists[moves[0].to[0]][moves[0].to[1]]; if(!it)return;
+    moves.forEach((m,k)=>{const b=slotEl(m.to[0],m.to[1]).getBoundingClientRect();const f=document.createElement('div');f.className='fly';f.appendChild(cv(byId[it.id]));f.style.left=(a.left+6)+'px';f.style.top=(a.top+6)+'px';document.body.appendChild(f);
+      f.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${b.left-a.left}px,${b.top-a.top}px) scale(.9)`}],{duration:240+k*15,easing:'cubic-bezier(.2,0,0,1)'}).onfinish=()=>{f.remove();squash(m.to[0],m.to[1])}}) }
+
+  // ---------- input ----------
+  let hover=null, shiftHeld=false;
+  document.getElementById('stage').addEventListener('mousedown',e=>{const el=e.target.closest('.slot[data-list]');if(!el)return;e.preventDefault();click(el.dataset.list,+el.dataset.i,e.button,e.shiftKey);render();tip(el)});
+  document.getElementById('stage').addEventListener('contextmenu',e=>{if(e.target.closest('.slot,.icard'))e.preventDefault()});
+  document.getElementById('b-sort').onclick=()=>{sortList(chest);sortList(inv);render();[...roots.chest.children,...roots.inv.children].forEach((el,k)=>{if(!reduced)el.animate([{opacity:.3},{opacity:1}],{duration:200,delay:(k%9)*12})})};
+  document.getElementById('b-quick').onclick=quickStack;document.getElementById('b-deposit').onclick=depositAll;document.getElementById('b-loot').onclick=lootAll;
+  const search=document.getElementById('search');
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Shift'&&!shiftHeld){shiftHeld=true;if(hover)tip(hover)}
+    if(e.ctrlKey&&e.key.toLowerCase()==='f'){e.preventDefault();search.focus();return}
+    if(document.activeElement===search)return;
+    const k=e.key.toLowerCase();
+    if(hover&&hover.dataset.list&&e.key>='1'&&e.key<='9'){swapHot(hover.dataset.list,+hover.dataset.i,+e.key-1);render();tip(hover)}
+    else if(k==='r'&&hover){const id=hover.dataset.list?(lists[hover.dataset.list][+hover.dataset.i]||{}).id:hover.dataset.id;if(id)showRecipe(id)}
+    else if(k==='s')document.getElementById('b-sort').click();else if(k==='q')quickStack();else if(k==='d')depositAll();else if(k==='l')lootAll();
+  });
+  document.addEventListener('keyup',e=>{if(e.key==='Shift'){shiftHeld=false;if(hover)tip(hover)}});
+  // ghost follows with a little lag (spring-ish)
+  let mx=0,my=0,gx=0,gy=0;const tipEl=document.getElementById('tip');
+  document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;placeTip()});
+  (function loop(){gx+=(mx-gx)*(reduced?1:.35);gy+=(my-gy)*(reduced?1:.35);ghost.style.left=gx+'px';ghost.style.top=gy+'px';requestAnimationFrame(loop)})();
+  function placeTip(){const w=tipEl.offsetWidth||240,h=tipEl.offsetHeight||80;let x=mx+16,y=my+16;if(x+w>innerWidth-8)x=mx-w-12;if(y+h>innerHeight-8)y=innerHeight-h-8;tipEl.style.left=x+'px';tipEl.style.top=y+'px'}
+
+  // ---------- tooltip (two-tier) ----------
+  function tip(el){
+    hover=el; let s=null;
+    if(el.dataset.list)s=lists[el.dataset.list][+el.dataset.i]; else if(el.dataset.id)s={id:el.dataset.id,count:1};
+    if(!s){tipEl.style.display='none';return}
+    const it=byId[s.id]; const rc=R[it.rar]||'#c6d0dd';
+    let h=`<div class="n">${it.name}</div><div class="r" style="color:${rc}">${it.rar}</div>`;
+    if(s.count>1)h+=`<div class="row"><span>Count</span><b>${s.count} / ${it.max}</b></div>`;
+    if(it.dur){const f=Math.max(0,1-(s.dmg||0)/it.dur);h+=`<div class="row"><span>Durability</span><b>${it.dur-(s.dmg||0)} / ${it.dur}</b></div><div class="bar"><i style="width:${f*100}%;background:hsl(${f*120},80%,55%)"></i></div>`}
+    if(shiftHeld){const u=usedIn(it.id);h+=`<div class="more"><span class="badge">${it.mod}</span>${it.tags.map(t=>`<span class="badge">#${t}</span>`).join('')}<div style="margin-top:6px">Used in: <b>${u.length?u.join(', '):'nothing yet'}</b></div><div class="id">${it.id}</div></div>`}
+    else h+=`<div class="hint">Hold Shift for details · R for recipe</div>`;
+    tipEl.innerHTML=h;tipEl.style.display='block';placeTip();
+  }
+  const stage=document.getElementById('stage');
+  stage.addEventListener('mouseover',e=>{const el=e.target.closest('.slot[data-list],.icard');if(el)tip(el)});
+  stage.addEventListener('mouseout',e=>{if(e.target.closest('.slot[data-list],.icard')){tipEl.style.display='none';hover=null}});
+  stage.addEventListener('focusin',e=>{const el=e.target.closest('.slot[data-list],.icard');if(el){const r=el.getBoundingClientRect();mx=r.right;my=r.top;tip(el)}});
+
+  // ---------- browser ----------
+  const cards=document.getElementById('cards'), chips=document.getElementById('chips'), rec=document.getElementById('recipe');
+  const CATS=[['all','All'],['blocks','Blocks'],['materials','Materials'],['tools','Tools'],['food','Food']]; let cat='all';
+  CATS.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.dataset.k=k;b.setAttribute('aria-pressed',k===cat);b.onclick=()=>{cat=k;[...chips.children].forEach(c=>c.setAttribute('aria-pressed',c.dataset.k===k));closeRecipe();renderCards()};chips.appendChild(b)});
+  function matches(it,q){return q.toLowerCase().split(/\s+/).filter(Boolean).every(t=>{let neg=false;if(t[0]==='-'){neg=true;t=t.slice(1)}let ok;if(t[0]==='@')ok=it.mod.includes(t.slice(1));else if(t[0]==='#')ok=it.tags.some(g=>g.includes(t.slice(1)));else ok=it.name.toLowerCase().includes(t)||it.id.includes(t);return neg?!ok:ok})}
+  function renderCards(){
+    const res=ITEMS.filter(it=>(cat==='all'||it.cat===cat)&&matches(it,search.value));
+    cards.innerHTML='';
+    res.forEach((it,k)=>{const d=document.createElement('div');d.className='icard';d.dataset.id=it.id;d.tabIndex=0;d.setAttribute('role','button');d.setAttribute('aria-label',it.name);
+      d.innerHTML=`<div class="icon"></div><div class="nm">${it.name}</div><div class="mod">${it.mod}</div>`;if(R[it.rar]){const rb=document.createElement('i');rb.className='rb';rb.style.background=R[it.rar];d.appendChild(rb)}
+      const ic=cv(it);ic.style.cssText='position:absolute;left:6px;top:6px;width:32px;height:32px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.55))';d.querySelector('.icon').appendChild(ic);
+      cards.appendChild(d); if(!reduced)d.animate([{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],{duration:180,delay:Math.min(k,8)*14,easing:'cubic-bezier(.2,0,0,1)',fill:'backwards'})});
+    document.getElementById('count').textContent=`${res.length} items`;
+  }
+  cards.addEventListener('mousedown',e=>{const el=e.target.closest('.icard');if(!el)return;e.preventDefault();const it=byId[el.dataset.id];if(!cursor)cursor=st(it.id,e.button===2?1:it.max);else if(cursor.id===it.id)cursor.count=Math.min(it.max,cursor.count+(e.button===2?1:it.max));render()});
+  search.addEventListener('input',()=>{closeRecipe();renderCards()});
+  function slotHTML(id,dim){const d=document.createElement('div');d.className='slot';if(id){const it=byId[id];d.appendChild(cv(it));d.dataset.id=id;d.classList.add('r-'+it.rar)}return d}
+  function showRecipe(id){
+    const it=byId[id], r=RECIPES[id];
+    rec.innerHTML='';const hdr=document.createElement('div');hdr.className='hdr';const back=document.createElement('button');back.textContent='← Back';back.onclick=closeRecipe;hdr.appendChild(back);const t=document.createElement('h4');t.textContent=it.name;hdr.appendChild(t);rec.appendChild(hdr);
+    if(!r){const n=document.createElement('div');n.className='rnone';n.textContent='No recipes registered for this item.';rec.appendChild(n)}
+    else{
+      const c=document.createElement('div');c.className='eyebrow';c.textContent=r.cat+(r.note?' '+r.note:'');rec.appendChild(c);
+      const body=document.createElement('div');body.className='rbody';const g=document.createElement('div');g.className='rgrid';r.grid.forEach(x=>g.appendChild(slotHTML(x)));body.appendChild(g);
+      const a=document.createElement('div');a.className='arrow';a.innerHTML='<i></i>';body.appendChild(a);const o=document.createElement('div');o.className='rout';o.appendChild(slotHTML(id));body.appendChild(o);rec.appendChild(body);
+      const u=usedIn(id);const ui=document.createElement('div');ui.className='usedin';ui.innerHTML=`Used in: <b>${u.length?u.join(', '):'nothing yet'}</b>`;rec.appendChild(ui);
+    }
+    cards.style.display='none';chips.style.display='none';rec.classList.add('open');
+    rec.addEventListener('mouseover',e=>{const el=e.target.closest('.slot[data-id]');if(el){hover={dataset:{id:el.dataset.id}};tip(hover)}});
+    rec.addEventListener('mouseout',e=>{if(e.target.closest('.slot'))tipEl.style.display='none'});
+    if(!reduced)rec.animate([{opacity:0,transform:'translateX(12px)'},{opacity:1,transform:'none'}],{duration:220,easing:'cubic-bezier(.2,0,0,1)'});
+  }
+  function closeRecipe(){rec.classList.remove('open');cards.style.display='';chips.style.display=''}
+
+  // ---------- direction mockups ----------
+  document.querySelectorAll('.mock .ms[data-item]').forEach(m=>{const it=byId[m.dataset.item];const c=cv(it);m.appendChild(c);if(m.dataset.c){const s=document.createElement('span');s.className='c';s.textContent=m.dataset.c;m.appendChild(s)}});
+
+  render(); renderCards();
+})();
+</script>
