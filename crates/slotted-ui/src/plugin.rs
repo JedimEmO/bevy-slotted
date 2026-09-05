@@ -80,6 +80,7 @@ impl Plugin for SlottedUiPlugin {
         app.insert_resource(widgets)
             .insert_resource(parts)
             .init_resource::<Screens>()
+            .init_resource::<crate::loc::Localization>()
             .init_resource::<Injections>()
             .init_resource::<NavKeys>()
             .init_resource::<DragPaint>()

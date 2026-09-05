@@ -17,6 +17,7 @@ pub mod def;
 pub mod input;
 pub mod item;
 pub mod layers;
+pub mod loc;
 pub mod motion;
 pub mod nav;
 pub mod plugin;
@@ -37,6 +38,7 @@ pub use layers::{
     CarriedItem, CarriedLayer, ExclusionZone, Exclusions, TooltipLayer, update_carried_layer,
     zbands,
 };
+pub use loc::{Localization, Localizer, NoLocalization};
 pub use motion::{
     FlyingItem, GestureTarget, HOVER_SCALE, MotionTarget, PRESS_SCALE, REST_SCALE, SQUASH_SCALE,
     SlotPressed, despawn_finished_flights, drop_squash, fly_to_slot, slot_motion,

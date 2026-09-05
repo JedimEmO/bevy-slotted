@@ -1,0 +1,11 @@
+id = "alpha"
+name = "Alpha"
+version = "1.0.0"
+api_version = 1
+
+[entry]
+control = "control.lua"
+
+[[dependencies]]
+id = "zeta"
+kind = "required"

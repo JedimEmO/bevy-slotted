@@ -99,9 +99,14 @@ pub struct ModWatch {
 impl ModWatch {
     /// The mod a handle belongs to.
     pub fn owner(&self, handle: &UntypedHandle) -> Option<&ModId> {
+        self.owner_of(handle.id())
+    }
+
+    /// The mod an asset id belongs to.
+    pub fn owner_of(&self, id: bevy::asset::UntypedAssetId) -> Option<&ModId> {
         self.by_mod
             .iter()
-            .find(|(_, handles)| handles.iter().any(|h| h.id() == handle.id()))
+            .find(|(_, handles)| handles.iter().any(|h| h.id() == id))
             .map(|(id, _)| id)
     }
 }

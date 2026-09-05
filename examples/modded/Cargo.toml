@@ -15,7 +15,6 @@ slotted-packs = { workspace = true, features = ["watch"] }
 slotted-script = { workspace = true }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true, features = ["std-fs"] }
-chest = { path = "../chest", version = "0.1.0" }
 bevy = { version = "0.19.1", features = ["bevy_ui_widgets", "png", "file_watcher"] }
 tracing = { workspace = true }
 

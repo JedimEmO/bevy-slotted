@@ -385,9 +385,42 @@ impl ActionRailParams {
     }
 }
 
+/// The English label of a built-in rail action, or the id itself for one the
+/// library does not name.
+///
+/// The rail draws these unless a locale defines `slotted.rail.<action>`, so a
+/// game that ships no `.ftl` at all still gets readable buttons instead of the
+/// action ids, and a game that ships one overrides them without touching Rust.
+pub fn default_rail_label(action: &str) -> &str {
+    match action {
+        "sort" => "Sort",
+        "quick_stack" => "Quick stack",
+        "deposit_all" => "Deposit all",
+        "loot_all" => "Loot all",
+        other => other,
+    }
+}
+
+/// The localisation key of a rail action's label.
+pub fn rail_label_key(action: &str) -> LocKey {
+    LocKey(format!("slotted.rail.{action}"))
+}
+
+/// What one rail button draws: the locale's word for the action, else the
+/// library's English default.
+fn rail_label(world: &World, action: &str) -> String {
+    world
+        .get_resource::<crate::loc::Localization>()
+        .and_then(|loc| loc.resolve(&rail_label_key(action)))
+        .unwrap_or_else(|| default_rail_label(action).to_owned())
+}
+
 /// Spawns the action rail: one button per action, each tagged `action=<name>`
 /// and carrying a [`RailAction`] whose `Activate` observer triggers
 /// `MenuAction(ClickAction::Toolbar(..))`.
+///
+/// A button's `Tags` keep the raw action id, so a locator names `sort`
+/// whatever language the label is in.
 pub fn spawn_action_rail(ctx: &mut SpawnCtx<'_>, params: &ActionRailParams) -> Entity {
     let tokens = ctx.tokens();
     let entity = ctx.spawn_node((
@@ -408,7 +441,8 @@ pub fn spawn_action_rail(ctx: &mut SpawnCtx<'_>, params: &ActionRailParams) -> E
             tracing::warn!(%name, "unknown action rail action");
             continue;
         };
-        let button = spawn_button(ctx, &kinds::button(), Some(name));
+        let label = rail_label(ctx.world, name);
+        let button = spawn_button(ctx, &kinds::button(), Some(&label));
         ctx.world
             .entity_mut(button)
             .insert((RailAction(action), Tags::new().with("action", name)));
@@ -542,11 +576,21 @@ pub fn spawn_tooltip(ctx: &mut SpawnCtx<'_>, parts: &[UiNodeDef]) -> Entity {
 // Registry adapters
 // ---------------------------------------------------------------------------
 
+/// Reads a widget's parameters from its registry payload.
+///
+/// The payload goes through `slotted_model::Value` rather than
+/// `ron::Value::into_rust`, which is what lets a params field be an `Option`:
+/// a present value is `Some` whether it was written `Some(x)` in a `.ron` file
+/// or as a bare `x` by a mod's `data.lua`. Phase 2 forbade `Option` here for
+/// exactly the reason that hop could not express one.
 macro_rules! params_of {
     ($params:expr, $kind:literal) => {
         match $params {
             Value::Unit => Default::default(),
-            other => match other.clone().into_rust() {
+            other => match slotted_registry::to_model(other)
+                .map_err(|e| e.to_string())
+                .and_then(|v| slotted_model::from_value(v).map_err(|e| e.to_string()))
+            {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::warn!(%e, "bad params for {}; using defaults", $kind);
@@ -929,15 +973,21 @@ mod tests {
         assert_eq!(node.align_items, AlignItems::Center);
     }
 
-    /// Params travel through the registry as an untyped `Value`, which
-    /// forgets `Some`. No params field may be an `Option`; every one of them
-    /// carries a serde default instead.
+    /// The conversion `params_of!` performs, so these tests exercise the path
+    /// a widget actually reads its parameters through.
+    fn read_params<T: serde::de::DeserializeOwned>(value: &Value) -> Result<T, String> {
+        slotted_registry::to_model(value)
+            .map_err(|e| e.to_string())
+            .and_then(|v| slotted_model::from_value(v).map_err(|e| e.to_string()))
+    }
+
+    /// Params travel through the registry as an untyped `Value` and are read
+    /// back through `slotted_model::from_value`.
     #[test]
     fn params_survive_the_untyped_value_round_trip() {
         let value: Value = ron::from_str("(first: 54, inventory: 2)").expect("parses");
-        let parsed: HotbarParams = value.into_rust().expect("deserialises");
         assert_eq!(
-            parsed,
+            read_params::<HotbarParams>(&value).expect("deserialises"),
             HotbarParams {
                 first: 54,
                 inventory: InventoryRef::new(2),
@@ -948,13 +998,55 @@ mod tests {
     #[test]
     fn hotbar_params_parse_from_a_ron_value() {
         let value: Value = ron::from_str("(first: 54)").expect("value parses");
-        let parsed: Result<HotbarParams, _> = value.into_rust();
         assert_eq!(
-            parsed.expect("params deserialise"),
+            read_params::<HotbarParams>(&value).expect("params deserialise"),
             HotbarParams {
                 first: 54,
                 inventory: InventoryRef::new(2),
             }
+        );
+    }
+
+    /// Phase 2 forbade an `Option` params field because `ron::Value::into_rust`
+    /// accepted only a `Some(x)` wrapper the untyped payload had already lost,
+    /// and a Lua table could not write one either. Phase 4 reads params through
+    /// `slotted_model::from_value`, where a present value is `Some`, an absent
+    /// key is `None` and both spellings of a data file agree.
+    #[test]
+    fn a_params_field_may_now_be_an_option() {
+        #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+        struct Optional {
+            #[serde(default)]
+            label: Option<String>,
+        }
+
+        let bare: Value = ron::from_str(r#"(label: "Sort")"#).expect("parses");
+        let wrapped: Value = ron::from_str(r#"(label: Some("Sort"))"#).expect("parses");
+        // A wholly empty payload is `Value::Unit`, which `params_of!` answers
+        // with the type's `Default`; this is a payload that has other keys and
+        // simply left `label` out.
+        let absent: Value = ron::from_str("(unrelated: 1)").expect("parses");
+        let explicit_none: Value = ron::from_str("(label: None)").expect("parses");
+
+        assert_eq!(
+            read_params::<Optional>(&bare).expect("a bare value is Some"),
+            Optional {
+                label: Some("Sort".to_owned())
+            }
+        );
+        assert_eq!(
+            read_params::<Optional>(&wrapped).expect("a RON Some is Some"),
+            Optional {
+                label: Some("Sort".to_owned())
+            }
+        );
+        assert_eq!(
+            read_params::<Optional>(&absent).expect("an absent key is None"),
+            Optional { label: None }
+        );
+        assert_eq!(
+            read_params::<Optional>(&explicit_none).expect("a RON None is None"),
+            Optional { label: None }
         );
     }
 }

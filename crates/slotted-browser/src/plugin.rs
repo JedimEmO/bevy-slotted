@@ -121,6 +121,11 @@ impl Plugin for SlottedBrowserPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.config.clone())
             .insert_resource(IngredientTypes::with_builtins())
+            // The browser draws names, so it needs the localisation port to
+            // exist whether or not `SlottedUiPlugin` was added; both calls are
+            // `init_resource`, so whichever runs first wins and the other is a
+            // no-op.
+            .init_resource::<slotted_ui::Localization>()
             .init_resource::<Subtypes>()
             .init_resource::<InfoPages>()
             .init_resource::<Categories>()
@@ -228,17 +233,40 @@ pub fn build_recipe_store(
 }
 
 /// `BrowserSet::Apply`: a `RebuildBrowser` message restarts the index build.
+///
+/// A rebuild follows a freeze, so the registries the `Startup` phase validated
+/// are not the ones in the world any more: a mod's hot reload can add a recipe
+/// type that has no category yet, or remove the item an interpreter was
+/// registered for. Every phase validator therefore runs again, in phase order,
+/// before the store and the index are rebuilt. They are idempotent; the only
+/// one that writes is `validate_categories`, which binds a default category to
+/// each unclaimed recipe type.
 pub fn rebuild_on_request(world: &mut World) {
-    // PHASE3-IMPL: A — also re-run the phase validators (Phase 4 hot reload).
     let requested = world
         .resource_mut::<Messages<RebuildBrowser>>()
         .drain()
         .count()
         > 0;
     if requested {
+        revalidate(world);
         build_recipe_store_world(world);
         start_index_build(world);
     }
+}
+
+/// Re-runs the `Startup` phase validators against the current registries.
+fn revalidate(world: &mut World) {
+    // Errors from the previous registries are stale; a validator that still
+    // disagrees reports again.
+    if let Some(mut validation) = world.get_resource_mut::<BrowserValidation>() {
+        validation.0.clear();
+    }
+    let _ = world.run_system_cached(validate_subtypes);
+    let _ = world.run_system_cached(validate_ingredient_types);
+    let _ = world.run_system_cached(validate_categories);
+    let _ = world.run_system_cached(validate_recipes);
+    let _ = world.run_system_cached(validate_transfer);
+    let _ = world.run_system_cached(validate_screen_handlers);
 }
 
 fn build_recipe_store_world(world: &mut World) {

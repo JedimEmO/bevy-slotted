@@ -1,22 +1,41 @@
 -- copper_chest/data.lua: registries are open; only register here.
+--
+-- Everything this mod adds to the game is in this one file: two items, two
+-- tags, a recipe type, a recipe and a screen. No Rust, no rebuild.
 
+-- The chest itself. `uncommon` tints its name in tooltips and browser cards.
 slotted.register_item("copper_chest", {
     display_name = "copper_chest.item.copper_chest",
     max_stack_size = 16,
-    tags = { "c:storage" },
+    rarity = "uncommon",
+    tags = { "c:storage", "c:chests" },
 })
 
-slotted.register_tag("c:storage", { values = { "copper_chest:copper_chest" } })
+-- What it is built from. A second item so the recipe has an ingredient this
+-- mod owns rather than borrowing the demo's.
+slotted.register_item("copper_ingot", {
+    display_name = "copper_chest.item.copper_ingot",
+    max_stack_size = 64,
+    tags = { "c:ingots" },
+})
 
+-- A tag this mod owns...
+slotted.register_tag("c:chests", { values = { "copper_chest:copper_chest" } })
+-- ...and one it only adds to: `assets/data/demo/tags/ingots.ron` already
+-- registered `c:ingots`, and tags merge across mods.
+slotted.register_tag("c:ingots", { values = { "copper_chest:copper_ingot" } })
+
+-- A 3x3 crafting grid of its own, so the browser gets a tab for it.
 slotted.register_recipe_type("assembly", {
     title_key = "copper_chest.recipe_type.assembly",
-    size = { 2, 2 },
+    size = { 3, 3 },
 })
 
+-- Eight ingots in a ring.
 slotted.register_recipe("copper_chest", {
     recipe_type = "copper_chest:assembly",
-    shape = { "ii", "ii" },
-    key = { i = "#demo:ingots" },
+    shape = { "iii", "i i", "iii" },
+    key = { i = "#c:ingots" },
     result = { item = "copper_chest:copper_chest", count = 1 },
 })
 

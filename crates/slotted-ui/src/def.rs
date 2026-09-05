@@ -61,6 +61,31 @@ macro_rules! string_enum {
     };
 }
 
+/// Serialises an externally tagged enum as the one-key map its data form
+/// already uses, because RON's own variant syntax (`image("x")`) has no
+/// [`ron::Value`] representation and would not survive the registry's untyped
+/// payload. Deserialisation needs no help: serde's external tagging already
+/// reads a one-key map.
+macro_rules! map_variant_serialize {
+    ($(#[$m:meta])* $name:ident { $($variant:ident $(($binding:ident))? = $key:literal),+ $(,)? }) => {
+        $(#[$m])*
+        impl Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                use serde::ser::SerializeMap;
+                let mut map = s.serialize_map(Some(1))?;
+                match self {
+                    $(Self::$variant $(($binding))? => {
+                        map_variant_serialize!(@entry map, $key $(, $binding)?);
+                    })+
+                }
+                map.end()
+            }
+        }
+    };
+    (@entry $map:ident, $key:literal, $binding:ident) => { $map.serialize_entry($key, $binding)? };
+    (@entry $map:ident, $key:literal) => { $map.serialize_entry($key, &())? };
+}
+
 /// Which screen. Namespaced like everything else: `copper_chest:chest`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -243,7 +268,7 @@ string_enum! {
 
 /// An icon named in data. Resolved to an `IconRef` at spawn. Written as a
 /// one-key map: `(item: "demo:chest")` or `(image: "icons/sort.png")`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IconDef {
     /// An item's icon through the `IconSource`.
@@ -252,14 +277,30 @@ pub enum IconDef {
     Image(String),
 }
 
+map_variant_serialize! {
+    /// `Image(p)` writes `(image: p)`, not RON's `image(p)`.
+    IconDef {
+        Item(v) = "item",
+        Image(v) = "image",
+    }
+}
+
 /// What a viewport shows. Written as `(player: ())` or `(item: "demo:chest")`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ViewSubject {
     /// The player model.
     Player,
     /// An item model.
     Item(Namespaced),
+}
+
+map_variant_serialize! {
+    /// `Player` writes `(player: ())`.
+    ViewSubject {
+        Player = "player",
+        Item(v) = "item",
+    }
 }
 
 /// One node of a screen tree. `docs/PLAN.md` 4.5, plus a `tags` field on
@@ -487,13 +528,40 @@ pub struct ScreenDef {
 impl ScreenDef {
     /// Parses a RON screen. The same text works as a registry `screens/*.ron`
     /// payload.
+    ///
+    /// The text is parsed to an untyped [`Value`] and typed by
+    /// [`from_value`](Self::from_value), so a screen reads identically whether
+    /// it arrives as text, as a registry payload or as a table from a mod's
+    /// `data.lua`. One consequence: an untyped `params` payload keeps its
+    /// numbers as `i64`/`f64` rather than the narrowest RON type that fit.
     pub fn from_ron(text: &str) -> Result<Self, ron::error::SpannedError> {
-        ron::from_str(text)
+        let value: Value = ron::from_str(text)?;
+        Self::from_value(value).map_err(|e| {
+            // The failure is in the typed shape, not the syntax, so there is
+            // no position to point at; the message names the node.
+            let at = ron::error::Position { line: 1, col: 1 };
+            ron::error::SpannedError {
+                code: e,
+                span: ron::error::Span { start: at, end: at },
+            }
+        })
     }
 
     /// Converts a registry payload (the untyped `Value` the data stage kept).
+    ///
+    /// Not `Value::into_rust`: the payload is converted to a
+    /// [`slotted_model::Value`] first, so a tree written in a `.ron` file and a
+    /// tree registered by a mod's `data.lua` deserialise under one set of
+    /// rules and an optional field accepts both `Some(x)` and a bare `x`. See
+    /// [`slotted_registry::ron_value`].
+    ///
+    /// # Errors
+    ///
+    /// [`ron::Error::Message`] naming the first node that did not fit.
     pub fn from_value(value: Value) -> Result<Self, ron::Error> {
-        value.into_rust()
+        let message = |m: String| ron::Error::Message(m);
+        let untyped = slotted_registry::to_model(&value).map_err(|e| message(e.to_string()))?;
+        slotted_model::from_value(untyped).map_err(|e| message(e.to_string()))
     }
 }
 

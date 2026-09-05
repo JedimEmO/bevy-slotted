@@ -373,8 +373,11 @@ Amended in integration (see the marked sections above, and `docs/design/phase2-n
 - `register_slot_refs` seeds a newly registered slot with its current contents (section 1).
 - `Pointer<Over>` starts a hover timer; `tooltip_delay` requests the tooltip, and only re-requests
   it when the shift key changes (section 4.4).
-- Widget params carry no `Option`: an untyped `ron::Value` forgets `Some`, so every field is a
-  plain type with a `#[serde(default)]` (section 4.3, notes B item 5).
+- ~~Widget params carry no `Option`: an untyped `ron::Value` forgets `Some`, so every field is a
+  plain type with a `#[serde(default)]` (section 4.3, notes B item 5).~~ **Lifted in Phase 4
+  integration.** Params are read through `slotted_model::from_value`, where a present value is
+  `Some` and an absent key is `None`, so a params field may be an `Option`. See the Phase 4
+  contract section 1.3.
 - Built-in `UiNodeDef` variants are dispatched by `SpawnCtx::spawn_child` straight to their spawn
   functions rather than through `Widget::spawn`, which only sees `params` (notes B item 6). The
   `WidgetRegistry` still holds a `Widget` per built-in kind and `Custom` still goes through it, so

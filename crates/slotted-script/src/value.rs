@@ -46,6 +46,10 @@ pub mod untagged {
 /// Whatever the serializer reports.
 pub fn serialize<S: Serializer>(value: &Value, serializer: S) -> Result<S::Ok, S::Error> {
     match value {
+        // Scripts never see a `Null`: contract section 1.3 has no nil on the
+        // wire and `SerializeOptions::serialize_none_to_null(false)` drops the
+        // key on the Lua side. It is here so the match is total.
+        Value::Null => serializer.serialize_none(),
         Value::Bool(b) => serializer.serialize_bool(*b),
         Value::Int(i) => serializer.serialize_i64(*i),
         Value::Float(f) => serializer.serialize_f64(*f),

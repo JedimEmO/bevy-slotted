@@ -1,0 +1,12 @@
+id = "sorter"
+name = "Sorter"
+version = "0.1.0"
+api_version = 1
+
+# Loads after copper_chest, so the screen it injects into already exists.
+[[dependencies]]
+id = "copper_chest"
+
+[entry]
+data = "data.lua"
+control = "control.lua"

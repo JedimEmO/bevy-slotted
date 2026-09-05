@@ -4,7 +4,6 @@ use slotted_script::Limits;
 use slotted_script_mlua::MluaRuntime;
 
 #[test]
-#[ignore = "PHASE4-IMPL: A -- enable once MluaRuntime is implemented"]
 fn mlua_passes_the_conformance_suite() {
     let mut runtime = MluaRuntime::new(Limits::default());
     slotted_testutils::conformance::assert_conformance(&mut runtime);

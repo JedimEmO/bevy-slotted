@@ -302,6 +302,7 @@ pub fn execute_transfers(
     handlers: Res<TransferHandlers>,
     types: Res<IngredientTypes>,
     subtypes: Res<Subtypes>,
+    loc: Res<slotted_ui::Localization>,
     registries: Option<Res<slotted_ecs::Registries>>,
     screens: Query<&slotted_ui::ScreenRoot>,
     menus: Query<&slotted_ecs::OpenMenu>,
@@ -363,6 +364,7 @@ pub fn execute_transfers(
             ctx: IngredientCtx {
                 registries: &registries,
                 subtypes: &subtypes,
+                loc: &loc,
             },
         };
         match handler.plan(&ctx, &layout, request.max) {

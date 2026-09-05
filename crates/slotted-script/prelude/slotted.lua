@@ -16,7 +16,11 @@ local mod_id = __slotted_mod_id
 local stage = __slotted_stage
 local api_version = __slotted_api_version or 1
 
-local pending = {}      -- data-stage registrations, in call order
+-- Everything emitted outside a handler -- registrations, injections, tooltip
+-- parts, log lines -- lands in one buffer, in call order, so a chunk that
+-- registers an item and then logs about it produces the commands in that
+-- order. Two buffers would lose the interleaving.
+local emitted = {}      -- commands awaiting the next dispatch, in call order
 local handlers = {}     -- event name -> array of functions
 local warned = {}       -- deprecated call name -> true
 
@@ -56,8 +60,8 @@ local function data_only(what)
     end
 end
 
-local function push_pending(cmd)
-    pending[#pending + 1] = cmd
+local function emit(cmd)
+    emitted[#emitted + 1] = cmd
 end
 
 -- ---------------------------------------------------------------------------
@@ -68,7 +72,7 @@ local function register(kind, what)
     return function(id, def)
         data_only(what)
         local full = namespaced(id)
-        push_pending({ type = kind, id = full, def = with_name(full, def or {}) })
+        emit({ type = kind, id = full, def = with_name(full, def or {}) })
     end
 end
 
@@ -86,7 +90,7 @@ function slotted.register_screen(id, tree)
     if tree.kind == nil then
         tree.kind = full
     end
-    push_pending({ type = "register_screen", id = full, def = tree })
+    emit({ type = "register_screen", id = full, def = tree })
 end
 
 function slotted.register_widget(id, template)
@@ -94,7 +98,7 @@ function slotted.register_widget(id, template)
     if type(template) ~= "table" then
         error("slotted.register_widget: template must be a table", 2)
     end
-    push_pending({ type = "register_widget", id = namespaced(id), def = template })
+    emit({ type = "register_widget", id = namespaced(id), def = template })
 end
 
 function slotted.inject(screen_kind, spec)
@@ -102,7 +106,7 @@ function slotted.inject(screen_kind, spec)
     if type(spec) ~= "table" or type(spec.anchor) ~= "string" or type(spec.node) ~= "table" then
         error("slotted.inject: expected { anchor = <string>, node = <table>, exclusion = <bool?> }", 2)
     end
-    push_pending({
+    emit({
         type = "inject",
         screen = screen_kind,
         anchor = spec.anchor,
@@ -126,7 +130,7 @@ end
 
 function slotted.add_tooltip_part(spec)
     data_only("add_tooltip_part")
-    push_pending(tooltip_part(spec))
+    emit(tooltip_part(spec))
 end
 
 -- ---------------------------------------------------------------------------
@@ -186,14 +190,12 @@ end
 -- logging
 -- ---------------------------------------------------------------------------
 
-local log_buffer = {}
-
 local function emit_log(level, fmt, ...)
     local message = fmt
     if select("#", ...) > 0 then
         message = string.format(fmt, ...)
     end
-    log_buffer[#log_buffer + 1] = cmd.log(level, message)
+    emit(cmd.log(level, message))
 end
 
 function slotted.log(level, fmt, ...)
@@ -217,7 +219,7 @@ end
 local function deprecated(call, since, hint)
     if not warned[call] then
         warned[call] = true
-        log_buffer[#log_buffer + 1] = { type = "deprecated", call = call, since = since, hint = hint }
+        emit({ type = "deprecated", call = call, since = since, hint = hint })
     end
 end
 slotted.__deprecated = deprecated
@@ -242,11 +244,11 @@ local function append_result(out, result)
     end
 end
 
-local function drain_logs(out)
-    for _, c in ipairs(log_buffer) do
+local function drain(out)
+    for _, c in ipairs(emitted) do
         out[#out + 1] = c
     end
-    log_buffer = {}
+    emitted = {}
 end
 
 local function subscriptions()
@@ -260,34 +262,31 @@ end
 
 function __slotted_dispatch(event)
     local out = {}
-    -- Anything logged while the chunk itself ran comes first.
-    drain_logs(out)
     local name = event.type
-    if name == "data_stage" then
-        for _, c in ipairs(pending) do
-            out[#out + 1] = c
-        end
-        pending = {}
-    elseif name == "control_start" then
+    if name == "control_start" then
         out[#out + 1] = { type = "subscribe", events = subscriptions() }
     end
+    -- Whatever the chunk itself emitted, in the order it emitted it. At the
+    -- data stage that is the registration list the contract asks for.
+    drain(out)
     local list = handlers[name]
     if list then
         local first_error
         for _, handler in ipairs(list) do
             local ok, result = pcall(handler, event)
+            -- A handler logs before it returns, so its log lines come first.
+            drain(out)
             if ok then
                 append_result(out, result)
             elseif first_error == nil then
                 first_error = result
             end
         end
-        drain_logs(out)
         if first_error ~= nil then
             error(first_error, 0)
         end
     end
-    drain_logs(out)
+    drain(out)
     return out
 end
 

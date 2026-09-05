@@ -19,12 +19,16 @@ request for a contract change in a later revision.
 
 ## Deviations
 
-5. **No `Option` in widget params.** Widget parameters travel through the
-   registry as an untyped `ron::Value`, which forgets `Some` exactly as the
-   registry's "Value-safe rule" says. `(inventory: 2)` therefore cannot
-   deserialise into an `Option<InventoryRef>`. Every params field is a plain
-   type with a `#[serde(default = "...")]`. Pinned by
-   `widgets::param_tests::params_survive_the_untyped_value_round_trip`.
+5. ~~**No `Option` in widget params.**~~ **Lifted in Phase 4 integration.**
+   The reason held while parameters were read with `ron::Value::into_rust`,
+   which forgets `Some`: `(inventory: 2)` could not deserialise into an
+   `Option<InventoryRef>`, so every params field was a plain type with a
+   `#[serde(default = "...")]`. `params_of!` now reads through
+   `slotted_model::from_value`, where a present value is `Some` and an absent
+   key is `None`, so a params field may be an `Option`. The existing fields
+   keep their defaults; nothing had to change.
+   `widgets::param_tests::params_survive_the_untyped_value_round_trip` still
+   pins the round trip.
 6. **Built-in variants do not go through `Widget::spawn`.** `Widget::spawn`
    only receives `params: &Value`, which cannot carry a typed `UiNodeDef`
    variant's fields without re-serialising them. `SpawnCtx::spawn_child`

@@ -26,6 +26,8 @@ pub struct BuildInputs {
     pub categories: Categories,
     /// Recipes, for the `%` field.
     pub recipes: RecipeStore,
+    /// The localisation port, so an indexed name is the name a card draws.
+    pub loc: slotted_ui::Localization,
 }
 
 impl BrowserIndex {
@@ -34,6 +36,7 @@ impl BrowserIndex {
         let ctx = IngredientCtx {
             registries: &inputs.registries,
             subtypes: &inputs.subtypes,
+            loc: &inputs.loc,
         };
         let mut entries = Vec::new();
         for ty in inputs.types.iter() {
@@ -139,6 +142,10 @@ pub fn start_index_build(world: &mut World) {
         subtypes: world.resource::<Subtypes>().clone(),
         categories: world.resource::<Categories>().clone(),
         recipes: world.resource::<RecipeStore>().clone(),
+        loc: world
+            .get_resource::<slotted_ui::Localization>()
+            .cloned()
+            .unwrap_or_default(),
     };
     let task = AsyncComputeTaskPool::get().spawn(async move { BrowserIndex::build(&inputs) });
     world.insert_resource(IndexState::Building(task));

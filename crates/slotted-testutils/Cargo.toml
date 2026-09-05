@@ -13,11 +13,12 @@ publish = false
 default = []
 # The script conformance suite (Phase 4 contract section 1.7). Pulls in
 # `slotted-script` and `ron`; adapters enable it from their dev-dependencies.
-conformance = ["dep:slotted-script", "dep:ron"]
+conformance = ["dep:slotted-script", "dep:ron", "dep:serde"]
 
 [dependencies]
 slotted-script = { workspace = true, optional = true }
 ron = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }

@@ -50,6 +50,7 @@ pub mod id;
 pub mod inventory;
 pub mod menu;
 pub mod stack;
+pub mod value;
 
 pub use authority::{Authority, AuthorityError, AuthorityEvent, MenuId, MenuSnapshot};
 pub use click::{
@@ -62,4 +63,5 @@ pub use menu::{
     DragState, LookupCtx, MenuDef, MenuState, Predicate, PropertyDef, PropertyId, RoutingRule,
     RoutingTable, SlotBehaviour, SlotDef, SlotIx, SlotRange,
 };
-pub use stack::{ComponentPatch, ItemStack, Value};
+pub use stack::{ComponentPatch, ItemStack};
+pub use value::{Value, ValueDeserializer, ValueError, from_value};

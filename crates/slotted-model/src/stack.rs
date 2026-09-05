@@ -15,57 +15,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::id::{ComponentId, ItemId};
-
-/// A component value on a stack: a small JSON-like tree.
-///
-/// Equality is structural. `Float` compares by IEEE equality, so a `NaN`
-/// never equals itself; do not store `NaN` in a patch if you want the stack to
-/// merge with its own copy.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Value {
-    /// A boolean.
-    Bool(bool),
-    /// A signed integer.
-    Int(i64),
-    /// A floating point number.
-    Float(f64),
-    /// A string.
-    Str(String),
-    /// An ordered list of values.
-    List(Vec<Value>),
-    /// A string-keyed map of values, ordered by key.
-    Map(BTreeMap<String, Value>),
-}
-
-impl From<bool> for Value {
-    fn from(v: bool) -> Self {
-        Self::Bool(v)
-    }
-}
-
-impl From<i64> for Value {
-    fn from(v: i64) -> Self {
-        Self::Int(v)
-    }
-}
-
-impl From<f64> for Value {
-    fn from(v: f64) -> Self {
-        Self::Float(v)
-    }
-}
-
-impl From<&str> for Value {
-    fn from(v: &str) -> Self {
-        Self::Str(v.to_owned())
-    }
-}
-
-impl From<String> for Value {
-    fn from(v: String) -> Self {
-        Self::Str(v)
-    }
-}
+pub use crate::value::Value;
 
 /// The per-stack component overrides, keyed by [`ComponentId`].
 ///

@@ -3812,7 +3812,6 @@ name = "modded"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "chest",
  "insta",
  "pretty_assertions",
  "slotted",
@@ -5515,6 +5514,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "ron",
+ "serde",
  "slotted-ecs",
  "slotted-model",
  "slotted-registry",

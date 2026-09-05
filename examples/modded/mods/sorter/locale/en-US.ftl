@@ -1,0 +1,1 @@
+sorter.button.sort = Sort

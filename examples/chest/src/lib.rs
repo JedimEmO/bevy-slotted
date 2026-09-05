@@ -369,9 +369,7 @@ fn fill_labels(
     binding: Res<ChestBinding>,
     menus: Query<&OpenMenu>,
     inventories: Query<&slotted::ecs::menu::Inventory>,
-    tags: Query<&Tags>,
-    mut labels: Query<(&mut Text, Option<&TestId>, Option<&ChildOf>)>,
-    mut announced: Query<(&Tags, &mut SemanticLabel)>,
+    mut labels: Query<(&mut Text, Option<&TestId>)>,
 ) {
     let used = binding
         .open
@@ -385,53 +383,23 @@ fn fill_labels(
             (filled, inventory.len())
         });
 
-    for (mut text, id, parent) in &mut labels {
-        // The rail names its buttons after the action ids in the screen file,
-        // and its label is a child of the button that carries the tag.
-        let rail_action = parent
-            .and_then(|parent| tags.get(parent.parent()).ok())
-            .and_then(|tags| tags.get("action"))
-            .and_then(rail_label);
-        let replacement = match (id.map(|id| id.0.as_str()), rail_action) {
-            (Some("title"), _) => "Copper Chest".to_owned(),
-            (Some("inventory_label"), _) => "Inventory".to_owned(),
-            (Some("capacity"), _) => match used {
+    // The rail names its own buttons now: `slotted_ui::spawn_action_rail`
+    // resolves `slotted.rail.<action>` through the `Localization` port and
+    // falls back to the library's English, on the `Text` and the
+    // `SemanticLabel` alike, so this demo only fills its own three labels.
+    for (mut text, id) in &mut labels {
+        let replacement = match id.map(|id| id.0.as_str()) {
+            Some("title") => "Copper Chest".to_owned(),
+            Some("inventory_label") => "Inventory".to_owned(),
+            Some("capacity") => match used {
                 Some((filled, total)) => format!("{filled} / {total} slots"),
                 None => String::new(),
             },
-            (_, Some(label)) => label.to_owned(),
             _ => continue,
         };
         if text.0 != replacement {
             text.0 = replacement;
         }
-    }
-    relabel_rail_buttons(&mut announced);
-}
-
-/// A rail button announces itself to a screen reader through
-/// `SemanticLabel`, which the spawn wrote from the action id, so the human
-/// name has to reach both.
-fn relabel_rail_buttons(announced: &mut Query<(&Tags, &mut SemanticLabel)>) {
-    for (tags, mut label) in announced {
-        let Some(name) = tags.get("action").and_then(rail_label) else {
-            continue;
-        };
-        if label.0 != name {
-            label.0 = name.to_owned();
-        }
-    }
-}
-
-/// The human name of a rail action, or `None` for an action this demo does
-/// not name.
-fn rail_label(action: &str) -> Option<&'static str> {
-    match action {
-        "sort" => Some("Sort"),
-        "quick_stack" => Some("Quick stack"),
-        "deposit_all" => Some("Deposit all"),
-        "loot_all" => Some("Loot all"),
-        _ => None,
     }
 }
 

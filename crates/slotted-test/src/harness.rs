@@ -31,6 +31,8 @@ pub struct UiHarnessBuilder {
     motion: Option<Motion>,
     double_click_window: Option<Duration>,
     registries: Option<Arc<slotted_registry::FrozenRegistries>>,
+    #[cfg(feature = "script")]
+    mods_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for UiHarnessBuilder {
@@ -46,6 +48,8 @@ impl Default for UiHarnessBuilder {
             motion: None,
             double_click_window: None,
             registries: None,
+            #[cfg(feature = "script")]
+            mods_dir: None,
         }
     }
 }
@@ -119,6 +123,19 @@ impl UiHarnessBuilder {
     #[must_use]
     pub fn registries(mut self, registries: Arc<slotted_registry::FrozenRegistries>) -> Self {
         self.registries = Some(registries);
+        self
+    }
+
+    /// The `mods/` directory [`UiHarness::mod_layout`] discovers.
+    ///
+    /// The directory is copied to a temporary one at build time and every
+    /// path the harness hands out points at the copy, so
+    /// [`UiHarness::edit_mod_file`] can rewrite a script without touching the
+    /// repository. The copy is removed when the harness drops.
+    #[cfg(feature = "script")]
+    #[must_use]
+    pub fn mods_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.mods_dir = Some(dir.into());
         self
     }
 
@@ -205,6 +222,10 @@ impl UiHarnessBuilder {
             prev_rects: HashMap::new(),
             conserved: None,
         };
+        #[cfg(feature = "script")]
+        if let Some(dir) = self.mods_dir {
+            crate::mods::install_mods_dir(&mut h, &dir);
+        }
         h.step(1);
         h
     }

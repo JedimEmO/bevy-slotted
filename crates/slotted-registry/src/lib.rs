@@ -82,6 +82,7 @@ pub mod loader;
 pub mod manifest;
 pub mod patch;
 pub mod registry;
+pub mod ron_value;
 
 /// The untyped value a data file parses to before it becomes a typed def.
 ///
@@ -107,6 +108,7 @@ pub use patch::{Patch, PatchError, PatchList, PatchOp, Round};
 pub use registry::{
     FrozenRegistries, Registries, Registry, RegistryBuilder, RegistryError, RegistryKind, Warning,
 };
+pub use ron_value::{ConvertError, from_model, to_model};
 
 #[cfg(feature = "std-fs")]
 pub use loader::DirSource;

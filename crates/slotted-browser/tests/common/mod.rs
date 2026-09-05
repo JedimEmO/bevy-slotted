@@ -225,6 +225,7 @@ pub fn inputs() -> BuildInputs {
     let categories = categories();
     let recipes = RecipeStore::build(&registries(), &categories);
     BuildInputs {
+        loc: slotted_ui::Localization::default(),
         registries: registries(),
         types: IngredientTypes::with_builtins(),
         subtypes: Subtypes::default(),
@@ -267,6 +268,7 @@ pub fn synthetic(n: u32) -> BuildInputs {
     let categories = Categories::default();
     let recipes = RecipeStore::build(&registries, &categories);
     BuildInputs {
+        loc: slotted_ui::Localization::default(),
         registries,
         types: IngredientTypes::with_builtins(),
         subtypes: Subtypes::default(),

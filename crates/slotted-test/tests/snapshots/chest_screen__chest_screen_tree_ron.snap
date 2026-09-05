@@ -692,7 +692,7 @@ ScreenTree(
               children: [
                 TreeNode(
                   role: Button,
-                  label: Some("sort"),
+                  label: Some("Sort"),
                   tags: {
                     "action": "sort",
                   },
@@ -701,7 +701,7 @@ ScreenTree(
                 ),
                 TreeNode(
                   role: Button,
-                  label: Some("quick_stack"),
+                  label: Some("Quick stack"),
                   tags: {
                     "action": "quick_stack",
                   },
@@ -710,7 +710,7 @@ ScreenTree(
                 ),
                 TreeNode(
                   role: Button,
-                  label: Some("deposit_all"),
+                  label: Some("Deposit all"),
                   tags: {
                     "action": "deposit_all",
                   },
@@ -719,7 +719,7 @@ ScreenTree(
                 ),
                 TreeNode(
                   role: Button,
-                  label: Some("loot_all"),
+                  label: Some("Loot all"),
                   tags: {
                     "action": "loot_all",
                   },

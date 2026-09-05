@@ -93,6 +93,7 @@ fn with_ctx<R>(
         lookup: &lookup,
         types: &types,
         ctx: IngredientCtx {
+            loc: &slotted_ui::Localization::default(),
             registries: &registries,
             subtypes: &subtypes,
         },

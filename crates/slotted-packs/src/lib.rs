@@ -31,21 +31,24 @@ pub mod tooltip;
 pub use assets::{DataFile, DataFileLoader, ModWatch, ScriptAsset, ScriptLoader};
 pub use error::ModError;
 pub use lifecycle::{
-    ControlScript, ControlScripts, FrozenSnapshot, LogEntry, ModFailed, ModLoader, ModReloaded,
-    ModStage, ReloadMod, ScriptHost, ScriptLog, ScriptLogs,
+    ControlScript, ControlScripts, FrozenSnapshot, LogEntry, ModErrors, ModFailed, ModLoader,
+    ModReloaded, ModStage, PacksBakedIcons, ReloadMod, ScriptHost, ScriptLog, ScriptLogs,
 };
 pub use locale::{FtlAsset, FtlLoader, Locales, resolve_loc_text};
-pub use modset::{ModEntry, ModSet, PackLayout};
+pub use modset::{MANIFEST_FILE, ModEntry, ModPaths, ModSet, PackLayout};
 pub use plugin::{PackSourcePlugin, PacksConfig, SlottedPacksPlugin, SlottedPacksSet};
-pub use route::{OpenScreens, PendingScriptEvents};
+pub use route::{
+    MAX_SCRIPT_CALLS_PER_FRAME, OpenScreens, PendingScriptEvents, TOOLTIP_BUILD,
+    WarnedDeprecations, apply_control_command,
+};
 pub use source::{LayeredAssetReader, LayeredSource, PACK_SOURCE};
-pub use tooltip::{ScriptTooltipPart, StaticPart, TemplateWidget};
+pub use tooltip::{CHILDREN_ANCHOR, ScriptTooltipPart, StaticPart, TemplateWidget};
 
 /// Everything a game needs to wire mods in.
 pub mod prelude {
     pub use crate::{
-        ModError, ModFailed, ModLoader, ModReloaded, ModSet, ModStage, PackLayout,
-        PackSourcePlugin, PacksConfig, ReloadMod, ScriptHost, ScriptLog, ScriptLogs,
+        LogEntry, ModError, ModErrors, ModFailed, ModLoader, ModReloaded, ModSet, ModStage,
+        PackLayout, PackSourcePlugin, PacksConfig, ReloadMod, ScriptHost, ScriptLog, ScriptLogs,
         SlottedPacksPlugin,
     };
 }

@@ -3,9 +3,28 @@
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::Resource;
-use slotted_registry::{ModId, ModManifest, resolve_load_order};
+use slotted_registry::{AssetSource, ManifestError, ModId, ModManifest, resolve_load_order};
 
 use crate::ModError;
+
+/// The file every mod directory must contain.
+pub const MANIFEST_FILE: &str = "mod.toml";
+
+/// Where one mod's parts live on disk. Everything the lifecycle needs from a
+/// [`ModEntry`] without touching the manifest again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModPaths {
+    /// The directory holding `mod.toml`.
+    pub root: PathBuf,
+    /// `root/<manifest.assets>` or `root`.
+    pub assets: PathBuf,
+    /// `root/<entry.data>`.
+    pub data: Option<PathBuf>,
+    /// `root/<entry.control>`.
+    pub control: Option<PathBuf>,
+    /// `root/locale`.
+    pub locale: PathBuf,
+}
 
 /// One discovered mod.
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +62,30 @@ impl ModEntry {
             .as_ref()
             .map(|p| self.root.join(p))
     }
+
+    /// Where this mod's `<lang>.ftl` files live.
+    pub fn locale_dir(&self) -> PathBuf {
+        self.root.join("locale")
+    }
+
+    /// Everything the lifecycle reads, resolved once.
+    pub fn paths(&self) -> ModPaths {
+        ModPaths {
+            root: self.root.clone(),
+            assets: self.asset_root(),
+            data: self.data_script(),
+            control: self.control_script(),
+            locale: self.locale_dir(),
+        }
+    }
+}
+
+/// A `mod.toml` that could not be used, as a [`ManifestError`].
+fn manifest_error(path: &Path, message: impl Into<String>) -> ModError {
+    ModError::Manifest(ManifestError {
+        path: path.to_string_lossy().into_owned(),
+        message: message.into(),
+    })
 }
 
 /// The mods to load, in load order.
@@ -59,9 +102,112 @@ impl ModSet {
     /// [`ModError::Manifest`], [`ModError::LoadOrder`], or [`ModError::Io`]
     /// for an unreadable directory. A missing `mods_dir` is an empty set.
     pub fn discover(mods_dir: &Path) -> Result<Self, ModError> {
-        // PHASE4-IMPL: B
-        let _ = mods_dir;
-        Ok(Self::default())
+        let entries = match std::fs::read_dir(mods_dir) {
+            Ok(entries) => entries,
+            // No `mods/` at all is a game with no mods installed, not a fault.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(err) => {
+                return Err(ModError::Io {
+                    path: mods_dir.to_string_lossy().into_owned(),
+                    message: err.to_string(),
+                });
+            }
+        };
+
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|err| ModError::Io {
+                path: mods_dir.to_string_lossy().into_owned(),
+                message: err.to_string(),
+            })?;
+            let is_dir = entry
+                .file_type()
+                .map_err(|err| ModError::Io {
+                    path: mods_dir.to_string_lossy().into_owned(),
+                    message: err.to_string(),
+                })?
+                .is_dir();
+            if is_dir {
+                dirs.push(entry.path());
+            }
+        }
+        // `read_dir` order is filesystem order; sorting keeps discovery, and
+        // therefore every error message and tie-break, reproducible.
+        dirs.sort();
+
+        let mut parsed = Vec::with_capacity(dirs.len());
+        for dir in dirs {
+            let manifest_path = dir.join(MANIFEST_FILE);
+            let text = match std::fs::read_to_string(&manifest_path) {
+                Ok(text) => text,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    return Err(manifest_error(
+                        &manifest_path,
+                        "no mod.toml in this directory",
+                    ));
+                }
+                Err(err) => {
+                    return Err(ModError::Io {
+                        path: manifest_path.to_string_lossy().into_owned(),
+                        message: err.to_string(),
+                    });
+                }
+            };
+            parsed.push((dir, manifest_path, text));
+        }
+
+        Self::from_texts(parsed)
+    }
+
+    /// Discovery through an [`AssetSource`], for hosts with no filesystem.
+    ///
+    /// The port lists files, never directories, so the caller names the mod
+    /// directories; `<mods_dir>/<id>/mod.toml` is read for each.
+    ///
+    /// # Errors
+    ///
+    /// As [`discover`](Self::discover).
+    pub fn discover_in(
+        source: &dyn AssetSource,
+        mods_dir: &str,
+        ids: impl IntoIterator<Item = String>,
+    ) -> Result<Self, ModError> {
+        let mut parsed = Vec::new();
+        for id in ids {
+            let dir = PathBuf::from(mods_dir).join(&id);
+            let logical = format!("{}/{id}/{MANIFEST_FILE}", mods_dir.trim_end_matches('/'));
+            let manifest_path = dir.join(MANIFEST_FILE);
+            let bytes = source
+                .read(&logical)
+                .map_err(|err| manifest_error(&manifest_path, err.to_string()))?;
+            let text = String::from_utf8(bytes)
+                .map_err(|err| manifest_error(&manifest_path, err.to_string()))?;
+            parsed.push((dir, manifest_path, text));
+        }
+        Self::from_texts(parsed)
+    }
+
+    /// Parses every `(dir, manifest path, text)` and orders the result.
+    fn from_texts(parsed: Vec<(PathBuf, PathBuf, String)>) -> Result<Self, ModError> {
+        let mut manifests = Vec::with_capacity(parsed.len());
+        for (dir, manifest_path, text) in parsed {
+            let display = manifest_path.to_string_lossy().into_owned();
+            let manifest = ModManifest::parse(&display, &text)?;
+            // The directory name is how a modder finds the mod again, and how
+            // `mods/<id>/data/<id>/` lines up. A mismatch is always a mistake.
+            let dir_name = dir.file_name().unwrap_or_default().to_string_lossy();
+            if manifest.id.as_str() != dir_name {
+                return Err(manifest_error(
+                    &manifest_path,
+                    format!(
+                        "id `{}` does not match the directory name `{dir_name}`",
+                        manifest.id
+                    ),
+                ));
+            }
+            manifests.push((dir, manifest));
+        }
+        Self::from_manifests(manifests)
     }
 
     /// Builds a set from parsed manifests, sorted by dependencies.

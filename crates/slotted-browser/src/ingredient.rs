@@ -158,6 +158,8 @@ pub struct IngredientCtx<'a> {
     pub registries: &'a FrozenRegistries,
     /// Registered subtype interpreters.
     pub subtypes: &'a Subtypes,
+    /// The localisation port, for a definition whose display name is a key.
+    pub loc: &'a slotted_ui::Localization,
 }
 
 /// Decides which component patches make a distinct browser entry.
@@ -304,12 +306,18 @@ impl IngredientType for ItemType {
         types::item()
     }
 
+    /// `ItemDef::display_name` is documented as "a localisation key or literal
+    /// display name", and a mod writes a key. It is resolved through the port
+    /// here, which is the one place a card, the search index and an ingredient
+    /// tooltip all read, so they cannot disagree. A key nothing defines stays
+    /// verbatim, and an item with no display name at all falls back to its id.
     fn display_name(&self, ing: &Ingredient, ctx: &IngredientCtx<'_>) -> String {
         let Some(id) = ing.item_id() else {
             return String::new();
         };
         let def = ctx.registries.items.get(id);
-        def.and_then(|d| d.display_name.clone())
+        def.and_then(|d| d.display_name.as_deref())
+            .map(|name| ctx.loc.text_for(name))
             .or_else(|| ctx.registries.items.name_of(id).map(ToString::to_string))
             .unwrap_or_default()
     }

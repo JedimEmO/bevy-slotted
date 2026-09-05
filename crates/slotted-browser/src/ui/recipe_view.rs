@@ -292,6 +292,10 @@ fn resolve(world: &World, page: &RecipePage) -> Page {
                 .and_then(|l| output_of(&l))
         })
         .collect();
+    let loc = world
+        .get_resource::<slotted_ui::Localization>()
+        .cloned()
+        .unwrap_or_default();
     let title = world
         .get_resource::<Subtypes>()
         .and_then(|subtypes| {
@@ -301,6 +305,7 @@ fn resolve(world: &World, page: &RecipePage) -> Page {
                     &IngredientCtx {
                         registries,
                         subtypes,
+                        loc: &loc,
                     },
                 )
             })
@@ -810,6 +815,7 @@ fn transfer_is_possible(world: &World, button: Entity) -> bool {
     let subtypes = world.resource::<Subtypes>();
     let store = world.resource::<RecipeStore>();
     let categories = world.resource::<Categories>();
+    let loc = world.resource::<slotted_ui::Localization>();
     let Some(layout) = store.layout(recipe, Some(&page.focus), registries, categories, types)
     else {
         return false;
@@ -834,6 +840,7 @@ fn transfer_is_possible(world: &World, button: Entity) -> bool {
         ctx: IngredientCtx {
             registries,
             subtypes,
+            loc,
         },
     };
     handler.dry_run(&ctx, &layout).is_ok()

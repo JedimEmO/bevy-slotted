@@ -37,6 +37,16 @@ shot-chest:
     cargo run -p chest -- --shot examples/chest/shots/chest-browser.png
     cargo run -p chest -- --recipe minecraft:coal --shot examples/chest/shots/chest-recipe.png
 
+# The modded example in a window: three mods, loaded from disk, hot reloading.
+run-modded:
+    cargo run -p modded
+
+# Recapture the modded example's reference screenshots.
+shot-modded:
+    cargo run -p modded -- --no-console --shot examples/modded/shots/modded.png
+    cargo run -p modded -- --shot examples/modded/shots/modded-console.png
+    cargo run -p modded -- --reload copper_chest --shot examples/modded/shots/modded-reload.png
+
 # Phase 5 (web playground) enables these.
 # wasm-build example:
 #     cargo build --target wasm32-unknown-unknown -p {{example}} --release

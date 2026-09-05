@@ -1,0 +1,12 @@
+id = "beta"
+name = "Beta"
+version = "1.0.0"
+api_version = 1
+
+[entry]
+data = "data.lua"
+control = "control.lua"
+
+[[dependencies]]
+id = "alpha"
+kind = "required"

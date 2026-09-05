@@ -72,9 +72,9 @@ Screen screen=demo:chest
       Slot "" tags[region=hotbar] widget=slotted:slot
       Slot "" tags[region=hotbar] widget=slotted:slot
     Rail #rail tags[test_id=rail] widget=slotted:action_rail
-      Button "sort" tags[action=sort] widget=slotted:button
-      Button "quick_stack" tags[action=quick_stack] widget=slotted:button
-      Button "deposit_all" tags[action=deposit_all] widget=slotted:button
-      Button "loot_all" tags[action=loot_all] widget=slotted:button
+      Button "Sort" tags[action=sort] widget=slotted:button
+      Button "Quick stack" tags[action=quick_stack] widget=slotted:button
+      Button "Deposit all" tags[action=deposit_all] widget=slotted:button
+      Button "Loot all" tags[action=loot_all] widget=slotted:button
     Anchor anchor=title_end (hidden)
 Carried

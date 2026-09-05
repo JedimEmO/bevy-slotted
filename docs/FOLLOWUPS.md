@@ -125,3 +125,40 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   10). **Phase 6**.
 - **`ScreenHandler::clickable_areas` has no caller.** No Phase 3 handler returns one and nothing
   reads them; the furnace arrow they exist for is a Phase 6 screen. **Phase 6**.
+
+## From Phase 4
+
+- **`a_slot_click_round_trip_is_cheap` fails intermittently under a full-workspace test run.** Seen
+  twice on 2026-09-05 during `cargo test --workspace`, never in 30-odd standalone runs of the same
+  binary, never with `--test-threads=1`, and not reproducible under synthetic CPU load. The two
+  failures raised *different* Lua errors from the same 21 000-call loop, which is what a corrupted
+  value looks like rather than a script bug: `test/control.lua:4: attempt to index number with
+  'slot'` and `slotted/prelude:239: attempt to index string with number` inside `append_result`.
+  Each `MluaRuntime` owns its own `Lua`, the counters are per-state `Arc`s and nothing in the
+  adapter is shared, so the suspicion is mlua 0.11 or the vendored Luau across parallel states, and
+  the memory limit's allocator path is the first thing to rule out. The test is deliberately left
+  running rather than `#[ignore]`d, so the next occurrence is visible. **Phase 5**, and worth a
+  minimal reproduction to take upstream.
+- **The browser's own chrome is not localised.** The item names on cards, in the search index and
+  in a recipe page title now resolve through `slotted_ui::Localization`, but "Search items",
+  "R recipes / U uses / A bookmark", "indexing…" and a category chip's label are English literals
+  in `slotted-browser`. A chip is the harder one: it draws the category's path because
+  `RecipeCategory::title_key` invents `category.<ns>.<path>` and nothing carries the
+  `RecipeTypeDef::title_key` a mod actually declared into the category. **Phase 5**, with the
+  localisation pass.
+- **A stack's `ComponentPatch` is not remapped across a reload.** `remap_inventories` remaps
+  `ItemStack::id` by name across every `Inventory` and `Carried`, but a patch is keyed by
+  `ComponentId`, which the same freeze re-interns; those keys are left as they are. No Phase 4
+  example writes a component patch, so nothing fails today. **Phase 5** (packs notes B, item 13).
+- **The per-frame script budget is a constant, not configuration.** `route::MAX_SCRIPT_CALLS_PER_FRAME`
+  is 512 calls. `PacksConfig` has no field for it and its shape is shared, so making it
+  configurable means amending the contract. **Phase 5** (packs notes B, item 10).
+- **An untyped payload loses the width of its numbers.** Every def is now read through
+  `slotted_model::Value`, whose only numeric variants are `i64` and `f64`, so a widget `params`
+  payload that RON parsed as `U8(54)` comes back as `I64(54)`. Nothing reads a payload's numeric
+  width, and both sides of a payload comparison go through the same conversion, so this shows only
+  if something starts comparing a payload against a freshly parsed `ron::Value`. **Phase 6**.
+- **A resource pack cannot override a script that lives at a mod's root.** `read_script` tries
+  `scripts/<mod id>/<entry>` through the layering first and falls back to `<mod root>/<entry>`;
+  `ModWatch` registers a handle only for the first form, so a root-level script reloads through an
+  explicit `ReloadMod` and not the file watcher. **Phase 5** (packs notes B, item 4).

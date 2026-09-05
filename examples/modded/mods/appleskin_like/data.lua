@@ -1,5 +1,8 @@
--- appleskin_like/data.lua: data-only. A food item, a food tag, and one
--- tooltip line for everything in the tag. No control.lua.
+-- appleskin_like/data.lua: data-only registration. A food item, a food tag,
+-- and one static tooltip line for everything in the tag.
+--
+-- The static part is all data: no script runs while a tooltip is built. See
+-- control.lua for the line that does need one.
 
 slotted.register_item("demo:apple", {
     display_name = "appleskin_like.item.apple",

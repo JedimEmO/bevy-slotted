@@ -638,11 +638,20 @@ fn install(
 }
 
 /// Turns a patched [`Value`] into a typed def.
+///
+/// Not `Value::into_rust`. The patched RON tree is converted to a
+/// [`slotted_model::Value`] first and deserialised from there, so a definition
+/// that arrives in a data file and the same definition registered by a mod's
+/// `data.lua` are read under one set of rules; see
+/// [`crate::ron_value`]. The visible difference is that an optional
+/// field accepts both `Some(x)` and a bare `x`.
 fn typed_entry<T: serde::de::DeserializeOwned>(value: Value, path: &str) -> Result<T, LoadError> {
-    value.into_rust().map_err(|err| LoadError::Parse {
+    let parse = |message: String| LoadError::Parse {
         path: path.to_owned(),
-        message: err.to_string(),
-    })
+        message,
+    };
+    let untyped = crate::ron_value::to_model(&value).map_err(|err| parse(err.to_string()))?;
+    slotted_model::from_value(untyped).map_err(|err| parse(err.to_string()))
 }
 
 #[allow(clippy::unwrap_used)]
