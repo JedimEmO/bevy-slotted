@@ -1,0 +1,10 @@
+// Round two: every mod has registered by now, so it is safe to edit base's
+// chest. This is the patch the round-order test watches.
+[
+    (
+        target: "base:chest",
+        op: Merge((
+            max_stack_size: 16,
+        )),
+    ),
+]

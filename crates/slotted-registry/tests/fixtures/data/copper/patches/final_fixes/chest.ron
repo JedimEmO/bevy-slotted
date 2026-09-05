@@ -1,0 +1,18 @@
+// Round three: the last word. Raises what round two set.
+[
+    (
+        target: "base:chest",
+        op: Merge((
+            max_stack_size: 48,
+            rarity: "rare",
+        )),
+    ),
+    (
+        target: "base:chest",
+        op: InsertListItem(
+            path: "tags",
+            index: Some(0),
+            value: "copper:containers",
+        ),
+    ),
+]

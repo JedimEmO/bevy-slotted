@@ -1,0 +1,8 @@
+// A placeholder registry: the payload stays untyped until slotted-ui exists.
+(
+    name: "base:chest",
+    payload: (
+        kind: "panel",
+        slots: 27,
+    ),
+)

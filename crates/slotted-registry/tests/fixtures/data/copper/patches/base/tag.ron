@@ -1,0 +1,12 @@
+// Round one: put the copper chest in a tag base owns.
+[
+    (
+        target: "base:craftable",
+        registry: tags,
+        op: InsertListItem(
+            path: "values",
+            index: None,
+            value: "copper:chest",
+        ),
+    ),
+]

@@ -1,0 +1,4 @@
+(
+    name: "base:plank",
+    display_name: Some("Plank"),
+)

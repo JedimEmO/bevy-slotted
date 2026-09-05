@@ -1,0 +1,11 @@
+// The entry every patch in this fixture aims at.
+(
+    name: "base:chest",
+    display_name: Some("Chest"),
+    max_stack_size: 64,
+    tags: ["base:storage"],
+    components: {
+        "base:capacity": 27,
+    },
+    rarity: "common",
+)

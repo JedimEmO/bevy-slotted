@@ -1,0 +1,4 @@
+(
+    name: "base:planks",
+    values: ["base:plank"],
+)

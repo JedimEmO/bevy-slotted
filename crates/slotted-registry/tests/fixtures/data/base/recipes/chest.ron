@@ -1,0 +1,13 @@
+(
+    name: "base:chest",
+    recipe_type: "base:crafting",
+    shape: Some([
+        "PPP",
+        "P P",
+        "PPP",
+    ]),
+    key: {
+        'P': "#base:planks",
+    },
+    result: (item: "base:chest", count: 1),
+)

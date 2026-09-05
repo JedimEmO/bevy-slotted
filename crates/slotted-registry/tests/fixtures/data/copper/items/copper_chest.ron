@@ -1,0 +1,7 @@
+(
+    name: "copper:chest",
+    display_name: Some("Copper Chest"),
+    max_stack_size: 32,
+    tags: ["base:storage"],
+    rarity: "uncommon",
+)

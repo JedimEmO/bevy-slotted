@@ -1,0 +1,44 @@
+# cargo-deny configuration. Run with `cargo deny check`.
+
+[graph]
+all-features = true
+
+[licenses]
+# Permissive only, and explicit: a new licence in the tree should fail the
+# build and be added here deliberately rather than slip in with a dependency
+# bump. slotted itself is MIT OR Apache-2.0 and must stay linkable by games
+# that ship closed-source.
+version = 2
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+]
+confidence-threshold = 0.9
+
+# MPL-2.0 is file-level copyleft, so it is safe to link but not to copy source
+# out of. Allowed per crate rather than globally so each one is a decision.
+[[licenses.exceptions]]
+name = "webpki-roots"
+allow = ["MPL-2.0"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

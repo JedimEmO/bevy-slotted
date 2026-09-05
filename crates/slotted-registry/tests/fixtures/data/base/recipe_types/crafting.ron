@@ -1,0 +1,6 @@
+(
+    name: "base:crafting",
+    title_key: Some("gui.base.crafting"),
+    icon: Some("icons/crafting.png"),
+    size: (3, 3),
+)

@@ -1,0 +1,8 @@
+id = "base"
+name = "Slotted Base"
+version = "0.1.0"
+api_version = 1
+assets = "assets"
+
+[entry]
+data = "data.lua"

@@ -1,0 +1,21 @@
+id = "copper"
+name = "Copper Chest"
+version = "1.2.0"
+api_version = 1
+
+[entry]
+data = "data.lua"
+control = "control.lua"
+
+[[dependencies]]
+id = "base"
+req = ">=0.1"
+
+[[dependencies]]
+id = "sorter"
+kind = "optional"
+order = "after"
+
+[[dependencies]]
+id = "old_copper"
+kind = "incompatible"

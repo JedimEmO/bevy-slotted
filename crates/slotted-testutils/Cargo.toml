@@ -1,0 +1,17 @@
+[package]
+name = "slotted-testutils"
+description = "Internal fakes, builders and the script conformance suite for slotted. Dev-dependency only."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true }
+
+[lints]
+workspace = true

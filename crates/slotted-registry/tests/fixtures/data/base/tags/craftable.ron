@@ -1,0 +1,5 @@
+// Inherits `base:planks`, so it holds everything that tag holds.
+(
+    name: "base:craftable",
+    values: ["#base:planks", "base:chest"],
+)
