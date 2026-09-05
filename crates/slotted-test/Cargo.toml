@@ -1,0 +1,51 @@
+[package]
+name = "slotted-test"
+description = "Headless UI test harness for games built on slotted: locators over the semantic tree, synthetic input through real picking, virtual time, screen-tree snapshots."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# Run the real renderer with a software adapter and compare pixels. Phase 7.
+render = []
+
+[dependencies]
+slotted = { workspace = true }
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true }
+slotted-ecs = { workspace = true }
+slotted-theme = { workspace = true }
+slotted-ui = { workspace = true }
+slotted-icons = { workspace = true }
+# `debug` so a failing system parameter names itself (ADR 0002).
+bevy = { workspace = true, features = [
+    "std",
+    "bevy_asset",
+    "bevy_camera",
+    "bevy_input_focus",
+    "bevy_log",
+    "bevy_picking",
+    "bevy_scene",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_widgets",
+    "bevy_window",
+    "default_font",
+    "ui_picking",
+    "debug",
+] }
+insta = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

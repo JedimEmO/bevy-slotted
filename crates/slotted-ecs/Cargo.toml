@@ -1,0 +1,29 @@
+[package]
+name = "slotted-ecs"
+description = "Bevy adapter of the slotted domain model: inventory and menu components, click events, prediction and the Authority port."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true }
+# No rendering, no bevy_ui, no windowing: this crate runs under MinimalPlugins
+# and on wasm32 with `--no-default-features`.
+bevy = { workspace = true, features = ["std"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+slotted-testutils = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

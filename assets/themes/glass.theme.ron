@@ -1,0 +1,70 @@
+// "Obsidian Glass", the first slotted theme. Palette from
+// docs/research/research-modern-ui.md section 5A and spikes/glass-ui.
+//
+// Colours are "#RRGGBB" or "#RRGGBBAA" literals, or "$name" palette
+// references. Roles are dotted; a missing state role (slot.hover) falls back
+// to its parent (slot).
+#![enable(implicit_some)]
+(
+    name: "glass",
+    tokens: (
+        spacing: (xs: 2.0, sm: 6.0, md: 14.0, lg: 20.0, xl: 32.0),
+        radii: (sm: 8.0, md: 12.0, lg: 16.0),
+        elevation: {
+            "low":  (y: 4.0,  blur: 12.0, spread: 0.0, color: "#0000008C"),
+            "mid":  (y: 8.0,  blur: 24.0, spread: 1.0, color: "#0000008C"),
+            "high": (y: 14.0, blur: 38.0, spread: 2.0, color: "#0000008C"),
+        },
+        durations: (fast: 90, normal: 180, slow: 320),
+        blur: (radius: 4.0, backdrop_divisor: 4),
+        palette: {
+            "base":     "#0B0E14",
+            "panel":    "#141A24",
+            "hairline": "#2A3446",
+            "accent":   "#7FD1FF",
+            "warm":     "#FFB454",
+            "text":     "#E6EDF3",
+            "muted":    "#E6EDF373",
+            "danger":   "#FF6B6B",
+        },
+        rarity: {
+            "common":    "#E6EDF3",
+            "uncommon":  "#7FD1FF",
+            "rare":      "#B48CFF",
+            "epic":      "#FFB454",
+            "legendary": "#FF6B6B",
+        },
+    ),
+    roles: {
+        "panel": Glass(
+            tint: "#141A247A",
+            border: "#FFFFFF1A",
+            radius: 16.0,
+            elevation: Some("high"),
+        ),
+        "panel.title": Text(color: "$text", size: 15.0),
+
+        "slot": Solid(fill: "#141A24B8", border: "#2A34468C", radius: 8.0),
+        "slot.hover": Solid(fill: "#243447E6", border: "#7FD1FFD9", radius: 8.0),
+        "slot.focus": Solid(fill: "#141A24B8", border: "$accent", radius: 8.0),
+        "slot.carried": Solid(fill: "#2A3B4FF2", border: "$warm", radius: 8.0),
+
+        "tooltip": Solid(fill: "#0B0E14F2", border: None, radius: 12.0, elevation: Some("mid")),
+        "tooltip.frame": Solid(fill: "#00000000", border: "$hairline", radius: 12.0),
+
+        "button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),
+        "button.primary": Gradient(
+            angle: 180.0,
+            stops: [(0.0, "#7FD1FF"), (1.0, "#5AAEE0")],
+            border: "#FFFFFF33",
+            radius: 8.0,
+        ),
+        "button.hover": Solid(fill: "#243447E6", border: "$accent", radius: 8.0),
+
+        "text": Text(color: "$text", size: 13.0),
+        "text.muted": Text(color: "$muted", size: 11.0),
+        "count": Text(color: "$text", size: 11.0),
+
+        "rail": Solid(fill: "#0B0E14A6", border: "$hairline", radius: 12.0),
+    },
+)

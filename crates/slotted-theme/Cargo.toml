@@ -1,0 +1,29 @@
+[package]
+name = "slotted-theme"
+description = "Design tokens, role-to-material themes as RON assets, hot reload and motion presets for slotted."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# Backdrop blur for `Material::Glass`: a second camera renders the scene into a
+# quarter-resolution image that a `UiMaterial` samples. Pulls in bevy_render;
+# roughly one extra millisecond per frame while a glass screen is open (ADR 0003).
+blur = ["bevy/bevy_render", "bevy/bevy_core_pipeline", "bevy/bevy_ui_render", "bevy/bevy_shader"]
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_ui", "bevy_log"] }
+serde = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+[package]
+name = "slotted-icons"
+description = "The IconSource port for slotted with a baked-atlas adapter and a CPU placeholder bake."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# `LiveIcons`: a `ViewportNode` camera per requested item, for the hovered
+# item and detail panes only (ADR 0003 measured ~0.8 ms per camera).
+live = ["bevy/bevy_camera"]
+
+[dependencies]
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true }
+slotted-ecs = { workspace = true }
+bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_image", "bevy_ui", "bevy_log"] }
+wgpu-types = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,46 @@
+[package]
+name = "slotted"
+description = "Facade for slotted: SlottedPlugins, the headless plugin group, prelude and feature flags."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["ui"]
+# Widgets, themes and icons. Off for a dedicated server.
+ui = ["dep:slotted-ui", "dep:slotted-theme", "dep:slotted-icons"]
+# Backdrop blur for glass panels (ADR 0003).
+blur = ["ui", "slotted-theme/blur"]
+# Exclusion-zone highlighter, id tooltips.
+dev = ["ui", "slotted-ui/dev"]
+
+[dependencies]
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true, features = ["std-fs"] }
+slotted-ecs = { workspace = true }
+slotted-theme = { workspace = true, optional = true }
+slotted-ui = { workspace = true, optional = true }
+slotted-icons = { workspace = true, optional = true }
+# The headless group needs exactly what ADR 0002 lists; a game adds
+# DefaultPlugins on top of these for a windowed build.
+bevy = { workspace = true, features = [
+    "std",
+    "bevy_asset",
+    "bevy_camera",
+    "bevy_input_focus",
+    "bevy_log",
+    "bevy_picking",
+    "bevy_scene",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_widgets",
+    "bevy_window",
+    "default_font",
+    "ui_picking",
+] }
+
+[lints]
+workspace = true

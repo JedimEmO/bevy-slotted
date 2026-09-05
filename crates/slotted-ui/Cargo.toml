@@ -1,0 +1,48 @@
+[package]
+name = "slotted-ui"
+description = "Screen trees, widgets, anchors, injection, tooltips, semantic roles and HUD layers for slotted on bevy_ui."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# Exclusion-zone highlighter, id tooltips. No extra dependencies.
+dev = []
+
+[dependencies]
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true }
+slotted-ecs = { workspace = true }
+slotted-theme = { workspace = true }
+slotted-icons = { workspace = true }
+# bevy_ui without bevy_ui_render: this crate lays out and picks, it does not
+# draw, so it runs unchanged in the headless harness. bevy_scene is for `bsn!`.
+bevy = { workspace = true, features = [
+    "std",
+    "bevy_asset",
+    "bevy_camera",
+    "bevy_input_focus",
+    "bevy_log",
+    "bevy_picking",
+    "bevy_scene",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_widgets",
+    "bevy_window",
+    "ui_picking",
+] }
+accesskit = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
