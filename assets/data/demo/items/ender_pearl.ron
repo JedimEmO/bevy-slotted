@@ -5,4 +5,5 @@
     display_name: Some("Ender Pearl"),
     max_stack_size: 16,
     rarity: "epic",
+    icon: Some((shape: "sphere", color: "#2e9c8e", metallic: 0.2, roughness: 0.25)),
 )

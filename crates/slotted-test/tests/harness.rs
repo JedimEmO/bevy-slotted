@@ -191,11 +191,10 @@ fn settle_terminates_with_motion_on_and_off() {
     let settled = h.settle();
     assert!(settled >= 1);
 
-    h.world_mut().entity_mut(node).insert(Tween {
-        target: TweenTarget::Alpha { from: 0.0, to: 1.0 },
-        duration: Duration::from_millis(100),
-        elapsed: Duration::ZERO,
-    });
+    h.world_mut().entity_mut(node).insert(Tween::new(
+        TweenTarget::Alpha { from: 0.0, to: 1.0 },
+        Duration::from_millis(100),
+    ));
     let frames = h.settle();
     // 100 ms at 16.667 ms per frame is 6 frames, plus one for the frame that
     // notices the tween is gone.
@@ -217,11 +216,10 @@ fn settle_gives_up_at_the_frame_cap() {
         .plugins(SlottedPlugins::headless())
         .max_settle_frames(5)
         .build();
-    h.world_mut().spawn(Tween {
-        target: TweenTarget::Alpha { from: 0.0, to: 1.0 },
-        duration: Duration::from_mins(1),
-        elapsed: Duration::ZERO,
-    });
+    h.world_mut().spawn(Tween::new(
+        TweenTarget::Alpha { from: 0.0, to: 1.0 },
+        Duration::from_mins(1),
+    ));
     let err = h.try_settle().expect_err("never settles");
     assert_eq!(err.frames, 5);
     assert_eq!(err.motions, 1);

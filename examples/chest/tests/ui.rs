@@ -21,13 +21,18 @@ use slotted_test::prelude::*;
 /// The demo, headless: the RON screen over the RON content, with the demo's
 /// own key bindings attached so `Esc` and `E` behave as they do on screen.
 fn open_demo_chest() -> (UiHarness, Opened) {
+    open_demo_chest_in("glass")
+}
+
+/// The demo under one of the three shipped themes.
+fn open_demo_chest_in(theme: &str) -> (UiHarness, Opened) {
     let registries = chest::load_registries();
     let mut harness = UiHarness::builder()
         .plugins(SlottedPlugins::headless())
         .plugins(ChestDemoPlugin)
         .registries(registries.clone())
         .resolution(1600.0, 900.0)
-        .theme("glass")
+        .theme(theme)
         .build();
     let opened = harness.open_screen(
         chest::demo_screen(),
@@ -309,4 +314,145 @@ fn esc_closes_the_screen_and_e_opens_it_again() {
     );
 
     harness.assert_conserved();
+}
+
+/// Steps until the active theme asset is in `Assets<Theme>`, so a test can
+/// read its tokens. The file comes off disk through the asset server's own
+/// task, which `settle()` does not know to wait for.
+fn wait_for_theme(harness: &mut UiHarness) -> slotted::theme::Theme {
+    for _ in 0..600 {
+        let world = harness.world();
+        let active = world.resource::<slotted::theme::ActiveTheme>().0.clone();
+        if let Some(theme) = world
+            .resource::<Assets<slotted::theme::Theme>>()
+            .get(&active)
+        {
+            let theme = theme.clone();
+            // One more settle so the repaint the load triggers has landed.
+            harness.settle();
+            return theme;
+        }
+        harness.step(1);
+    }
+    panic!("theme never loaded");
+}
+
+/// The semantic tree is the screen's, not the theme's: paper and neon paint
+/// the same entities the glass theme does, and `screen_tree()` cannot tell
+/// them apart. This is the Phase 7 gate on the token set: a direction that
+/// needed a different tree would have needed a different widget.
+#[test]
+fn the_screen_tree_is_theme_independent() {
+    let (mut glass, _) = open_demo_chest();
+    let glass_theme = wait_for_theme(&mut glass);
+    assert_eq!(glass_theme.name, "glass");
+    let reference = glass.screen_tree();
+
+    for name in ["paper", "neon"] {
+        let (mut harness, _) = open_demo_chest_in(name);
+        let theme = wait_for_theme(&mut harness);
+        assert_eq!(theme.name, name);
+        assert_eq!(harness.screen_tree(), reference, "{name} changed the tree");
+        // And the theme really is in force: the panel carries its material.
+        let panel = {
+            let world = harness.world_mut();
+            let mut q = world.query::<(Entity, &slotted::theme::Themed)>();
+            q.iter(world)
+                .find(|(_, t)| t.0 == slotted::theme::roles::PANEL)
+                .map(|(e, _)| e)
+                .expect("a themed panel node")
+        };
+        let world = harness.world();
+        match name {
+            "paper" => assert!(
+                world.get::<ImageNode>(panel).is_some(),
+                "paper's panel is a tiled sheet"
+            ),
+            _ => assert!(
+                world.get::<BackgroundColor>(panel).is_some(),
+                "neon's panel degrades to a solid without the shader"
+            ),
+        }
+    }
+}
+
+/// The theme's motion tokens decide how long a hover takes and on which
+/// curve, and the harness clock sees exactly those numbers.
+#[test]
+fn hover_motion_follows_the_theme_tokens() {
+    use slotted::theme::{Easing, MotionPreset, Tween};
+
+    for (name, ms, easing) in [
+        ("glass", 90_u64, Easing::Standard),
+        ("paper", 120, Easing::Standard),
+        ("neon", 90, Easing::Snap),
+    ] {
+        let (mut harness, _) = open_demo_chest_in(name);
+        let theme = wait_for_theme(&mut harness);
+        assert_eq!(
+            theme.tokens.duration_ms(MotionPreset::Hover),
+            u32::try_from(ms).unwrap(),
+            "{name}"
+        );
+        assert_eq!(theme.tokens.easing(MotionPreset::Hover), easing, "{name}");
+
+        let slot = chest_slot(&harness, 3);
+        harness.hover(slot);
+        let tween = harness
+            .world()
+            .get::<Tween>(slot)
+            .unwrap_or_else(|| panic!("{name}: hover starts a scale tween"))
+            .clone();
+        assert_eq!(
+            tween.duration,
+            std::time::Duration::from_millis(ms),
+            "{name}"
+        );
+        assert_eq!(tween.easing, easing, "{name}");
+
+        // The tween runs on the virtual clock and is gone once it has been
+        // stepped past its duration.
+        harness.advance(std::time::Duration::from_millis(ms + 20));
+        assert!(
+            harness.world().get::<Tween>(slot).is_none(),
+            "{name}: tween finished under the harness clock"
+        );
+    }
+}
+
+/// Paper says "no springs": no preset of its may overshoot. Neon's drop is
+/// the one squash that does.
+#[test]
+fn paper_never_springs_and_neon_squashes_on_drop() {
+    use slotted::theme::{Easing, MotionPreset};
+
+    let presets = [
+        MotionPreset::Hover,
+        MotionPreset::Press,
+        MotionPreset::DropSquash,
+        MotionPreset::FlyToSlot,
+        MotionPreset::Stagger,
+        MotionPreset::Fade,
+    ];
+    let (mut paper, _) = open_demo_chest_in("paper");
+    let paper = wait_for_theme(&mut paper);
+    for preset in presets {
+        assert!(!paper.tokens.easing(preset).overshoots(), "{preset:?}");
+        let ms = paper.tokens.duration_ms(preset);
+        assert!((120..=200).contains(&ms), "{preset:?} takes {ms} ms");
+    }
+    let (mut neon, _) = open_demo_chest_in("neon");
+    let neon = wait_for_theme(&mut neon);
+    assert_eq!(
+        neon.tokens.easing(MotionPreset::DropSquash),
+        Easing::Overshoot
+    );
+    for preset in [
+        MotionPreset::Hover,
+        MotionPreset::Press,
+        MotionPreset::DropSquash,
+    ] {
+        let ms = neon.tokens.duration_ms(preset);
+        assert!((90..=140).contains(&ms), "{preset:?} takes {ms} ms");
+    }
 }

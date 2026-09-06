@@ -87,13 +87,18 @@ impl Plugin for BackdropPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(bevy::ui_render::prelude::UiMaterialPlugin::<
             GlassPanelMaterial,
-        >::default())
-            .insert_resource(BackdropConfig {
-                divisor: self.divisor.max(1),
-                clear_color: self.clear_color,
-            })
-            .add_systems(Startup, spawn_backdrop_camera)
-            .add_systems(PostUpdate, sync_backdrop_camera);
+        >::default());
+        // The neon theme's shape rides along: a game that added the backdrop
+        // for glass can swap to neon without another plugin.
+        if !app.is_plugin_added::<crate::cut::CutCornerPlugin>() {
+            app.add_plugins(crate::cut::CutCornerPlugin);
+        }
+        app.insert_resource(BackdropConfig {
+            divisor: self.divisor.max(1),
+            clear_color: self.clear_color,
+        })
+        .add_systems(Startup, spawn_backdrop_camera)
+        .add_systems(PostUpdate, sync_backdrop_camera);
     }
 }
 

@@ -1,6 +1,6 @@
 # bevy_slotted implementation plan
 
-Status: v1.8, 2026-09-06, Phases 0 to 6 complete. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
+Status: v2.0, 2026-09-06, Phases 0 to 7 complete. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
 
 ## 1. Goal and non-goals
 
@@ -418,3 +418,43 @@ Two audiences. Our own crates are tested with the usual unit and integration tes
 3. ~~Confirm the two-adapter scripting approach~~ Decided by the Phase 0 spike: mlua (Luau) native, piccolo on wasm, luaur feature-gated. See ADR 0001.
 4. Confirm that networking stays a port with a local adapter in v1.
 5. Confirm `slotted-test` as a published, public crate with locators over a semantic tree (which also gives us accessibility), rather than a test-only helper.
+
+## 11. Outcome
+
+Phases 0 to 7 are done. What shipped, crate by crate:
+
+| Crate | What landed |
+|---|---|
+| `slotted-model`, `slotted-registry` | The domain and the registries. No Bevy, no IO. |
+| `slotted-ecs` | The model as components and events, prediction, the `Authority` port. |
+| `slotted-theme` | Ten materials, 36 roles, fonts and per-preset motion, and three shipped skins: glass, paper, neon. |
+| `slotted-ui` | Screens as data, 14 node types, tooltips, anchors and injection, HUD layers, recording and replay. |
+| `slotted-icons` | Lit-shape item icons: a deterministic CPU bake, an offscreen GPU rig that renders into the atlas, and live viewport icons. |
+| `slotted-browser` | Item and recipe browser over any screen, with search, categories, bookmarks and transfer. |
+| `slotted-script` and its two adapters | One `slotted.*` surface, Luau natively and pure-Rust Lua on wasm. |
+| `slotted-packs` | Mod discovery, layered assets, the two-stage lifecycle, hot reload, Fluent. |
+| `slotted-test`, `slotted-testutils` | The public headless harness and the internal fakes. |
+| `slotted` | The facade: `SlottedPlugins`, the prelude, the feature flags. |
+
+**821 tests pass** with every feature on, three more behind a GPU gate. The
+three native examples and the web playground all run, each covered by its own
+harness tests and its mods' `tests/*.lua`.
+
+Known limitations, in the order they would block someone:
+
+- `slotted-script-piccolo` cannot be published while the workspace patches
+  `piccolo` to `vendor/piccolo`. The other twelve crates dry-run green.
+- No font files ship, so both new themes render in Bevy's default face.
+- `LiveIcons` and the viewport draw shapes only; `IconDef::Model` warns.
+- The GPU icon bake is confirmed on a WebGL2 context, but only a software one
+  (ANGLE over SwiftShader). Its cost on hardware is unmeasured.
+- `a_slot_click_round_trip_is_cheap` fails intermittently under a full
+  parallel workspace run, in mlua rather than in this code.
+- `cargo deny check advisories` fails on `ttf-parser`, through Bevy's text
+  stack, and is left unignored on purpose.
+
+Recommended next steps: take the mlua intermittent upstream with a minimal
+reproduction; add the glTF loader behind `IconDef::Model`; ship or fetch the
+OFL font files so paper and neon are complete; measure the GPU bake on a
+hardware WebGL2 context; and implement `ScreenDef::inherits`.
+`docs/FOLLOWUPS.md` carries the rest.

@@ -364,8 +364,11 @@ impl IngredientType for ItemType {
     }
 
     fn icon(&self, ing: &Ingredient, icons: &dyn IconSource) -> IconRef {
+        // A card is a flat cell in a scrolling grid: it takes the atlas even
+        // when the active source would rather show a live viewport.
+        let flat = icons.live().unwrap_or(icons);
         self.as_stack(ing, 1)
-            .map_or(IconRef::Missing, |s| icons.icon(&s))
+            .map_or(IconRef::Missing, |s| flat.icon(&s))
     }
 
     fn entries(&self, ctx: &IngredientCtx<'_>) -> Vec<Ingredient> {

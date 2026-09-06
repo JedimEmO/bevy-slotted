@@ -11,6 +11,7 @@ edition = "2024"
 rust-version = "1.96"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mathiasmyrland/bevy-slotted"
+homepage = "https://github.com/mathiasmyrland/bevy-slotted"
 authors = ["Mathias Myrland <jedimemo@gmail.com>"]
 
 [workspace.dependencies]
@@ -57,13 +58,27 @@ pretty_assertions = "1.4.1"
 # as wildcard dependencies.
 slotted-model = { path = "crates/slotted-model", version = "0.1.0" }
 slotted-registry = { path = "crates/slotted-registry", version = "0.1.0", default-features = false }
-slotted-testutils = { path = "crates/slotted-testutils", version = "0.1.0" }
+# No `version`, unlike the others. It is `publish = false`, and a dev-dependency
+# carrying a version is written into a packaged manifest, where crates.io then
+# cannot resolve it: `cargo publish` of every crate that tests against it fails
+# with "no matching package named `slotted-testutils`". Path-only dev-deps are
+# stripped at packaging time instead. `deny.toml`'s `allow-wildcard-paths`
+# covers the wildcard this leaves in the graph.
+slotted-testutils = { path = "crates/slotted-testutils" }
 slotted-ecs = { path = "crates/slotted-ecs", version = "0.1.0" }
 slotted-theme = { path = "crates/slotted-theme", version = "0.1.0" }
 slotted-ui = { path = "crates/slotted-ui", version = "0.1.0" }
 slotted-icons = { path = "crates/slotted-icons", version = "0.1.0" }
 slotted-browser = { path = "crates/slotted-browser", version = "0.1.0" }
-slotted-test = { path = "crates/slotted-test", version = "0.1.0" }
+# No `version`, like `slotted-testutils` and for a related reason. This is only
+# ever a dev-dependency here, and it is a cycle: `slotted-test` depends on the
+# facade, which depends on `slotted-ui`, whose own tests drive the harness.
+# Cargo allows the cycle in the workspace because dev-dependencies never enter
+# a library's build graph, but a version in a packaged manifest would demand
+# that `slotted-test` reach crates.io before `slotted-ui`, which is impossible.
+# Path-only, so packaging strips it. Consumers still depend on the published
+# `slotted-test` normally; nothing publishable here does.
+slotted-test = { path = "crates/slotted-test" }
 slotted-script = { path = "crates/slotted-script", version = "0.1.0" }
 slotted-script-mlua = { path = "crates/slotted-script-mlua", version = "0.1.0" }
 slotted-script-piccolo = { path = "crates/slotted-script-piccolo", version = "0.1.0" }

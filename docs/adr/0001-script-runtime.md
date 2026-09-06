@@ -1,7 +1,7 @@
 # ADR 0001: Script runtime strategy
 
-Status: proposed
-Date: 2026-09-05
+Status: accepted (Phases 4 and 5 shipped both adapters)
+Date: 2026-09-05, status confirmed 2026-09-06
 Spike: `spikes/script-runtimes/` (README there has commands, versions, raw numbers)
 
 ## Context

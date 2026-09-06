@@ -16,6 +16,17 @@ fn open_idle_furnace() -> (UiHarness, Opened) {
 }
 
 fn open_furnace() -> (UiHarness, Opened) {
+    open_furnace_with(machine::MachineSim { paused: false })
+}
+
+/// The furnace with its simulation switched off, so every readout on the
+/// screen is the value `menu_def` declares and stays there however many
+/// frames `settle()` runs. The snapshot test is the caller.
+fn open_frozen_furnace() -> (UiHarness, Opened) {
+    open_furnace_with(machine::MachineSim { paused: true })
+}
+
+fn open_furnace_with(sim: machine::MachineSim) -> (UiHarness, Opened) {
     let registries = machine::load_registries();
     let mut harness = UiHarness::builder()
         .plugins(SlottedPlugins::headless())
@@ -24,6 +35,7 @@ fn open_furnace() -> (UiHarness, Opened) {
         .resolution(1600.0, 900.0)
         .theme("glass")
         .build();
+    harness.world_mut().insert_resource(sim);
     let opened = harness.open_screen(
         machine::furnace_screen(),
         (machine::menu_def(), machine::inventories(&registries)),
@@ -71,9 +83,14 @@ fn the_furnace_screen_opens() {
 
 /// The whole tree, so a change to any Phase 6 widget's shape shows up in a
 /// review diff rather than in a screenshot nobody opens.
+///
+/// The simulation is paused: a running furnace burns fuel and cooks while
+/// the harness settles, so the readouts would carry whatever tick the
+/// settle happened to stop on. The sim-driven values are asserted in
+/// `cooking_moves_one_item_and_conserves_the_rest` and its neighbours.
 #[test]
 fn the_furnace_screen_matches_its_snapshot() {
-    let (harness, _) = open_furnace();
+    let (harness, _) = open_frozen_furnace();
     assert_tree_text_snapshot!(harness.screen_tree());
 }
 

@@ -1,0 +1,192 @@
+// "Neon Workshop", the third slotted theme. Direction C of
+// docs/research/research-modern-ui.md section 5 and docs/moodboard.html
+// section 02: opaque charcoal and slate with diagonal cut corners, lime,
+// magenta and cyan accents, rarity as a glowing bar along the bottom of the
+// slot, punchy 90-140 ms motion with a squash on drop and a staggered grid.
+//
+// Cut corners are `CutCorners`, a `UiMaterial` behind the `blur` feature (the
+// GPU materials feature); a headless app or a build without it gets the same
+// colours on square nodes, and the rarity bar becomes a hard-stop gradient.
+//
+// Type is Manrope body with Rajdhani display and counts. The fonts are named,
+// not shipped: drop the OFL files into assets/fonts/ and add `path:` to the
+// two tokens below, or enable Bevy's `system_font_discovery` and set
+// `system: true`. Until then Bevy's default face carries the layout.
+#![enable(implicit_some)]
+(
+    name: "neon",
+    tokens: (
+        spacing: (xs: 2.0, sm: 6.0, md: 14.0, lg: 20.0, xl: 32.0),
+        radii: (sm: 0.0, md: 0.0, lg: 0.0),
+        elevation: {
+            "low":  (x: 0.0, y: 3.0,  blur: 0.0,  spread: 0.0, color: "#000000B3"),
+            "mid":  (x: 0.0, y: 8.0,  blur: 20.0, spread: 0.0, color: "#000000A6"),
+            "high": (x: 0.0, y: 14.0, blur: 34.0, spread: 2.0, color: "#000000B3"),
+        },
+        durations: (fast: 90, normal: 140, slow: 240),
+        motion: (
+            easing: Snap,
+            presets: {
+                // The one spring the direction allows: the drop overshoots
+                // and settles.
+                DropSquash: (duration: 140, easing: Overshoot),
+                Stagger: (duration: 140, easing: Snap),
+                Fade: (duration: 110, easing: Standard),
+            },
+        ),
+        fonts: {
+            "body": (family: "Manrope"),
+            "display": (family: "Rajdhani"),
+        },
+        blur: (radius: 0.0, backdrop_divisor: 4),
+        palette: {
+            "charcoal": "#1A1C22",
+            "slate":    "#262A33",
+            "edge":     "#353B49",
+            "well":     "#12141A",
+            "lime":     "#C7F464",
+            "magenta":  "#FF5FA2",
+            "cyan":     "#38E8FF",
+            "text":     "#F5F7FA",
+            "muted":    "#A6ADBB",
+            "danger":   "#FF5C5C",
+        },
+        rarity: {
+            "common":    "#3A3F4C",
+            "uncommon":  "#38E8FF",
+            "rare":      "#C7F464",
+            "epic":      "#B48CFF",
+            "legendary": "#FF5FA2",
+        },
+    ),
+    roles: {
+        // The outer panel: slate, a big diagonal cut, a hard shadow.
+        "panel": CutCorners(
+            fill: "$slate",
+            border: "$edge",
+            border_width: 1.0,
+            cut: 18.0,
+            elevation: "high",
+        ),
+        "panel.title": Text(color: "$lime", size: 17.0, font: "display"),
+
+        // Slots: charcoal wells with a smaller cut. Hover is cyan, focus is
+        // the magenta gamepad ring, carried is lime.
+        "slot": CutCorners(fill: "$charcoal", border: "$edge", cut: 6.0),
+        "slot.hover": CutCorners(fill: "#2C3140", border: "$cyan", cut: 6.0),
+        "slot.focus": CutCorners(fill: "$charcoal", border: "$magenta", border_width: 2.0, cut: 6.0),
+        "slot.carried": CutCorners(fill: "#2A3A2A", border: "$lime", cut: 6.0),
+        "slot.favorite": CutCorners(fill: "#2A2430", border: "$magenta", cut: 6.0),
+
+        // Rarity is a bar along the bottom edge, glowing up into the slot,
+        // clipped by the same chamfer as the slot itself.
+        "slot.rarity": CutCorners(fill: "#00000000", cut: 6.0, bar: "#3A3F4C", bar_height: 3.0),
+        "slot.rarity.common": CutCorners(fill: "#00000000", cut: 6.0, bar: "#3A3F4C", bar_height: 3.0),
+        "slot.rarity.uncommon": CutCorners(fill: "#00000000", cut: 6.0, bar: "$cyan", bar_height: 3.0, glow: 10.0),
+        "slot.rarity.rare": CutCorners(fill: "#00000000", cut: 6.0, bar: "$lime", bar_height: 3.0, glow: 10.0),
+        "slot.rarity.epic": CutCorners(fill: "#00000000", cut: 6.0, bar: "#B48CFF", bar_height: 3.0, glow: 10.0),
+        "slot.rarity.legendary": CutCorners(fill: "#00000000", cut: 6.0, bar: "$magenta", bar_height: 3.0, glow: 14.0),
+
+        "slot.durability": Solid(fill: "$well", radius: 0.0),
+
+        "carried": Solid(fill: "#00000000", radius: 0.0),
+
+        "tooltip": CutCorners(fill: "#12141AF7", border: "$edge", cut: 10.0, elevation: "mid"),
+        "tooltip.frame": Solid(fill: "#00000000", border: "$edge", radius: 0.0),
+        "tooltip.title": Text(color: "$lime", size: 15.0, font: "display"),
+
+        // Buttons are chunky cut pills; primary is lime with charcoal text.
+        "button": CutCorners(fill: "$slate", border: "$edge", cut: 8.0),
+        "button.primary": CutCorners(fill: "$lime", border: "$lime", cut: 8.0),
+        "button.hover": CutCorners(fill: "#2C3140", border: "$cyan", cut: 8.0),
+
+        "text": Text(color: "$text", size: 13.0, font: "body"),
+        "text.muted": Text(color: "$muted", size: 11.0, font: "body"),
+        "count": Text(color: "$text", size: 12.0, font: "display", shadow: "#000000E6"),
+
+        "rail": CutCorners(fill: "$charcoal", border: "$edge", cut: 10.0),
+        "rail.button": CutCorners(fill: "$slate", border: "$edge", cut: 8.0),
+
+        // The browser: a full-height charcoal panel with a big search bar.
+        "browser.panel": CutCorners(
+            fill: "$charcoal",
+            border: "$edge",
+            cut: 14.0,
+            elevation: "mid",
+        ),
+        "browser.card": CutCorners(fill: "$slate", border: "$edge", cut: 6.0),
+        "browser.card.hover": CutCorners(fill: "#2C3140", border: "$cyan", cut: 6.0),
+        "browser.card.name": Text(color: "$text", size: 11.0, font: "body"),
+        "browser.badge": Text(color: "$muted", size: 9.0, font: "display"),
+        "browser.glyph": Text(color: "$muted", size: 22.0, font: "display"),
+
+        // The card strip stays a bar of the rarity colour.
+        "browser.rarity": Solid(fill: "#00000000", radius: 0.0),
+        "browser.rarity.common": Solid(fill: "#00000000", radius: 0.0),
+        "browser.rarity.uncommon": Solid(fill: "$cyan", radius: 0.0),
+        "browser.rarity.rare": Solid(fill: "$lime", radius: 0.0),
+        "browser.rarity.epic": Solid(fill: "#B48CFF", radius: 0.0),
+        "browser.rarity.legendary": Solid(fill: "$magenta", radius: 0.0),
+
+        // Chips and tabs: the active one goes lime.
+        "browser.chip": CutCorners(fill: "$slate", border: "$edge", cut: 6.0),
+        "browser.chip.active": CutCorners(fill: "$lime", border: "$lime", cut: 6.0),
+        "browser.chip.text": Text(color: "$muted", size: 12.0, font: "display"),
+        "browser.chip.text.active": Text(color: "$charcoal", size: 12.0, font: "display"),
+
+        "browser.search": CutCorners(fill: "$well", border: "$edge", cut: 8.0),
+        "browser.search.focus": CutCorners(fill: "$well", border: "$magenta", border_width: 2.0, cut: 8.0),
+
+        "browser.tab": CutCorners(fill: "$slate", border: "$edge", cut: 6.0),
+        "browser.tab.active": CutCorners(fill: "$lime", border: "$lime", cut: 6.0),
+
+        "browser.bookmark": CutCorners(fill: "#3A2430", border: "$magenta", cut: 6.0),
+
+        "browser.title": Text(color: "$lime", size: 20.0, font: "display"),
+        "browser.pill": CutCorners(fill: "$slate", border: "$edge", cut: 6.0),
+        "browser.pill.text": Text(color: "$text", size: 12.0, font: "display"),
+
+        "browser.status": Text(color: "$muted", size: 12.0, font: "display"),
+        "browser.hint": Text(color: "$muted", size: 11.0, font: "body"),
+
+        "browser.slot": CutCorners(fill: "$well", border: "$edge", cut: 6.0),
+        "browser.slot.missing": CutCorners(fill: "#3A1A22", border: "$danger", cut: 6.0),
+
+        "browser.recipe.arrow": Solid(fill: "$edge", radius: 0.0),
+        "browser.recipe.arrow.progress": Solid(fill: "$cyan", radius: 0.0),
+
+        "browser.button.disabled": CutCorners(fill: "#1F222A", border: "#2E334080", cut: 8.0),
+
+        // Machine widgets: dark wells with cut corners, cyan and lime fills.
+        "tank": CutCorners(fill: "$well", border: "$edge", cut: 6.0),
+        "tank.fill": Solid(fill: "#38E8FFB3", radius: 0.0),
+        "bar": CutCorners(fill: "$well", border: "$edge", cut: 4.0),
+        "bar.fill": Solid(fill: "$lime", radius: 0.0),
+        "bar.text": Text(color: "$text", size: 10.0, font: "display"),
+        "progress": Solid(fill: "$edge", radius: 0.0),
+        "progress.fill": Gradient(angle: 90.0, stops: [(0.0, "$cyan"), (1.0, "$lime")], radius: 0.0),
+
+        // Side tabs: charcoal, the open one rimmed in cyan.
+        "tab.rail": Solid(fill: "#00000000"),
+        "tab.side": CutCorners(fill: "$charcoal", border: "$edge", cut: 8.0),
+        "tab.side.open": CutCorners(fill: "$slate", border: "$cyan", cut: 8.0),
+        "tab.side.header": Solid(fill: "#00000000", radius: 0.0),
+        "tab.side.content": Solid(fill: "#12141A99", radius: 0.0),
+
+        "icon_button": CutCorners(fill: "$slate", border: "$edge", cut: 8.0),
+        "icon_button.hover": CutCorners(fill: "#2C3140", border: "$cyan", cut: 8.0),
+
+        "virtual_grid": Solid(fill: "#00000000"),
+        "virtual_grid.scrollbar": Solid(fill: "$well", radius: 0.0),
+        "virtual_grid.thumb": Solid(fill: "$cyan", radius: 0.0),
+
+        "viewport": CutCorners(fill: "$well", border: "$edge", cut: 10.0),
+
+        // HUD layers over the world.
+        "hud.panel": CutCorners(fill: "#1A1C22D9", border: "$edge", cut: 8.0),
+        "hud.crosshair": Solid(fill: "$lime", radius: 0.0),
+        "hud.edit.frame": Solid(fill: "#00000000", border: "$magenta", radius: 0.0),
+
+        "invisible": Solid(fill: "#00000000"),
+    },
+)

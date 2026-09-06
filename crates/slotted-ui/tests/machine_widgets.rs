@@ -300,13 +300,19 @@ fn a_tank_tooltip_carries_the_amount_line() {
     );
 }
 
+/// The fill node under a tank or bar. A tank's sits inside its well, one
+/// level below the root, so this walks the subtree.
 fn fill_child_entity(h: &UiHarness, root: Entity) -> Entity {
-    h.world()
-        .get::<Children>(root)
-        .expect("the widget has children")
-        .iter()
-        .find(|c| h.world().get::<FillNode>(*c).is_some())
-        .expect("a tank or bar has a fill child")
+    let mut queue = vec![root];
+    while let Some(next) = queue.pop() {
+        if next != root && h.world().get::<FillNode>(next).is_some() {
+            return next;
+        }
+        if let Some(children) = h.world().get::<Children>(next) {
+            queue.extend(children.iter());
+        }
+    }
+    panic!("a tank or bar has a fill child")
 }
 
 /// A percentage `Val`, to a tenth of a percent: a fill fraction is computed

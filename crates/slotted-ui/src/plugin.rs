@@ -6,7 +6,10 @@ use slotted_ecs::SlottedEcsSet;
 use slotted_theme::SlottedThemeSet;
 
 use crate::input::{DragPaint, clear_drag_suppression};
-use crate::item::{ItemView, on_slot_changed, render_items, spawn_item_view_children};
+use crate::item::{
+    ItemView, on_slot_changed, render_items, reresolve_icons_on_source_change,
+    spawn_item_view_children,
+};
 use crate::layers::{CarriedItem, CarriedLayer, TooltipLayer, update_carried_layer, zbands};
 use crate::motion::{
     GestureTarget, clear_gesture_target, despawn_finished_flights, drop_squash, fly_to_slot,
@@ -177,6 +180,7 @@ impl Plugin for SlottedUiPlugin {
                     slot_state_roles,
                     crate::widgets::icon_button::icon_button_roles,
                     update_carried_layer,
+                    reresolve_icons_on_source_change,
                     render_items,
                     slot_motion,
                     despawn_finished_flights,

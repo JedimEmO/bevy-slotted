@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-ui"
+homepage.workspace = true
+keywords = ["bevy", "ui", "inventory", "widgets", "gamedev"]
+categories = ["game-development", "gui"]
 
 [features]
 default = []
@@ -15,7 +20,14 @@ default = []
 dev = []
 # Real cameras behind `viewport` nodes (Phase 6 contract 1.6). Pulls the
 # renderer; off for headless tests and dedicated servers.
-viewport = ["bevy/bevy_core_pipeline", "bevy/bevy_pbr", "bevy/bevy_render"]
+viewport = [
+    "bevy/bevy_core_pipeline",
+    "bevy/bevy_pbr",
+    "bevy/bevy_render",
+    "slotted-icons/gpu",
+]
+# Live 3D item previews behind tooltips and detail panes.
+live = ["viewport", "slotted-icons/live"]
 
 [dependencies]
 slotted-model = { workspace = true }

@@ -20,11 +20,22 @@ fmt:
 fmt-check:
     cargo fmt --all -- --check
 
+# Rustdoc for the workspace, with broken intra-doc links fatal.
 doc:
-    cargo doc --workspace --no-deps --all-features
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
+# Regenerate docs/guide/api/ from the `---` doc blocks in the Lua prelude.
+gen-docs:
+    cargo run -p xtask -- gen-docs
+    cargo run -p xtask -- luau-stubs
+
+# Fail if either generated file is stale. What CI runs.
+gen-docs-check:
+    cargo run -p xtask -- gen-docs --check
+    cargo run -p xtask -- luau-stubs --check
 
 # What CI runs.
-ci: fmt-check lint test
+ci: fmt-check lint test gen-docs-check
 
 # The chest example in a window: the glass chest screen over a 3D scene.
 run-chest:
@@ -36,6 +47,13 @@ shot-chest:
     cargo run -p chest -- --hover 0 --shot examples/chest/shots/chest-hover.png
     cargo run -p chest -- --shot examples/chest/shots/chest-browser.png
     cargo run -p chest -- --recipe minecraft:coal --shot examples/chest/shots/chest-recipe.png
+
+# The chest screen and its browser in the paper and neon themes (Phase 7).
+shot-chest-themes:
+    cargo run -p chest -- --theme paper --shot examples/chest/shots/chest-paper.png
+    cargo run -p chest -- --theme neon --shot examples/chest/shots/chest-neon.png
+    cargo run -p chest -- --theme paper --recipe minecraft:coal --shot examples/chest/shots/chest-recipe-paper.png
+    cargo run -p chest -- --theme neon --recipe minecraft:coal --shot examples/chest/shots/chest-recipe-neon.png
 
 # The modded example in a window: three mods, loaded from disk, hot reloading.
 run-modded:
@@ -70,12 +88,12 @@ wasm-check:
     cargo check --target wasm32-unknown-unknown -p slotted-registry --no-default-features
     cargo check --target wasm32-unknown-unknown -p slotted-ecs
     cargo check --target wasm32-unknown-unknown -p slotted-theme
-    cargo check --target wasm32-unknown-unknown -p slotted-icons
+    cargo check --target wasm32-unknown-unknown -p slotted-icons --all-features
     cargo check --target wasm32-unknown-unknown -p slotted-test --no-default-features --features script
     cargo check --target wasm32-unknown-unknown -p slotted-ui
     cargo check --target wasm32-unknown-unknown -p slotted-browser
     cargo check --target wasm32-unknown-unknown -p slotted-packs
-    cargo check --target wasm32-unknown-unknown -p slotted --no-default-features --features ui,browser,packs
+    cargo check --target wasm32-unknown-unknown -p slotted --no-default-features --features ui,browser,packs,gpu-icons
     cargo check --target wasm32-unknown-unknown -p web-playground
 
 # One example to dist/<example>/: release wasm, wasm-bindgen, wasm-opt if it

@@ -33,6 +33,12 @@ allow = ["MPL-2.0"]
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# A path dependency with no version requirement reads as a wildcard. The one we
+# have is `slotted-testutils`, which is `publish = false` and must stay
+# version-less so packaging strips it from dependent crates' manifests. This
+# option permits wildcards only for path dependencies, which is exactly that
+# case; a wildcard on a registry crate still fails.
+allow-wildcard-paths = true
 
 [advisories]
 version = 2

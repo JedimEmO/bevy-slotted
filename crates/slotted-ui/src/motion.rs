@@ -12,7 +12,9 @@
 //! Every one of them reads `Time<Virtual>` through
 //! [`advance_tweens`](slotted_theme::advance_tweens), so a harness stepping
 //! frames by hand sees exactly what a player does, and every one of them
-//! collapses to a single frame under [`Motion::reduced`].
+//! collapses to a single frame under [`Motion::reduced`]. Duration and
+//! easing come from the theme's `tokens.motion` per preset (Phase 7): glass
+//! and paper ease out, neon snaps, and the paper drop is a stamp.
 //!
 //! A slot's scale is state, not a sequence: [`MotionTarget`] records where it
 //! is heading and [`slot_motion`] retargets from wherever the current tween
@@ -24,7 +26,7 @@ use bevy::prelude::*;
 use bevy::ui::ui_transform::{UiGlobalTransform, UiTransform};
 use slotted_ecs::{MenuAction, SlotChanged, SlotEntities, SlotRef};
 use slotted_model::{ClickAction, SlotIx};
-use slotted_theme::{Motion, MotionPreset, Tween, TweenTarget};
+use slotted_theme::{Motion, MotionPreset, Tokens, Tween, TweenTarget};
 
 use crate::item::{ItemView, spawn_item_view_children};
 use crate::layers::CarriedLayer;
@@ -103,11 +105,11 @@ fn retarget(
     to: f32,
     preset: MotionPreset,
     motion: Motion,
-    durations: &slotted_theme::Durations,
+    tokens: &Tokens,
 ) {
     commands.entity(entity).insert((
         MotionTarget(to),
-        motion.tween(preset, TweenTarget::Scale { from, to }, durations),
+        motion.preset_tween(preset, TweenTarget::Scale { from, to }, tokens),
     ));
 }
 
@@ -139,7 +141,7 @@ pub fn slot_motion(
         With<SlotRef>,
     >,
 ) {
-    let durations = tokens.get().durations;
+    let tokens = tokens.get();
     for (entity, hovered, pressed, target, transform) in &slots {
         let wanted = if pressed {
             PRESS_SCALE
@@ -171,7 +173,7 @@ pub fn slot_motion(
             wanted,
             preset,
             *motion,
-            &durations,
+            &tokens,
         );
     }
 }
@@ -200,14 +202,13 @@ pub fn drop_squash(
         return;
     };
     let rest = motion_target.map_or(REST_SCALE, |t| t.0);
-    let durations = tokens.get().durations;
-    commands.entity(changed.entity).insert(motion.tween(
+    commands.entity(changed.entity).insert(motion.preset_tween(
         MotionPreset::DropSquash,
         TweenTarget::Scale {
             from: SQUASH_SCALE,
             to: rest,
         },
-        &durations,
+        &tokens.get(),
     ));
 }
 
@@ -255,7 +256,9 @@ pub fn fly_to_slot(
     let Some(layer) = layers.iter().next() else {
         return;
     };
-    let duration = motion.duration(MotionPreset::FlyToSlot, &tokens.get().durations);
+    let tokens = tokens.get();
+    let duration = motion.preset_duration(MotionPreset::FlyToSlot, &tokens);
+    let easing = tokens.easing(MotionPreset::FlyToSlot);
     let travel = to.center() - from.center();
     let corner = from.center() - Vec2::splat(SLOT_SIZE * 0.5);
     commands.queue(move |world: &mut World| {
@@ -280,7 +283,8 @@ pub fn fly_to_slot(
                         to: travel,
                     },
                     duration,
-                ),
+                )
+                .with_easing(easing),
                 ChildOf(layer),
             ))
             .id();

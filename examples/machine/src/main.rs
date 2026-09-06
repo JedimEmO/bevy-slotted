@@ -5,6 +5,7 @@
 //! cargo run -p machine -- --shot shots/machine.png
 //! cargo run -p machine -- --redstone         start with the signal on
 //! cargo run -p machine -- --tab tab_redstone --shot shots/machine-tab.png
+//! cargo run -p machine -- --theme neon         the same screen in another theme
 //! ```
 //!
 //! What to look at once it is up: the tank and the energy bar follow the
@@ -38,6 +39,8 @@ struct Cli {
     redstone: bool,
     /// Open this side tab a second in, by `test_id`.
     tab: Option<String>,
+    /// Theme name: `glass` (default), `paper` or `neon`.
+    theme: String,
 }
 
 fn main() {
@@ -47,6 +50,7 @@ fn main() {
         shot: value("--shot").map(PathBuf::from),
         redstone: args.iter().any(|a| a == "--redstone"),
         tab: value("--tab"),
+        theme: value("--theme").unwrap_or_else(|| "glass".to_owned()),
     };
 
     let mut app = App::new();
@@ -172,8 +176,10 @@ fn setup_scene(
 }
 
 /// The theme comes through `pack://`, so a resource pack could replace it.
-fn setup_theme(mut commands: Commands, assets: Res<AssetServer>) {
-    commands.insert_resource(ActiveTheme(assets.load("themes/glass.theme.ron")));
+fn setup_theme(mut commands: Commands, assets: Res<AssetServer>, cli: Res<Cli>) {
+    commands.insert_resource(ActiveTheme(
+        assets.load(format!("themes/{}.theme.ron", cli.theme)),
+    ));
 }
 
 fn orbit_camera(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainCamera>>) {

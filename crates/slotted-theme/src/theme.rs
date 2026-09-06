@@ -81,6 +81,20 @@ impl Theme {
             .collect()
     }
 
+    /// Every font token a text role names that `tokens.fonts` lacks.
+    pub fn dangling_font_refs(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .roles
+            .values()
+            .filter_map(Material::font)
+            .filter(|f| !self.tokens.fonts.contains_key(*f))
+            .map(str::to_owned)
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// Every `$name` reference that has no palette entry.
     pub fn dangling_palette_refs(&self) -> Vec<String> {
         let mut out = Vec::new();
@@ -92,25 +106,7 @@ impl Theme {
             }
         };
         for m in self.roles.values() {
-            match m {
-                Material::Solid { fill, border, .. } => {
-                    check(fill);
-                    border.iter().for_each(&mut check);
-                }
-                Material::Gradient { stops, border, .. } => {
-                    for (_, c) in stops {
-                        check(c);
-                    }
-                    border.iter().for_each(&mut check);
-                }
-                Material::Sliced { tint, .. } => tint.iter().for_each(&mut check),
-                Material::Glass { tint, border, .. } => {
-                    check(tint);
-                    border.iter().for_each(&mut check);
-                }
-                Material::Shader { .. } => {}
-                Material::Text { color, .. } => check(color),
-            }
+            m.colors().into_iter().for_each(&mut check);
         }
         for e in self.tokens.elevation.values() {
             check(&e.color);
@@ -156,6 +152,113 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     const GLASS: &str = include_str!("../../../assets/themes/glass.theme.ron");
+    const PAPER: &str = include_str!("../../../assets/themes/paper.theme.ron");
+    const NEON: &str = include_str!("../../../assets/themes/neon.theme.ron");
+
+    fn shipped() -> [(&'static str, Theme); 3] {
+        [
+            ("glass", Theme::from_ron(GLASS).expect("glass parses")),
+            ("paper", Theme::from_ron(PAPER).expect("paper parses")),
+            ("neon", Theme::from_ron(NEON).expect("neon parses")),
+        ]
+    }
+
+    /// The three shipped themes define exactly the same set of roles, so a
+    /// widget that looks right in one cannot silently lose its material in
+    /// another. Phase 7's rule: a missing role is added to every theme, never
+    /// special-cased.
+    #[test]
+    fn shipped_themes_define_the_same_roles() {
+        let themes = shipped();
+        let keys = |t: &Theme| {
+            let mut k: Vec<String> = t.roles.keys().map(|r| r.as_str().to_owned()).collect();
+            k.sort();
+            k
+        };
+        let glass = keys(&themes[0].1);
+        for (name, theme) in &themes[1..] {
+            assert_eq!(keys(theme), glass, "{name} roles differ from glass");
+        }
+    }
+
+    #[test]
+    fn every_shipped_theme_is_complete_and_self_consistent() {
+        for (name, theme) in shipped() {
+            assert_eq!(theme.name, name);
+            assert_eq!(theme.missing_roles(), Vec::<Role>::new(), "{name}");
+            assert_eq!(
+                theme.dangling_palette_refs(),
+                Vec::<String>::new(),
+                "{name}"
+            );
+            assert_eq!(theme.dangling_font_refs(), Vec::<String>::new(), "{name}");
+            for rarity in ["common", "uncommon", "rare", "epic", "legendary"] {
+                assert!(
+                    theme.tokens.rarity.contains_key(rarity),
+                    "{name} lacks {rarity}"
+                );
+            }
+            let text = ron::ser::to_string_pretty(&theme, ron::ser::PrettyConfig::default())
+                .expect("serialises");
+            assert_eq!(Theme::from_ron(&text).expect("re-parses"), theme, "{name}");
+        }
+    }
+
+    /// Paper is opaque: no glass anywhere, square corners, and its rarity
+    /// outlines are the dashed stamps the direction asks for.
+    #[test]
+    fn paper_is_opaque_square_and_dashed() {
+        let theme = Theme::from_ron(PAPER).expect("parses");
+        for (role, material) in &theme.roles {
+            assert!(
+                !matches!(material, Material::Glass { .. }),
+                "{role} is glass in paper"
+            );
+            if let Material::Solid {
+                radius: Some(r), ..
+            }
+            | Material::Tiled {
+                radius: Some(r), ..
+            } = material
+            {
+                assert!(*r <= 2.0, "{role} has radius {r} in paper");
+            }
+        }
+        assert!(matches!(
+            theme.material(&roles::PANEL),
+            Some(Material::Tiled { .. })
+        ));
+        assert!(matches!(
+            theme.material(&Role::new("slot.rarity.rare")),
+            Some(Material::Dashed { .. })
+        ));
+    }
+
+    /// Neon is chamfered: the panel, slots and buttons are cut, and rarity
+    /// is a bar along the bottom of the slot.
+    #[test]
+    fn neon_cuts_its_corners_and_bars_its_rarity() {
+        let theme = Theme::from_ron(NEON).expect("parses");
+        for role in [roles::PANEL, roles::SLOT, roles::BUTTON, roles::SLOT_HOVER] {
+            assert!(
+                matches!(theme.material(&role), Some(Material::CutCorners { .. })),
+                "{role} is not cut in neon"
+            );
+        }
+        let Some(Material::CutCorners {
+            bar: Some(bar),
+            glow,
+            ..
+        }) = theme.material(&Role::new("slot.rarity.legendary"))
+        else {
+            panic!("legendary rarity is not a bar");
+        };
+        assert_eq!(
+            theme.color(bar),
+            theme.color(&ThemeColor::palette("magenta"))
+        );
+        assert!(*glow > 0.0);
+    }
 
     #[test]
     fn glass_theme_parses_and_is_complete() {

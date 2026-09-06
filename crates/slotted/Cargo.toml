@@ -7,11 +7,16 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted"
+homepage.workspace = true
+keywords = ["bevy", "inventory", "ui", "modding", "gamedev"]
+categories = ["game-development", "gui"]
 
 [features]
 # `script-mlua` is on by default; Cargo has no per-target defaults, so a wasm
 # build passes `--no-default-features` and re-enables `ui`, `browser`, `packs`.
-default = ["ui", "browser", "packs", "script-mlua"]
+default = ["ui", "browser", "packs", "script-mlua", "gpu-icons"]
 # Mods and resource packs: discovery, `pack://`, the script lifecycle (Phase 4).
 packs = ["ui", "browser", "dep:slotted-packs", "dep:slotted-script"]
 # The native Luau runtime, inserted as `ScriptHost` when none exists.
@@ -29,7 +34,14 @@ blur = ["ui", "slotted-theme/blur"]
 # input recorder (Phase 6).
 dev = ["ui", "slotted-ui/dev", "slotted-browser?/dev"]
 # Real cameras behind `viewport` nodes (Phase 6 contract 1.6).
-viewport = ["ui", "slotted-ui/viewport"]
+viewport = ["ui", "gpu-icons", "slotted-ui/viewport"]
+# The offscreen three-point rig that renders item icons into the atlas. On by
+# default; the bake falls back to the CPU at runtime when there is no
+# renderer, so a headless app pays nothing but compile time.
+gpu-icons = ["ui", "slotted-icons/gpu"]
+# A turning 3D item behind the hovered slot's tooltip and the browser detail
+# pane, instead of a flat atlas cell.
+live-icons = ["viewport", "slotted-ui/live"]
 
 [dependencies]
 slotted-model = { workspace = true }

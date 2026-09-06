@@ -8,4 +8,5 @@
         "slotted:damage": 0,
         "slotted:max_damage": 1561,
     },
+    icon: Some((shape: "rod", color: "#6b4c33", accent: "#7ff0e6", metallic: 0.3, roughness: 0.25)),
 )

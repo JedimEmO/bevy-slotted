@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::ui::ui_transform::{UiTransform, Val2};
+use serde::{Deserialize, Serialize};
 
-use crate::tokens::Durations;
+use crate::tokens::{Durations, Tokens};
 
 /// Global motion settings. Every animation multiplies its duration by `scale`
 /// and skips to the end when `reduced` is set.
@@ -33,32 +34,53 @@ impl Motion {
         reduced: true,
     };
 
-    /// Effective duration for `preset`. Zero when reduced.
+    /// Effective duration for `preset` from the three duration tiers. Zero
+    /// when reduced. [`Motion::preset_duration`] also honours a theme's
+    /// per-preset override.
     pub fn duration(&self, preset: MotionPreset, durations: &Durations) -> Duration {
+        self.scaled(durations.tier_ms(preset))
+    }
+
+    /// Effective duration for `preset` under the whole token table: the
+    /// theme's per-preset override when it has one, else the tier.
+    pub fn preset_duration(&self, preset: MotionPreset, tokens: &Tokens) -> Duration {
+        self.scaled(tokens.duration_ms(preset))
+    }
+
+    fn scaled(self, ms: u32) -> Duration {
         if self.reduced {
             return Duration::ZERO;
         }
-        let ms = match preset {
-            MotionPreset::Hover | MotionPreset::Press => durations.fast,
-            MotionPreset::DropSquash | MotionPreset::Fade => durations.normal,
-            MotionPreset::FlyToSlot | MotionPreset::Stagger => durations.slow,
-        };
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let micros = (f64::from(ms) * 1000.0 * f64::from(self.scale.max(0.0))).round() as u64;
         Duration::from_micros(micros)
     }
 
-    /// A [`Tween`] on `target` lasting [`Motion::duration`] for `preset`.
-    /// Under reduced motion the duration is zero, so the tween lands on its
-    /// end value the first time `advance_tweens` sees it.
+    /// A [`Tween`] on `target` lasting [`Motion::duration`] for `preset`,
+    /// with the standard ease-out. Under reduced motion the duration is
+    /// zero, so the tween lands on its end value the first time
+    /// `advance_tweens` sees it.
     pub fn tween(&self, preset: MotionPreset, target: TweenTarget, durations: &Durations) -> Tween {
         Tween::new(target, self.duration(preset, durations))
+    }
+
+    /// A [`Tween`] shaped by the theme: per-preset duration and easing from
+    /// `tokens`. This is what the ui crate uses, so a theme that says its
+    /// drop is a stamp and its hover is a snap gets exactly that.
+    pub fn preset_tween(
+        &self,
+        preset: MotionPreset,
+        target: TweenTarget,
+        tokens: &Tokens,
+    ) -> Tween {
+        Tween::new(target, self.preset_duration(preset, tokens)).with_easing(tokens.easing(preset))
     }
 }
 
 /// Named animations. The ui crate starts these; the theme decides how long
-/// they take.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// they take and how they ease. Serialises as the variant name, which is the
+/// key of `tokens.motion.presets` in a theme file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum MotionPreset {
     /// Slot or button hover in/out.
     Hover,
@@ -72,6 +94,60 @@ pub enum MotionPreset {
     Stagger,
     /// Tooltip and panel fade.
     Fade,
+}
+
+/// How a tween's progress is shaped. Every curve starts at 0 and ends at 1;
+/// only [`Easing::Overshoot`] leaves that range on the way.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Easing {
+    /// Ease-out cubic: fast start, gentle landing. The glass and paper
+    /// default, and what every tween used before themes could choose.
+    #[default]
+    Standard,
+    /// No easing.
+    Linear,
+    /// Ease-in-out cubic: slow both ends, for fades and page turns.
+    EaseInOut,
+    /// Ease-in cubic: gathers speed and stops dead. Paper's stamp-down drop:
+    /// the squash runs from small to rest and lands hard.
+    Stamp,
+    /// Ease-out quintic: nearly all the travel in the first third. Neon's
+    /// punchy hover and press.
+    Snap,
+    /// Back-out: overshoots the end value by about a tenth and settles.
+    /// Neon's drop squash, the one curve that is allowed a spring.
+    Overshoot,
+}
+
+impl Easing {
+    /// Maps linear progress `t` in `0..=1` onto the curve.
+    pub fn apply(self, t: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+        match self {
+            Self::Standard => 1.0 - (1.0 - t).powi(3),
+            Self::Linear => t,
+            Self::EaseInOut => {
+                if t < 0.5 {
+                    4.0 * t * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+                }
+            }
+            Self::Stamp => t * t * t,
+            Self::Snap => 1.0 - (1.0 - t).powi(5),
+            Self::Overshoot => {
+                const C1: f32 = 1.701_58;
+                const C3: f32 = C1 + 1.0;
+                1.0 + C3 * (t - 1.0).powi(3) + C1 * (t - 1.0).powi(2)
+            }
+        }
+    }
+
+    /// `true` for curves whose value leaves `0..=1`: a squash the paper
+    /// theme's "no springs" rule forbids.
+    pub const fn overshoots(self) -> bool {
+        matches!(self, Self::Overshoot)
+    }
 }
 
 /// What a [`Tween`] drives.
@@ -107,7 +183,7 @@ pub enum TweenTarget {
     },
 }
 
-/// A running animation on a node. Removed when it completes. Ease-out cubic.
+/// A running animation on a node. Removed when it completes.
 #[derive(Component, Debug, Clone, PartialEq)]
 pub struct Tween {
     /// What is animated.
@@ -116,6 +192,8 @@ pub struct Tween {
     pub duration: Duration,
     /// Time elapsed so far, in `Time<Virtual>`.
     pub elapsed: Duration,
+    /// The curve; [`Easing::Standard`] unless the theme says otherwise.
+    pub easing: Easing,
 }
 
 /// The value a [`Tween`] holds at some point along its run.
@@ -132,22 +210,31 @@ pub enum TweenValue {
 }
 
 impl Tween {
-    /// A tween that has not started.
+    /// A tween that has not started, with the standard ease-out.
     pub fn new(target: TweenTarget, duration: Duration) -> Self {
         Self {
             target,
             duration,
             elapsed: Duration::ZERO,
+            easing: Easing::Standard,
         }
     }
 
-    /// Progress in 0..=1 after easing.
+    /// The same tween on a different curve.
+    #[must_use]
+    pub fn with_easing(mut self, easing: Easing) -> Self {
+        self.easing = easing;
+        self
+    }
+
+    /// Eased progress. `1.0` once done; between `0..=1` except for
+    /// [`Easing::Overshoot`], which passes the end value and comes back.
     pub fn progress(&self) -> f32 {
         if self.duration.is_zero() {
             return 1.0;
         }
         let t = (self.elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0);
-        1.0 - (1.0 - t).powi(3)
+        self.easing.apply(t)
     }
 
     /// `true` once `elapsed >= duration`.
@@ -324,6 +411,83 @@ mod tests {
         assert_eq!(
             m.duration(MotionPreset::Stagger, &D),
             Duration::from_millis(400)
+        );
+    }
+
+    #[test]
+    fn every_easing_starts_at_zero_and_ends_at_one() {
+        for easing in [
+            Easing::Standard,
+            Easing::Linear,
+            Easing::EaseInOut,
+            Easing::Stamp,
+            Easing::Snap,
+            Easing::Overshoot,
+        ] {
+            assert!(easing.apply(0.0).abs() < 1e-6, "{easing:?} at 0");
+            assert!((easing.apply(1.0) - 1.0).abs() < 1e-5, "{easing:?} at 1");
+        }
+        // Only the overshoot leaves the range; that is what "no springs"
+        // checks against.
+        assert!(Easing::Overshoot.apply(0.8) > 1.0);
+        assert!(Easing::Overshoot.overshoots());
+        for easing in [
+            Easing::Standard,
+            Easing::Stamp,
+            Easing::Snap,
+            Easing::EaseInOut,
+        ] {
+            assert!(!easing.overshoots());
+            for i in 0..=20_u8 {
+                let v = easing.apply(f32::from(i) / 20.0);
+                assert!((0.0..=1.0).contains(&v), "{easing:?} left the range: {v}");
+            }
+        }
+        // The stamp lands late and hard; the snap is nearly there early.
+        assert!(Easing::Stamp.apply(0.5) < 0.2);
+        assert!(Easing::Snap.apply(0.33) > 0.85);
+    }
+
+    #[test]
+    fn preset_tokens_override_the_tier_and_choose_the_easing() {
+        let mut tokens = Tokens {
+            durations: D,
+            ..Tokens::default()
+        };
+        tokens.motion.easing = Easing::Snap;
+        tokens.motion.presets.insert(
+            MotionPreset::DropSquash,
+            crate::tokens::MotionSpec {
+                duration: 140,
+                easing: Some(Easing::Overshoot),
+            },
+        );
+        let m = Motion::default();
+        // Hover has no override: the fast tier and the theme's easing.
+        assert_eq!(
+            m.preset_duration(MotionPreset::Hover, &tokens),
+            Duration::from_millis(100)
+        );
+        assert_eq!(tokens.easing(MotionPreset::Hover), Easing::Snap);
+        // The squash has both.
+        assert_eq!(
+            m.preset_duration(MotionPreset::DropSquash, &tokens),
+            Duration::from_millis(140)
+        );
+        let tween = m.preset_tween(
+            MotionPreset::DropSquash,
+            TweenTarget::Scale {
+                from: 0.88,
+                to: 1.0,
+            },
+            &tokens,
+        );
+        assert_eq!(tween.easing, Easing::Overshoot);
+        assert_eq!(tween.duration, Duration::from_millis(140));
+        // Reduced motion wins over any token.
+        assert_eq!(
+            Motion::REDUCED.preset_duration(MotionPreset::DropSquash, &tokens),
+            Duration::ZERO
         );
     }
 

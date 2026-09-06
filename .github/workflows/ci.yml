@@ -39,6 +39,13 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # docs/guide/api/ is generated from the `---` doc blocks in the Lua
+      # prelude. A hand-edited or stale file fails here rather than shipping.
+      - name: The generated Lua reference is current
+        run: |
+          cargo run -p xtask -- gen-docs --check
+          cargo run -p xtask -- luau-stubs --check
+
   wasm:
     name: Check (wasm32)
     runs-on: ubuntu-latest
@@ -118,9 +125,60 @@ jobs:
           CHROME: ${{ steps.chrome.outputs.path }}
         run: wasm-pack test --headless --chrome crates/slotted-script-piccolo --test wasm
 
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bevy system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # A broken intra-doc link is a warning by default, which means it lives
+      # forever. RUSTDOCFLAGS makes it a build failure. `--no-deps` because we
+      # publish our own crates' docs, not the whole dependency tree's.
+      - name: Rustdoc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps
+
+      # The guide is Markdown. GitHub renders it in the repository; the Pages
+      # copy is the raw files plus an index, so a docs.rs link and a guide link
+      # can sit side by side.
+      - name: Assemble the docs site
+        run: |
+          mkdir -p site/doc site/guide
+          cp -r target/doc/. site/doc/
+          cp -r docs/guide/. site/guide/
+          repo="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/docs/guide"
+          {
+            echo '<!doctype html><meta charset="utf-8"><title>slotted guide</title>'
+            echo '<h1>slotted</h1>'
+            echo '<ul>'
+            echo "<li><a href=\"../\">The web playground</a></li>"
+            echo "<li><a href=\"../doc/slotted/index.html\">API documentation</a></li>"
+            echo '</ul><h2>Guide</h2><ul>'
+            for f in $(cd docs/guide && ls *.md); do
+              echo "<li><a href=\"${repo}/${f}\">${f}</a> (<a href=\"${f}\">raw</a>)</li>"
+            done
+            echo '</ul>'
+          } > site/guide/index.html
+
+      - name: Upload the docs site
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: site
+
   pages:
-    name: Deploy the playground
-    needs: wasm
+    name: Deploy the playground and the docs
+    needs: [wasm, docs]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -130,16 +188,23 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      # The playground stays at the site root, so its URL does not move; the
+      # rustdoc and the guide go underneath it.
       - uses: actions/download-artifact@v4
         with:
           name: web-playground
-          path: dist/web-playground
+          path: site
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs-site
+          path: site
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/web-playground
+          path: site
 
       - id: deploy
         uses: actions/deploy-pages@v4

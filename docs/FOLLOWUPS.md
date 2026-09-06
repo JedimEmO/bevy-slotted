@@ -188,9 +188,10 @@ Decisions deferred during phases. Each entry names the phase that should pick it
 
 ## From the Phase 6 design
 
-- **`slotted_icons::LiveIcons` stays `IconRef::Missing` through Phase 6.** The `viewport` widget
-  renders placeholder geometry because no item models exist to bake; a live icon source needs the
-  same models. **Phase 7**, with the first item model format.
+- ~~**`slotted_icons::LiveIcons` stays `IconRef::Missing` through Phase 6.**~~ Closed in Phase 7
+  package C. `ItemDef.icon` carries an `IconDef::Shape`, the viewport draws that shape's mesh with
+  that shape's material under the same three-point rig, and `LiveIcons` returns `IconRef::Live` for
+  every item the atlas knows. See `docs/design/phase7-notes-C.md`.
 - **The browser's card grid and `slotted_ui::VirtualGridSource` are two implementations.** The
   card grid pools and rebinds cards; the virtual grid respawns cells from a `UiNodeDef` per index.
   Moving the browser onto the trait needs a cell-recycling hook on the trait. **Phase 7**.
@@ -240,8 +241,66 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   exists because the warning lives on the render path, which runs every frame. A crate-wide
   warn-once utility would be better than a component per case. **Phase 7**.
 
-## For Phase 7 polish (from the Phase 6 machine screenshots)
+## Closed in Phase 7 (package C)
 
-- `examples/machine` items render as magenta placeholders: the demo data declares no icon colour, so the CPU atlas bake falls back to the missing-texture colour. Either give the bake a hash-based colour like the chest demo or declare `icon` data in the machine RON.
-- The tank's `BarText` readout overlaps the fill; place it beside or below the tank at narrow widths.
-- Progress arrows are small (about 20 px); the moodboard sizes them at 40 px with a rounded track.
+- ~~`examples/machine` items render as magenta placeholders.~~ Two causes, both fixed. The demo
+  data now declares `icon` shapes, and the icons plugin rebakes whenever `Registries` changes
+  rather than only at startup, which is what the machine needed: `slotted-packs` installs its own
+  frozen set, the example then installs its own, and the atlas was left indexed by the wrong item
+  ids.
+- ~~The tank's `BarText` readout overlaps the fill.~~ A vertical tank is now a column: the well,
+  then the stacked reading underneath it.
+- ~~Progress arrows are small.~~ 40x14 with a pill track.
+
+## From Phase 7 package C
+
+- **The icon bake rig renders for a fixed 240 frames and then switches its camera off.** A mesh
+  pipeline is specialised and compiled asynchronously, so the first frames after the rig appears
+  draw nothing at all; switching the camera off after two or three frames left an atlas that was
+  blank forever. The window is a guess with a wide margin. The real fix needs an observable "this
+  view has produced a frame" signal from the render world. **Phase 8**.
+- **The CPU bake and the GPU bake are two drawings of the same shapes, not the same drawing.** The
+  CPU one is flat-shaded polygons authored by hand in `shape.rs`; the GPU one is PBR meshes. They
+  read the same at 64 px, and the CPU one is only ever seen headless or during the rig's warmup,
+  but a shape added to one has to be added to the other. A single source (silhouettes generated
+  from the meshes) would remove the drift. **Phase 8**.
+- **`IconDef::Model` parses and warns.** No glTF loader; the item draws the missing glyph. The
+  format carries the path, so the loader is purely additive. **Phase 8**.
+- ~~**The GPU bake compiles for wasm but has not been run in a browser.**~~ Run in the Phase 7
+  review. `just playground && just serve && just shot-playground` draws the modded chest with lit
+  3D icons on a WebGL2 context, so the grid render target really does sidestep the readback WebGL2
+  lacks. The adapter in this run was ANGLE over SwiftShader, which is software: the code path is
+  confirmed, the performance is not. A look on hardware is still worth having. **Phase 8**.
+- ~~**`examples/machine`'s screen snapshot drifted by one simulation tick.**~~ Closed in the
+  Phase 7 review. Re-accepting it would have drifted again on the next change to `settle()`: the
+  readouts were whatever tick the settle stopped on. `MachineSim { paused }` now stops the
+  furnace, `the_furnace_screen_matches_its_snapshot` opens the screen with it paused, and the
+  snapshot holds the values `menu_def` declares. The sim-driven assertions stayed in the tests
+  that advance the clock on purpose.
+
+## From the Phase 7 review
+
+- ~~**The CPU icon bake ignored `metallic` and did not clamp either material parameter.**~~ Fixed.
+  `0.5f32.mul_add(m, 1.0 - 0.5 * m)` is identically `1.0`, so the line meant to widen the gap
+  between a metal's lit and shadowed faces was a no-op multiply; and an out-of-range `roughness`
+  (a plain `f32` in a data file) added brightness to every lit face. `shape::sample` now clamps
+  both and raises the face brightness to `1 + metallic`. Pinned by
+  `slotted-icons/tests/review_adversarial.rs`.
+- ~~**An `Image` icon naming a file nobody shipped drew a white square.**~~ Fixed. The bake cannot
+  know whether a path exists, because an asset load is asynchronous, so it hands the server every
+  path; `downgrade_failed_image_icons` now watches those loads and moves an item whose load failed
+  into the missing set, with one warning naming the path. The renderer draws the theme's glyph.
+- **`Theme::missing_roles()` cannot see a missing child role.** A role falls back to its parent, so
+  a theme that drops `tank.fill` still paints it, in the tank's own material, and completeness
+  reports nothing. Only the cross-theme key-set comparison catches it, and nothing would catch a
+  role all three themes dropped together. A `roles::ALL`-shaped check that distinguishes "resolved
+  through a parent" from "declared" would. **Phase 8**, and documented in the guide meanwhile.
+  Pinned by `slotted-theme/tests/review_adversarial.rs::a_theme_missing_a_role_is_caught_and_the_role_is_named`.
+- **The machine's energy bar draws its readout over its own fill.** White text over the orange fill
+  is legible but low contrast where the fill edge crosses a digit. A `bar.text` role that swaps
+  colour over the filled part, or a readout beside the bar the way the tank's now is, would fix
+  it. Cosmetic, present since Phase 6. **Phase 8**.
+
+## Intermittent test failure (observed 2026-09-06, still open)
+
+- One full-workspace run in about ten showed a single failing test that passed on every rerun; three saved reruns were clean, so the test name was not captured. The earlier sighting during Phase 4 was `a_slot_click_round_trip_is_cheap` in `slotted-script-mlua`. Next step: run `cargo test --workspace --all-features --no-fail-fast` in CI with `--test-threads` at the default and archive the log on failure; if it is the mlua test again, run it under `--test-threads=1` and try `mlua` without the `send` feature.

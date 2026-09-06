@@ -28,6 +28,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use slotted_model::Namespaced;
 
 use crate::Value;
+use crate::icon::IconDef;
 
 /// Minecraft's default stack size, and ours.
 pub const DEFAULT_MAX_STACK_SIZE: u32 = 64;
@@ -308,9 +309,10 @@ pub struct ItemDef {
     /// the patch on top of this, exactly as Minecraft has done since 1.20.5.
     #[serde(default)]
     pub components: BTreeMap<Namespaced, Value>,
-    /// An asset path for the icon, or `None` to bake one from a model.
+    /// How the item is drawn: an image path, a shape for the bake to light,
+    /// or a model. `None` leaves it to the icon source's fallback.
     #[serde(default)]
-    pub icon: Option<String>,
+    pub icon: Option<IconDef>,
     /// Which colour token the name is drawn with.
     #[serde(default)]
     pub rarity: Rarity,
@@ -547,6 +549,7 @@ mod tests {
         TagEntry,
     };
     use crate::Value;
+    use crate::icon::IconDef;
 
     fn id(s: &str) -> Namespaced {
         Namespaced::parse(s).unwrap()
@@ -637,7 +640,10 @@ mod tests {
         assert_eq!(item.tags, vec![id("slotted:weapons")]);
         assert_eq!(item.rarity, Rarity::Epic);
         assert_eq!(item.components.len(), 1);
-        assert_eq!(item.icon.as_deref(), Some("icons/sword.png"));
+        assert_eq!(
+            item.icon,
+            Some(IconDef::Image("icons/sword.png".to_owned()))
+        );
     }
 
     #[test]

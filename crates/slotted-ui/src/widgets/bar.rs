@@ -43,11 +43,22 @@ impl BarStyle {
         }
     }
 
-    /// Size along and across the fill axis, in logical px.
+    /// Size along and across the fill axis, in logical px. The moodboard
+    /// sizes a progress arrow at 40 px, which is one slot: it reads as the
+    /// gap between two slots rather than as a hyphen.
     pub const fn size(self) -> (f32, f32) {
         match self {
             Self::Bar => (120.0, 12.0),
-            Self::Progress => (24.0, 16.0),
+            Self::Progress => (40.0, 14.0),
+        }
+    }
+
+    /// Corner radius, given the theme's small radius and the size across the
+    /// fill axis. A progress arrow takes a fully rounded track.
+    pub fn radius(self, small: f32) -> f32 {
+        match self {
+            Self::Bar => small,
+            Self::Progress => self.size().1 / 2.0,
         }
     }
 }
@@ -99,7 +110,7 @@ impl Default for BarParams {
 
 /// Spawns a bar or progress arrow. Root components per contract 1.2.
 ///
-/// The root is `120x12` (a progress arrow `24x16`) measured along its own
+/// The root is `120x12` (a progress arrow `40x14`) measured along its own
 /// fill direction, so an upward bar is tall rather than wide.
 pub fn spawn_bar(
     ctx: &mut SpawnCtx<'_>,
@@ -119,7 +130,7 @@ pub fn spawn_bar(
         max: params.max,
     });
     let text = params.text && style == BarStyle::Bar;
-    let radius = ctx.tokens().radii.sm;
+    let radius = style.radius(ctx.tokens().radii.sm);
     let fill = FillValue::default();
     let entity = ctx.spawn_node((
         Node {
@@ -190,6 +201,12 @@ mod tests {
     #[test]
     fn a_bar_is_measured_along_its_fill_direction() {
         assert_eq!(BarStyle::Bar.size(), (120.0, 12.0));
-        assert_eq!(BarStyle::Progress.size(), (24.0, 16.0));
+        assert_eq!(BarStyle::Progress.size(), (40.0, 14.0));
+    }
+
+    #[test]
+    fn a_progress_track_is_a_pill_and_a_bar_takes_the_theme_radius() {
+        assert!((BarStyle::Progress.radius(4.0) - 7.0).abs() < f32::EPSILON);
+        assert!((BarStyle::Bar.radius(4.0) - 4.0).abs() < f32::EPSILON);
     }
 }

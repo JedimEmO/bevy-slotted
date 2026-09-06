@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-packs"
+homepage.workspace = true
+keywords = ["bevy", "mods", "assets", "fluent", "gamedev"]
+categories = ["game-development"]
 
 [features]
 default = []

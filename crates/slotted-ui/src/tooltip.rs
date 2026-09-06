@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use bevy::ui::ui_transform::UiGlobalTransform;
 use bevy::window::PrimaryWindow;
 use slotted_ecs::Registries;
-use slotted_model::ItemStack;
+use slotted_model::{ItemStack, Namespaced};
 use slotted_registry::FrozenRegistries;
 use slotted_theme::{ActiveTheme, Theme, Tokens};
 
@@ -369,6 +369,20 @@ pub fn show_tooltip(request: On<TooltipRequest>, mut commands: Commands) {
             widget.tooltip(entity, world, &mut composed);
         }
 
+        // A live icon source wants a turning 3D item at the head of the
+        // tooltip rather than a flat cell. The viewport node is the same one
+        // a screen can ask for by hand; headless it lays out with no camera.
+        if let Some(subject) = live_subject(world, stack.as_ref()) {
+            composed.insert(
+                0,
+                crate::def::UiNodeDef::Viewport {
+                    subject: crate::def::ViewSubject::Item(subject),
+                    size: LIVE_PREVIEW_SIZE,
+                    tags: crate::def::Tags::default(),
+                },
+            );
+        }
+
         // Replace any tooltip this entity already hosts.
         let existing: Vec<Entity> = world
             .query::<(Entity, &TooltipHost)>()
@@ -438,6 +452,27 @@ pub fn place_tooltips(
             node.top = Val::Px(pos.y);
         }
     }
+}
+
+/// Edge of the live item preview at the head of a tooltip, in px. Two slots:
+/// big enough to read the shape, small enough that the tooltip stays a
+/// tooltip.
+pub const LIVE_PREVIEW_SIZE: f32 = 72.0;
+
+/// The item a live [`Icons`](slotted_icons::Icons) source would rather show
+/// in a viewport than as a flat cell, if the hovered stack is one.
+fn live_subject(world: &World, stack: Option<&slotted_model::ItemStack>) -> Option<Namespaced> {
+    let stack = stack?;
+    let icons = world.get_resource::<slotted_icons::Icons>()?;
+    if !matches!(icons.icon(stack), slotted_icons::IconRef::Live(_)) {
+        return None;
+    }
+    world
+        .get_resource::<Registries>()?
+        .0
+        .items
+        .name_of(stack.id)
+        .cloned()
 }
 
 #[cfg(test)]

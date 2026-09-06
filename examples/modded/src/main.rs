@@ -5,6 +5,7 @@
 //! cargo run -p modded -- --no-console --shot shots/modded.png
 //! cargo run -p modded -- --shot shots/modded-console.png
 //! cargo run -p modded -- --reload copper_chest --shot shots/modded-reload.png
+//! cargo run -p modded -- --theme paper          the same screen in another theme
 //! ```
 //!
 //! What to try once it is up: click a stack and watch the console in the
@@ -43,6 +44,8 @@ struct Cli {
     reload: Option<String>,
     /// Start with the dev console hidden.
     no_console: bool,
+    /// Theme name: `glass` (default), `paper` or `neon`.
+    theme: String,
 }
 
 fn main() {
@@ -52,6 +55,7 @@ fn main() {
         shot: value("--shot").map(PathBuf::from),
         reload: value("--reload"),
         no_console: args.iter().any(|a| a == "--no-console"),
+        theme: value("--theme").unwrap_or_else(|| "glass".to_owned()),
     };
 
     let mut app = App::new();
@@ -180,8 +184,10 @@ fn setup_scene(
 }
 
 /// The theme comes through `pack://`, so a resource pack could replace it.
-fn setup_theme(mut commands: Commands, assets: Res<AssetServer>) {
-    commands.insert_resource(ActiveTheme(assets.load("themes/glass.theme.ron")));
+fn setup_theme(mut commands: Commands, assets: Res<AssetServer>, cli: Res<Cli>) {
+    commands.insert_resource(ActiveTheme(
+        assets.load(format!("themes/{}.theme.ron", cli.theme)),
+    ));
 }
 
 fn orbit_camera(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainCamera>>) {

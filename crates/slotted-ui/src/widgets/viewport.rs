@@ -109,18 +109,54 @@ pub fn spawn_viewport(ctx: &mut SpawnCtx<'_>, params: &ViewportParams, _tags: &T
 /// One live viewport: the entities the `viewport` feature spawned behind a
 /// node, and the render layer they occupy.
 #[cfg(feature = "viewport")]
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct ViewportCamera {
     /// The camera rendering into the node's target image.
     pub camera: Entity,
-    /// Its light.
+    /// Its key light. Kept for source compatibility; [`Self::lights`] is the
+    /// whole rig.
     pub light: Entity,
     /// The placeholder geometry, or the live entity for
     /// [`ViewportSubject::Entity`].
     pub subject: Entity,
+    /// Every light of the three-point rig, key first.
+    pub lights: Vec<Entity>,
     /// Index into [`ViewportLayers`]; the render layer is
     /// `VIEWPORT_LAYER_BASE + layer`.
     pub layer: usize,
+}
+
+/// The fixed three-point rig a viewport lights its subject with.
+#[cfg(feature = "viewport")]
+fn rig_lights() -> [(DirectionalLight, Transform); 3] {
+    [
+        (
+            DirectionalLight {
+                illuminance: 9_000.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(-3.0, 4.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ),
+        (
+            DirectionalLight {
+                color: Color::srgb(1.0, 0.94, 0.86),
+                illuminance: 2_600.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(4.0, -2.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ),
+        (
+            DirectionalLight {
+                color: Color::srgb(0.55, 0.74, 1.0),
+                illuminance: 11_000.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(2.0, 1.5, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ),
+    ]
 }
 
 /// Marks the placeholder geometry this crate spawned for a viewport, so
@@ -130,8 +166,9 @@ pub struct ViewportCamera {
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct ViewportPlaceholder;
 
-/// How fast a viewport camera orbits its subject, in radians per second of
-/// virtual time.
+/// How fast a viewport's subject turns, in radians per second of virtual
+/// time. The camera and the three-point rig stay put, so the rim light keeps
+/// falling on the same edge of the frame while the item rotates under it.
 #[cfg(feature = "viewport")]
 pub const ORBIT_SPEED: f32 = 0.6;
 
@@ -183,23 +220,24 @@ pub fn spawn_viewport_cameras(world: &mut World) {
                     ..default()
                 },
                 RenderTarget::Image(target.clone().into()),
-                Transform::from_xyz(0.0, 1.0, ORBIT_RADIUS).looking_at(Vec3::ZERO, Vec3::Y),
+                Transform::from_xyz(0.0, 0.9, ORBIT_RADIUS).looking_at(Vec3::ZERO, Vec3::Y),
                 layers.clone(),
             ))
             .id();
-        let light = world
-            .spawn((
-                DirectionalLight::default(),
-                Transform::from_xyz(2.0, 4.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
-                layers.clone(),
-            ))
-            .id();
+        // The same three-point rig the icon bake uses: key from the upper
+        // left, warm fill from the lower right, cool rim from behind.
+        let lights: Vec<Entity> = rig_lights()
+            .into_iter()
+            .map(|(light, transform)| world.spawn((light, transform, layers.clone())).id())
+            .collect();
+        let light = lights[0];
         let subject_entity = spawn_subject(world, &subject, &layers);
 
         world.entity_mut(node).insert((
             ViewportCamera {
                 camera,
                 light,
+                lights,
                 subject: subject_entity,
                 layer,
             },
@@ -211,9 +249,9 @@ pub fn spawn_viewport_cameras(world: &mut World) {
     }
 }
 
-/// The placeholder geometry a subject is drawn as. No item models exist yet
-/// (contract deviation 5), so an item and a block are both a tinted cuboid
-/// and the player is a capsule.
+/// The geometry a subject is drawn as: the item's own [`ShapeKind`] mesh,
+/// lit with the same material the icon bake gives it, so the live view and
+/// the atlas cell are the same object. The player is still a capsule.
 #[cfg(feature = "viewport")]
 fn spawn_subject(
     world: &mut World,
@@ -232,33 +270,59 @@ fn spawn_subject(
         }
         return *entity;
     }
-    let (mesh, color) = match subject {
+    let (mesh, material, scale) = match subject {
         ViewportSubject::Player => (
             Mesh::from(Capsule3d::new(0.35, 0.9)),
-            Color::srgb(0.8, 0.8, 0.85),
+            StandardMaterial {
+                base_color: Color::srgb(0.8, 0.8, 0.85),
+                ..default()
+            },
+            1.0,
         ),
-        ViewportSubject::Item(name) | ViewportSubject::Block(name) => (
-            Mesh::from(Cuboid::from_length(1.0)),
-            slotted_icons::placeholder_color(name),
-        ),
+        ViewportSubject::Item(name) | ViewportSubject::Block(name) => {
+            let shape = shape_of(world, name);
+            let [r, g, b, a] = shape.color.0;
+            (
+                slotted_icons::gpu::mesh_of(shape.shape),
+                StandardMaterial {
+                    base_color: Color::srgba(r, g, b, a),
+                    metallic: shape.metallic.clamp(0.0, 1.0),
+                    perceptual_roughness: shape.roughness.clamp(0.05, 1.0),
+                    ..default()
+                },
+                0.85,
+            )
+        }
         ViewportSubject::Entity(_) => unreachable!("handled above"),
     };
     let mesh = world.resource_mut::<Assets<Mesh>>().add(mesh);
     let material = world
         .resource_mut::<Assets<StandardMaterial>>()
-        .add(StandardMaterial {
-            base_color: color,
-            ..default()
-        });
+        .add(material);
     world
         .spawn((
             Mesh3d(mesh),
             MeshMaterial3d(material),
-            Transform::default(),
+            Transform::from_scale(Vec3::splat(scale)),
             ViewportPlaceholder,
             layers.clone(),
         ))
         .id()
+}
+
+/// The shape an item declared, or a cube in its hash colour.
+#[cfg(feature = "viewport")]
+fn shape_of(world: &World, name: &Namespaced) -> slotted_registry::icon::ShapeIcon {
+    world
+        .get_resource::<slotted_ecs::Registries>()
+        .and_then(|r| r.0.items.id_of(name).and_then(|id| r.0.items.get(id)))
+        .and_then(|def| def.icon.as_ref().and_then(|icon| icon.shape().cloned()))
+        .unwrap_or_else(|| {
+            let rgba = bevy::color::Srgba::from(slotted_icons::placeholder_color(name));
+            slotted_icons::shape::fallback_shape(slotted_registry::icon::IconColor([
+                rgba.red, rgba.green, rgba.blue, rgba.alpha,
+            ]))
+        })
 }
 
 /// The lowest free layer index, claimed for `node`.
@@ -273,20 +337,30 @@ fn claim_layer(world: &mut World, node: Entity) -> usize {
     layers.0.len() - 1
 }
 
-/// `SlottedUiSet::Render`: orbits every viewport camera on `Time<Virtual>`,
+/// `SlottedUiSet::Render`: turns every viewport's subject on `Time<Virtual>`,
 /// so a paused or hand-stepped app sees the same motion a player does.
+///
+/// The subject turns and the rig does not, which is what keeps the rim light
+/// on the same edge of the frame the whole way round.
 #[cfg(feature = "viewport")]
 pub fn orbit_viewport_cameras(
     time: Res<Time<Virtual>>,
-    viewports: Query<&ViewportCamera>,
-    mut cameras: Query<&mut Transform>,
+    viewports: Query<(&ViewportCamera, &ViewportSubject)>,
+    mut transforms: Query<&mut Transform>,
 ) {
     let angle = time.elapsed_secs() * ORBIT_SPEED;
-    for viewport in &viewports {
-        if let Ok(mut transform) = cameras.get_mut(viewport.camera) {
-            *transform =
-                Transform::from_xyz(ORBIT_RADIUS * angle.sin(), 1.0, ORBIT_RADIUS * angle.cos())
-                    .looking_at(Vec3::ZERO, Vec3::Y);
+    for (viewport, subject) in &viewports {
+        // A live world entity is the game's to move; only the placeholder
+        // geometry this crate spawned turns.
+        if matches!(subject, ViewportSubject::Entity(_)) {
+            continue;
+        }
+        if let Ok(mut transform) = transforms.get_mut(viewport.subject) {
+            let tilt = Quat::from_rotation_x(-0.32);
+            let spin = Quat::from_rotation_y(angle);
+            if transform.rotation != tilt * spin {
+                transform.rotation = tilt * spin;
+            }
         }
     }
 }
@@ -316,9 +390,9 @@ pub fn despawn_viewport_cameras(world: &mut World) {
         let camera = world
             .get_entity(node)
             .ok()
-            .and_then(|e| e.get::<ViewportCamera>().copied());
+            .and_then(|e| e.get::<ViewportCamera>().cloned());
         if let Some(camera) = camera {
-            for entity in [camera.camera, camera.light] {
+            for entity in std::iter::once(camera.camera).chain(camera.lights.iter().copied()) {
                 if let Ok(entity) = world.get_entity_mut(entity) {
                     entity.despawn();
                 }

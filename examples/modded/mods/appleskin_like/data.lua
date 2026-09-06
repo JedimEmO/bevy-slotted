@@ -8,6 +8,7 @@ slotted.register_item("demo:apple", {
     display_name = "appleskin_like.item.apple",
     max_stack_size = 64,
     tags = { "c:foods" },
+    icon = { shape = "sphere", color = "#d2382f", accent = "#5fbf4a", roughness = 0.45 },
 })
 
 slotted.register_tag("c:foods", { values = { "demo:apple" } })

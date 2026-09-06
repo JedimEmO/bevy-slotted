@@ -7,12 +7,23 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-icons"
+homepage.workspace = true
+keywords = ["bevy", "icons", "atlas", "ui", "gamedev"]
+categories = ["game-development", "gui"]
 
 [features]
 default = []
 # `LiveIcons`: a `ViewportNode` camera per requested item, for the hovered
 # item and detail panes only (ADR 0003 measured ~0.8 ms per camera).
 live = ["bevy/bevy_camera"]
+# The offscreen three-point rig: icons rendered into a grid render target
+# that *is* the atlas. No readback, so it works on WebGL2 too. Falls back to
+# the CPU bake at runtime when the app has no renderer.
+gpu = ["bevy/bevy_core_pipeline", "bevy/bevy_pbr", "bevy/bevy_render"]
+# Bake at 128 px a cell instead of 64.
+hidpi = []
 
 [dependencies]
 slotted-model = { workspace = true }
@@ -24,6 +35,9 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+# `tests/gpu_bake.rs` builds a real app for the ignored render test; the graph
+# tests beside it need only the asset collections.
+bevy = { workspace = true, features = ["bevy_winit", "x11"] }
 
 [lints]
 workspace = true

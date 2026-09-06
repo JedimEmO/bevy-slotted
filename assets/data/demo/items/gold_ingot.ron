@@ -4,4 +4,5 @@
     max_stack_size: 64,
     rarity: "uncommon",
     tags: ["c:ingots"],
+    icon: Some((shape: "ingot", color: "#f0c33c", metallic: 1.0, roughness: 0.22)),
 )

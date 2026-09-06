@@ -7,6 +7,7 @@
 //! cargo run -p chest -- --cheat                  browser Ctrl+click gives
 //! cargo run -p chest -- --recipe minecraft:coal --shot shots/chest-recipe.png
 //! cargo run -p chest -- --record session.ron       record input, replay it in a test
+//! cargo run -p chest -- --theme paper              the same screen in another theme
 //! ```
 //!
 //! What to try once it is up: left-click a stack to pick it up and right-click
@@ -61,6 +62,9 @@ struct Cli {
     recipe: Option<String>,
     /// Record every input to this RON file, written on exit.
     record: Option<PathBuf>,
+    /// Theme name: `glass` (default), `paper` or `neon`, loaded from
+    /// `assets/themes/<name>.theme.ron`.
+    theme: String,
 }
 
 fn main() {
@@ -72,6 +76,7 @@ fn main() {
         cheat: args.iter().any(|a| a == "--cheat"),
         recipe: value("--recipe"),
         record: value("--record").map(PathBuf::from),
+        theme: value("--theme").unwrap_or_else(|| "glass".to_owned()),
     };
 
     let registries = chest::load_registries();
@@ -225,11 +230,14 @@ fn setup_scene(
 fn setup_screen(
     mut commands: Commands,
     assets: Res<AssetServer>,
+    cli: Res<Cli>,
     mut screens: ResMut<Screens>,
     registries: Res<Registries>,
     cheat: Res<chest::CheatMode>,
 ) {
-    commands.insert_resource(ActiveTheme(assets.load("themes/glass.theme.ron")));
+    commands.insert_resource(ActiveTheme(
+        assets.load(format!("themes/{}.theme.ron", cli.theme)),
+    ));
     screens.register(chest::demo_screen());
     chest::open_chest(&mut commands, &registries, cheat.0);
 }

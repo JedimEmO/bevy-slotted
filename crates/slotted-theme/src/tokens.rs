@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::material::ThemeColor;
+use crate::motion::{Easing, MotionPreset};
 
 /// Spacing scale, in logical pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -35,6 +36,10 @@ pub struct Radii {
 /// One shadow level. Becomes a `BoxShadow`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Elevation {
+    /// Horizontal offset. Zero for a light from straight above; the paper
+    /// theme's hard ink shadows sit down and to the right.
+    #[serde(default)]
+    pub x: f32,
     /// Vertical offset.
     pub y: f32,
     /// Blur radius.
@@ -54,6 +59,61 @@ pub struct Durations {
     pub normal: u32,
     /// Fly-to-slot, stagger total.
     pub slow: u32,
+}
+
+/// Where a text role's glyphs come from.
+///
+/// `family` is the name the direction is designed around; `path` is the TTF
+/// or OTF asset that honours it. With a `path` the apply system loads it.
+/// With none and `system` set, the family name goes to Bevy's
+/// `FontSource::Family`, which resolves against the fonts the OS has when
+/// the game enables Bevy's `system_font_discovery` feature. Otherwise Bevy's
+/// default font stays, and the family name still tells a game which OFL file
+/// to drop into `assets/fonts/` to complete the look.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FontToken {
+    /// Family name (`IBM Plex Mono`, `Rajdhani`).
+    pub family: String,
+    /// Asset path of a TTF or OTF.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Ask the OS for `family` when there is no `path`.
+    #[serde(default)]
+    pub system: bool,
+}
+
+impl FontToken {
+    /// A family with no file: the name is documentation, the glyphs are Bevy's.
+    pub fn family(name: &str) -> Self {
+        Self {
+            family: name.to_owned(),
+            path: None,
+            system: false,
+        }
+    }
+}
+
+/// One motion preset's timing, overriding the tier in [`Durations`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MotionSpec {
+    /// Duration in milliseconds before [`Motion`](crate::Motion) scaling.
+    pub duration: u32,
+    /// Easing for this preset; `None` uses [`MotionTokens::easing`].
+    #[serde(default)]
+    pub easing: Option<Easing>,
+}
+
+/// Per-preset motion. A theme that only sets [`Durations`] gets the three
+/// tiers and the standard ease-out; a direction with its own feel (paper's
+/// stamp, neon's snap) names the presets it wants to differ.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MotionTokens {
+    /// Easing for every preset without its own.
+    #[serde(default)]
+    pub easing: Easing,
+    /// Per-preset duration and easing overrides.
+    #[serde(default)]
+    pub presets: BTreeMap<MotionPreset, MotionSpec>,
 }
 
 /// Backdrop blur settings for `Material::Glass`. Read only with the `blur`
@@ -121,8 +181,15 @@ pub struct Tokens {
     pub radii: Radii,
     /// Named shadow levels (`low`, `mid`, `high` by convention).
     pub elevation: BTreeMap<String, Elevation>,
-    /// Motion durations.
+    /// Motion durations: the three tiers every preset falls back to.
     pub durations: Durations,
+    /// Per-preset motion overrides and the theme's easing.
+    #[serde(default)]
+    pub motion: MotionTokens,
+    /// Named fonts that `Material::Text { font }` refers to (`body`, `mono`,
+    /// `display` by convention).
+    #[serde(default)]
+    pub fonts: BTreeMap<String, FontToken>,
     /// Backdrop blur.
     pub blur: Blur,
     /// Named colours that materials reference with `$name`.
@@ -137,5 +204,39 @@ impl Durations {
     /// How long a slot must be hovered before its tooltip is composed.
     pub const fn hover_delay_ms(&self) -> u32 {
         self.normal * 2
+    }
+
+    /// The tier a preset falls into when the theme gives it no override.
+    pub const fn tier_ms(&self, preset: MotionPreset) -> u32 {
+        match preset {
+            MotionPreset::Hover | MotionPreset::Press => self.fast,
+            MotionPreset::DropSquash | MotionPreset::Fade => self.normal,
+            MotionPreset::FlyToSlot | MotionPreset::Stagger => self.slow,
+        }
+    }
+}
+
+impl Tokens {
+    /// Duration of `preset` in milliseconds: the per-preset override when the
+    /// theme has one, else its tier in [`Durations`].
+    pub fn duration_ms(&self, preset: MotionPreset) -> u32 {
+        self.motion
+            .presets
+            .get(&preset)
+            .map_or_else(|| self.durations.tier_ms(preset), |spec| spec.duration)
+    }
+
+    /// Easing of `preset`: its own, else the theme's.
+    pub fn easing(&self, preset: MotionPreset) -> Easing {
+        self.motion
+            .presets
+            .get(&preset)
+            .and_then(|spec| spec.easing)
+            .unwrap_or(self.motion.easing)
+    }
+
+    /// The font token a text role names, if the theme defines it.
+    pub fn font(&self, name: &str) -> Option<&FontToken> {
+        self.fonts.get(name)
     }
 }

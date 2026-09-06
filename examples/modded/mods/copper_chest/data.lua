@@ -9,6 +9,9 @@ slotted.register_item("copper_chest", {
     max_stack_size = 16,
     rarity = "uncommon",
     tags = { "c:storage", "c:chests" },
+    -- A shape, not a texture: the icon bake lights this and puts the result
+    -- in the atlas, so a mod ships 3D icons without shipping any art.
+    icon = { shape = "cube", color = "#b06a3c", accent = "#f0c98a", metallic = 0.7, roughness = 0.35 },
 })
 
 -- What it is built from. A second item so the recipe has an ingredient this
@@ -17,6 +20,7 @@ slotted.register_item("copper_ingot", {
     display_name = "copper_chest.item.copper_ingot",
     max_stack_size = 64,
     tags = { "c:ingots" },
+    icon = { shape = "ingot", color = "#c9793f", metallic = 0.9, roughness = 0.35 },
 })
 
 -- A tag this mod owns...

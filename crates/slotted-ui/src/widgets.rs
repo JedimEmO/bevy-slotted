@@ -185,7 +185,7 @@ fn build_icon(
             let icon = registries
                 .and_then(|r| r.0.items.id_of(name))
                 .zip(icons)
-                .map(|(id, icons)| icons.icon(&slotted_model::ItemStack::new(id, 1)));
+                .map(|(id, icons)| icons.flat_icon(&slotted_model::ItemStack::new(id, 1)));
             let mut node = ImageNode::default();
             match icon {
                 Some(slotted_icons::IconRef::Atlas {
@@ -196,6 +196,7 @@ fn build_icon(
                     node.image = image;
                     node.texture_atlas = Some(TextureAtlas { layout, index });
                 }
+                Some(slotted_icons::IconRef::Image(image)) => node.image = image,
                 Some(slotted_icons::IconRef::Solid(color)) => node.color = color,
                 // An unknown item is the placeholder colour, the same signal
                 // the atlas bake gives an item with no artwork.

@@ -10,7 +10,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
-slotted = { workspace = true, features = ["blur", "dev"] }
+slotted = { workspace = true, features = ["blur", "dev", "live-icons"] }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true, features = ["std-fs"] }
 # A windowed 3D app needs the renderer, winit and PBR, so this is the one

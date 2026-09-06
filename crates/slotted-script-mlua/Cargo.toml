@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-script-mlua"
+homepage.workspace = true
+keywords = ["bevy", "luau", "mlua", "scripting", "modding"]
+categories = ["game-development"]
 
 [dependencies]
 slotted-script = { workspace = true }

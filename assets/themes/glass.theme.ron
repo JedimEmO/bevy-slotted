@@ -83,7 +83,7 @@
 
         "text": Text(color: "$text", size: 13.0),
         "text.muted": Text(color: "$muted", size: 11.0),
-        "count": Text(color: "$text", size: 11.0),
+        "count": Text(color: "$text", size: 11.0, shadow: "#000000BF"),
 
         "rail": Solid(fill: "#0B0E14A6", border: "$hairline", radius: 12.0),
         "rail.button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),

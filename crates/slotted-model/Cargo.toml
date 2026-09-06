@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-model"
+homepage.workspace = true
+keywords = ["bevy", "inventory", "gamedev", "slots", "modding"]
+categories = ["game-development", "data-structures"]
 
 [dependencies]
 serde = { workspace = true }

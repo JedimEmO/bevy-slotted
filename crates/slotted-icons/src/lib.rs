@@ -15,13 +15,23 @@
 
 pub mod atlas;
 pub mod plugin;
+
+#[cfg(feature = "gpu")]
+pub mod gpu;
+pub mod shape;
 pub mod source;
 
 #[cfg(feature = "live")]
 pub mod live;
 
-pub use atlas::{AtlasIcons, PlaceholderAtlas, bake_placeholder_atlas, placeholder_color};
-pub use plugin::SlottedIconsPlugin;
+#[cfg(feature = "live")]
+pub use live::LiveIcons;
+
+pub use atlas::{
+    AtlasIcons, Baked, BakedAtlas, CELL, IconItem, PlaceholderAtlas, bake_icon_atlas,
+    bake_placeholder_atlas, placeholder_color,
+};
+pub use plugin::{BakedByPlugin, IconBakeFingerprint, IconBakeSet, SlottedIconsPlugin};
 pub use source::{IconRef, IconSource, Icons};
 
 /// The names the item renderer and a game need.

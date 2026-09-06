@@ -1254,10 +1254,27 @@ fn rebake_icons(world: &mut World, frozen: &FrozenRegistries) {
     {
         return;
     }
-    let baked = slotted_icons::bake_placeholder_atlas(
-        frozen.items.iter().map(|(id, name, _)| (id, name)),
-        64,
-    );
+    // Shape-aware: a mod that declared `icon = { shape = "cube", .. }` gets
+    // the same lit primitive the base game's items get.
+    let items: Vec<slotted_icons::IconItem<'_>> = frozen
+        .items
+        .iter()
+        .map(|(id, name, def)| slotted_icons::IconItem {
+            id,
+            name,
+            icon: def.icon.as_ref(),
+        })
+        .collect();
+    let baked = slotted_icons::bake_icon_atlas(&items, slotted_icons::CELL);
+    let images = baked
+        .images
+        .iter()
+        .filter_map(|(id, path)| {
+            world
+                .get_resource::<bevy::asset::AssetServer>()
+                .map(|server| (*id, server.load::<Image>(path.clone())))
+        })
+        .collect();
     let image = world.resource_mut::<Assets<Image>>().add(baked.image);
     let layout = world
         .resource_mut::<Assets<bevy::image::TextureAtlasLayout>>()
@@ -1266,8 +1283,15 @@ fn rebake_icons(world: &mut World, frozen: &FrozenRegistries) {
         image,
         layout,
         index: baked.index,
+        images,
+        missing: baked.missing,
     }));
     world.insert_resource(PacksBakedIcons);
+    // Tell `slotted-icons` this atlas is a baked one, not a game's own
+    // source, so a later change to `Registries` rebakes over it. Without
+    // this, a game that installs its own registries after the pack load
+    // keeps an atlas indexed by somebody else's item ids.
+    world.insert_resource(slotted_icons::BakedByPlugin);
 }
 
 /// Data-stage commands that are not registry entries: injections and static

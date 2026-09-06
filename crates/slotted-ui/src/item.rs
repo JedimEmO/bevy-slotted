@@ -149,6 +149,26 @@ pub fn on_slot_changed(changed: On<SlotChanged>, mut views: Query<&mut ItemView>
     }
 }
 
+/// `SlottedUiSet::Render`: when the [`Icons`] resource is replaced, every
+/// drawn stack has to resolve its icon again.
+///
+/// The atlas is rebaked whenever the registries change, which is well after
+/// the slots were first drawn: without this, a screen keeps the handles from
+/// the atlas it was spawned against and shows nothing.
+pub fn reresolve_icons_on_source_change(
+    icons: Option<Res<Icons>>,
+    mut views: Query<&mut ItemView>,
+) {
+    if !icons.is_some_and(|icons| icons.is_changed()) {
+        return;
+    }
+    for mut view in &mut views {
+        if view.stack.is_some() {
+            view.set_changed();
+        }
+    }
+}
+
 /// `SlottedUiSet::Render`: for each changed [`ItemView`], resolve the icon
 /// through [`Icons`], write the icon child's `ImageNode`, the count text, the
 /// durability bar and the rarity ring, and refresh `SemanticLabel`.
@@ -184,7 +204,9 @@ pub fn render_items(
         let icon = view
             .stack
             .as_ref()
-            .map(|s| icons.as_ref().map_or(IconRef::Missing, |i| i.icon(s)));
+            // A slot is a 40 px cell in a grid: it always takes the flat
+            // icon, even when a live source is installed for the tooltip.
+            .map(|s| icons.as_ref().map_or(IconRef::Missing, |i| i.flat_icon(s)));
         for child in children {
             if let Ok((mut image, mut visible)) = icon_nodes.get_mut(*child) {
                 write_icon(&mut image, &mut visible, icon.as_ref());
@@ -256,6 +278,12 @@ fn write_icon(image: &mut ImageNode, visible: &mut Visibility, icon: Option<&Ico
             image.color = Color::WHITE;
             *visible = Visibility::Inherited;
         }
+        Some(IconRef::Image(handle)) => {
+            image.image = handle.clone();
+            image.texture_atlas = None;
+            image.color = Color::WHITE;
+            *visible = Visibility::Inherited;
+        }
         Some(IconRef::Solid(color)) => {
             image.image = Handle::default();
             image.texture_atlas = None;
@@ -270,7 +298,9 @@ fn write_icon(image: &mut ImageNode, visible: &mut Visibility, icon: Option<&Ico
             image.color = Color::srgb(1.0, 0.0, 1.0);
             *visible = Visibility::Inherited;
         }
-        None => {
+        // Nothing to draw: an empty slot, or a live icon, which belongs in a
+        // viewport rather than in an `ImageNode`.
+        Some(IconRef::Live(_)) | None => {
             image.texture_atlas = None;
             *visible = Visibility::Hidden;
         }

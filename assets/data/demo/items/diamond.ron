@@ -4,4 +4,5 @@
     max_stack_size: 64,
     rarity: "rare",
     tags: ["c:gems"],
+    icon: Some((shape: "gem", color: "#57e0e0", accent: "#bffcff", metallic: 0.1, roughness: 0.08)),
 )

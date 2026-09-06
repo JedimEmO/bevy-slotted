@@ -76,6 +76,7 @@
 //! ```
 
 pub mod defs;
+pub mod icon;
 pub mod index;
 pub mod interner;
 pub mod loader;
@@ -95,6 +96,7 @@ pub use defs::{
     FluidDef, HudLayerDef, Ingredient, IngredientTypeDef, ItemDef, ItemResult, Rarity, RecipeDef,
     RecipeTypeDef, ScreenDef, TagDef, TagEntry, TooltipComponentDef, WidgetDef,
 };
+pub use icon::{IconColor, IconColorError, IconDef, ShapeIcon, ShapeKind, UnknownShape};
 pub use index::{RecipeIndex, TagIndex};
 pub use interner::{InternedId, Interner, RegistryId};
 pub use loader::{

@@ -1,0 +1,194 @@
+// "Field Manual", the second slotted theme. Direction B of
+// docs/research/research-modern-ui.md section 5 and docs/moodboard.html
+// section 02: opaque paper over a dotted grid, ink rules, square slots with
+// hard ink shadows, rarity as dashed stamp outlines, crisp 120-160 ms motion
+// with no springs and a stamp-down drop. Nothing here is translucent and
+// nothing is blurred.
+//
+// Type is IBM Plex Sans with Plex Mono counts. The fonts are named, not
+// shipped: drop the OFL files into assets/fonts/ and add `path:` to the two
+// tokens below, or enable Bevy's `system_font_discovery` and set `system:
+// true`. Until then Bevy's default face carries the layout.
+#![enable(implicit_some)]
+(
+    name: "paper",
+    tokens: (
+        spacing: (xs: 2.0, sm: 6.0, md: 14.0, lg: 20.0, xl: 32.0),
+        radii: (sm: 2.0, md: 2.0, lg: 2.0),
+        elevation: {
+            // A hard ink offset, no blur: the moodboard's `2px 2px 0 ink`.
+            "ink":  (x: 2.0, y: 2.0, blur: 0.0, spread: 0.0, color: "$ink"),
+            // The panel's soft paper shadow.
+            "low":  (x: 0.0, y: 3.0, blur: 6.0,  spread: 0.0, color: "#1E1B1833"),
+            "mid":  (x: 0.0, y: 6.0, blur: 14.0, spread: 0.0, color: "#1E1B1840"),
+            "high": (x: 0.0, y: 8.0, blur: 22.0, spread: 1.0, color: "#1E1B184D"),
+        },
+        durations: (fast: 120, normal: 160, slow: 200),
+        motion: (
+            easing: Standard,
+            presets: {
+                // The stamp: the squash gathers speed and lands dead.
+                DropSquash: (duration: 140, easing: Stamp),
+                Fade: (duration: 120, easing: EaseInOut),
+                Stagger: (duration: 160, easing: Standard),
+            },
+        ),
+        fonts: {
+            "body": (family: "IBM Plex Sans"),
+            "mono": (family: "IBM Plex Mono"),
+        },
+        blur: (radius: 0.0, backdrop_divisor: 4),
+        palette: {
+            "paper":    "#EDE6D6",
+            "sheet":    "#F7F2E6",
+            "ink":      "#1E1B18",
+            "rule":     "#C9BFA8",
+            "orange":   "#E0672B",
+            "teal":     "#2B8C86",
+            "text":     "#1E1B18",
+            "muted":    "#1E1B18B3",
+            "danger":   "#B8322A",
+            "shade":    "#E2D9C4",
+        },
+        rarity: {
+            "common":    "#1E1B18",
+            "uncommon":  "#2B8C86",
+            "rare":      "#E0672B",
+            "epic":      "#6B4FA0",
+            "legendary": "#B8322A",
+        },
+    ),
+    roles: {
+        // The panel is a sheet of paper on a dotted grid: the tile carries
+        // its own opaque ground, so no glass and no tint.
+        "panel": Tiled(
+            image: "themes/paper-dot.png",
+            border: "$ink",
+            radius: 2.0,
+            elevation: "mid",
+        ),
+        "panel.title": Text(color: "$ink", size: 15.0, font: "body"),
+
+        // Square slots on lighter sheet, ink rule, hard ink shadow.
+        "slot": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "ink"),
+        "slot.hover": Solid(fill: "#FFFCF4", border: "$orange", radius: 2.0, elevation: "ink"),
+        "slot.focus": Solid(fill: "$sheet", border: "$teal", radius: 2.0, elevation: "ink"),
+        "slot.carried": Solid(fill: "#FBE9DD", border: "$orange", radius: 2.0, elevation: "ink"),
+        "slot.favorite": Solid(fill: "#FFF3D6", border: "$orange", radius: 2.0, elevation: "ink"),
+
+        // Rarity is a dashed stamp outline inside the slot, in the rarity's
+        // ink. Common draws nothing.
+        "slot.rarity": Solid(fill: "#00000000", radius: 2.0),
+        "slot.rarity.common": Solid(fill: "#00000000", radius: 2.0),
+        "slot.rarity.uncommon": Dashed(fill: "#00000000", stroke: "$teal", width: 2.0, dash: 3.0, gap: 3.0, radius: 2.0),
+        "slot.rarity.rare": Dashed(fill: "#00000000", stroke: "$orange", width: 2.0, dash: 3.0, gap: 3.0, radius: 2.0),
+        "slot.rarity.epic": Dashed(fill: "#00000000", stroke: "#6B4FA0", width: 2.0, dash: 3.0, gap: 3.0, radius: 2.0),
+        "slot.rarity.legendary": Dashed(fill: "#00000000", stroke: "$danger", width: 2.0, dash: 2.0, gap: 2.0, radius: 2.0),
+
+        "slot.durability": Solid(fill: "$rule", radius: 0.0),
+
+        "carried": Solid(fill: "#00000000", radius: 2.0),
+
+        // A tooltip is an index card.
+        "tooltip": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "mid"),
+        "tooltip.frame": Solid(fill: "#00000000", border: "$rule", radius: 2.0),
+        "tooltip.title": Text(color: "$ink", size: 14.0, font: "body"),
+
+        "button": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "ink"),
+        "button.primary": Solid(fill: "$orange", border: "$ink", radius: 2.0, elevation: "ink"),
+        "button.hover": Solid(fill: "#FFFCF4", border: "$orange", radius: 2.0, elevation: "ink"),
+
+        "text": Text(color: "$text", size: 13.0, font: "body"),
+        "text.muted": Text(color: "$muted", size: 11.0, font: "body"),
+        "count": Text(color: "$ink", size: 11.0, font: "mono"),
+
+        // The action rail is a ruled margin.
+        "rail": Solid(fill: "$shade", border: "$ink", radius: 2.0),
+        "rail.button": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "ink"),
+
+        // The browser is the encyclopedia: a second sheet, one shade darker
+        // than the screen, on the same grid.
+        "browser.panel": Tiled(
+            image: "themes/paper-dot.png",
+            tint: "#F2EEE6",
+            border: "$ink",
+            radius: 2.0,
+            elevation: "low",
+        ),
+        "browser.card": Solid(fill: "$sheet", border: "$rule", radius: 2.0),
+        "browser.card.hover": Solid(fill: "#FFFCF4", border: "$orange", radius: 2.0, elevation: "ink"),
+        "browser.card.name": Text(color: "$ink", size: 11.0, font: "body"),
+        "browser.badge": Text(color: "$muted", size: 9.0, font: "mono"),
+        "browser.glyph": Text(color: "$muted", size: 22.0, font: "body"),
+
+        // The strip across the top of a card is a rule in the rarity's ink.
+        "browser.rarity": Solid(fill: "#00000000", radius: 0.0),
+        "browser.rarity.common": Solid(fill: "#00000000", radius: 0.0),
+        "browser.rarity.uncommon": Solid(fill: "$teal", radius: 0.0),
+        "browser.rarity.rare": Solid(fill: "$orange", radius: 0.0),
+        "browser.rarity.epic": Solid(fill: "#6B4FA0", radius: 0.0),
+        "browser.rarity.legendary": Solid(fill: "$danger", radius: 0.0),
+
+        // Chips and tabs are index tabs: square, the active one inked.
+        "browser.chip": Solid(fill: "$sheet", border: "$ink", radius: 2.0),
+        "browser.chip.active": Solid(fill: "$ink", border: "$ink", radius: 2.0),
+        "browser.chip.text": Text(color: "$ink", size: 12.0, font: "body"),
+        "browser.chip.text.active": Text(color: "$paper", size: 12.0, font: "body"),
+
+        "browser.search": Solid(fill: "$sheet", border: "$ink", radius: 2.0),
+        "browser.search.focus": Solid(fill: "#FFFCF4", border: "$orange", radius: 2.0),
+
+        "browser.tab": Solid(fill: "$sheet", border: "$ink", radius: 2.0),
+        "browser.tab.active": Solid(fill: "$ink", border: "$ink", radius: 2.0),
+
+        "browser.bookmark": Solid(fill: "#FFF3D6", border: "$orange", radius: 2.0),
+
+        "browser.title": Text(color: "$ink", size: 18.0, font: "body"),
+        "browser.pill": Solid(fill: "$sheet", border: "$ink", radius: 2.0),
+        "browser.pill.text": Text(color: "$ink", size: 12.0, font: "body"),
+
+        "browser.status": Text(color: "$muted", size: 12.0, font: "mono"),
+        "browser.hint": Text(color: "$muted", size: 11.0, font: "mono"),
+
+        "browser.slot": Solid(fill: "$sheet", border: "$rule", radius: 2.0),
+        "browser.slot.missing": Solid(fill: "#F6DAD3", border: "$danger", radius: 2.0),
+
+        "browser.recipe.arrow": Solid(fill: "$rule", radius: 0.0),
+        "browser.recipe.arrow.progress": Solid(fill: "$orange", radius: 0.0),
+
+        "browser.button.disabled": Solid(fill: "$shade", border: "$rule", radius: 2.0),
+
+        // Machine widgets are gauges drawn in ink; the fill takes the fluid
+        // colour, teal until one is resolved.
+        "tank": Solid(fill: "$sheet", border: "$ink", radius: 2.0),
+        "tank.fill": Solid(fill: "#2B8C86B3", radius: 0.0),
+        "bar": Solid(fill: "$sheet", border: "$ink", radius: 2.0),
+        "bar.fill": Solid(fill: "$orange", radius: 0.0),
+        "bar.text": Text(color: "$ink", size: 10.0, font: "mono"),
+        "progress": Solid(fill: "$shade", border: "$rule", radius: 0.0),
+        "progress.fill": Solid(fill: "$teal", radius: 0.0),
+
+        // Side tabs are the index tabs on the edge of the manual.
+        "tab.rail": Solid(fill: "#00000000"),
+        "tab.side": Solid(fill: "$shade", border: "$ink", radius: 2.0, elevation: "ink"),
+        "tab.side.open": Solid(fill: "$sheet", border: "$orange", radius: 2.0, elevation: "ink"),
+        "tab.side.header": Solid(fill: "#00000000", radius: 2.0),
+        "tab.side.content": Solid(fill: "$paper", border: "$rule", radius: 2.0),
+
+        "icon_button": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "ink"),
+        "icon_button.hover": Solid(fill: "#FFFCF4", border: "$orange", radius: 2.0, elevation: "ink"),
+
+        "virtual_grid": Solid(fill: "#00000000"),
+        "virtual_grid.scrollbar": Solid(fill: "$shade", border: "$rule", radius: 0.0),
+        "virtual_grid.thumb": Solid(fill: "$ink", radius: 0.0),
+
+        "viewport": Solid(fill: "$sheet", border: "$ink", radius: 2.0),
+
+        // HUD layers are paper labels over the world.
+        "hud.panel": Solid(fill: "#EDE6D6E6", border: "$ink", radius: 2.0),
+        "hud.crosshair": Solid(fill: "$ink", radius: 0.0),
+        "hud.edit.frame": Solid(fill: "#00000000", border: "$orange", radius: 0.0),
+
+        "invisible": Solid(fill: "#00000000"),
+    },
+)

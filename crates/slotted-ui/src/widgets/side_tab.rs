@@ -315,10 +315,10 @@ pub fn on_side_tab_toggle(
     };
     let to = Vec2::new(state.width(), to_height);
     let motion = motion.map_or_else(Motion::default, |m| *m);
-    commands.entity(tab).insert(motion.tween(
+    commands.entity(tab).insert(motion.preset_tween(
         MotionPreset::Fade,
         TweenTarget::Size { from, to },
-        &tokens.get().durations,
+        &tokens.get(),
     ));
 }
 

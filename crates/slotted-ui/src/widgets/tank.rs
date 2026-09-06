@@ -89,6 +89,12 @@ pub struct UnknownFluidWarned(pub Option<FluidId>);
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct FillNode;
 
+/// The well of a tank: the bordered, clipped box the fluid sits in. It is a
+/// child of the tank root rather than the root itself, so a narrow tank can
+/// hang its readout underneath without the clip eating it.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct TankWell;
+
 /// Parameters of `slotted:tank`, the same fields as `UiNodeDef::Tank`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TankParams {
@@ -206,19 +212,24 @@ pub fn spawn_tank(ctx: &mut SpawnCtx<'_>, params: &TankParams, _tags: &Tags) -> 
         Orientation::Vertical => (SLOT_SIZE, 3.0 * SLOT_SIZE, Direction::Up),
         Orientation::Horizontal => (3.0 * SLOT_SIZE, SLOT_SIZE, Direction::Right),
     };
+    // A well one slot wide has no room for a reading on top of the fluid, so
+    // a vertical tank puts its readout under the well and grows to fit it.
+    // Phase 6 left it overlapping; `docs/FOLLOWUPS.md` called it.
+    let readout_below = width < 2.0 * SLOT_SIZE;
     let radius = ctx.tokens().radii.sm;
     let fill = FillValue::default();
+    // The root is the widget: it carries the state, the semantics and the
+    // tooltip. What it paints is the well, which is its first child, so the
+    // readout can sit outside the fluid without leaving the widget.
     let entity = ctx.spawn_node((
         Node {
             width: px(width),
-            height: px(height),
-            border: UiRect::all(px(BORDER_WIDTH)),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: px(2.0),
             position_type: PositionType::Relative,
-            overflow: Overflow::clip(),
-            border_radius: BorderRadius::all(px(radius)),
             ..default()
         },
-        Themed(roles::TANK),
         SemanticRole::Tank,
         SemanticLabel(fill_label(&fill, &params.unit)),
         WidgetNode(crate::widgets::kinds::tank()),
@@ -234,16 +245,41 @@ pub fn spawn_tank(ctx: &mut SpawnCtx<'_>, params: &TankParams, _tags: &Tags) -> 
         Pickable::default(),
         TooltipSource,
     ));
+    let well = ctx
+        .world
+        .spawn((
+            Node {
+                width: px(width),
+                height: px(height),
+                border: UiRect::all(px(BORDER_WIDTH)),
+                position_type: PositionType::Relative,
+                overflow: Overflow::clip(),
+                border_radius: BorderRadius::all(px(radius)),
+                ..default()
+            },
+            Themed(roles::TANK),
+            TankWell,
+            Pickable::IGNORE,
+            ChildOf(entity),
+        ))
+        .id();
     ctx.world.spawn((
         fill_node(origin, 0.0),
         Themed(roles::TANK_FILL),
         FillNode,
         Pickable::IGNORE,
-        ChildOf(entity),
+        ChildOf(well),
     ));
-    // The reading sits above the fill so a full tank still shows it. It is a
-    // `BarText`, which is what `render_fills` already knows how to write.
-    ctx.world.spawn((
+    // The reading is a `BarText`, which is what `render_fills` already knows
+    // how to write. Below the well when the well is narrow, centred inside it
+    // when the tank is wide enough to carry it.
+    let text_parent = if readout_below { entity } else { well };
+    let text_node = if readout_below {
+        Node {
+            justify_content: JustifyContent::Center,
+            ..default()
+        }
+    } else {
         Node {
             position_type: PositionType::Absolute,
             top: px(2),
@@ -251,13 +287,16 @@ pub fn spawn_tank(ctx: &mut SpawnCtx<'_>, params: &TankParams, _tags: &Tags) -> 
             width: percent(100),
             justify_content: JustifyContent::Center,
             ..default()
-        },
+        }
+    };
+    ctx.world.spawn((
+        text_node,
         Text::new(tank_label(&fill, &params.unit)),
         TextLayout::justify(Justify::Center),
         Themed(roles::BAR_TEXT),
         crate::widgets::bar::BarText,
         Pickable::IGNORE,
-        ChildOf(entity),
+        ChildOf(text_parent),
     ));
     if let Some(binding) = binding {
         ctx.world.entity_mut(entity).insert(binding);
@@ -505,11 +544,23 @@ pub fn render_fills(
     }
 }
 
+/// Every descendant of `entity`, nearest first.
+///
+/// A tank's fill sits inside its well, one level further down than a bar's,
+/// so the render pass walks the subtree rather than the child list.
 fn child_entities(children: &Query<&Children>, entity: Entity) -> Vec<Entity> {
-    children
-        .get(entity)
-        .map(|c| c.iter().collect())
-        .unwrap_or_default()
+    let mut out = Vec::new();
+    let mut queue = vec![entity];
+    while let Some(next) = queue.pop() {
+        let Ok(kids) = children.get(next) else {
+            continue;
+        };
+        for kid in kids.iter() {
+            out.push(kid);
+            queue.push(kid);
+        }
+    }
+    out
 }
 
 #[cfg(test)]

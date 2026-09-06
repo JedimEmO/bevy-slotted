@@ -10,8 +10,10 @@
 //! in the ui crate reads. `ActiveMotions` counts running tweens so a test
 //! harness can wait for them.
 //!
-//! Backdrop blur for glass panels is behind the `blur` feature (ADR 0003).
-//! Without it `Material::Glass` still deserialises and renders as a solid tint.
+//! Backdrop blur for glass panels and the neon theme's cut corners are behind
+//! the `blur` feature (ADR 0003): both are `UiMaterial` shaders. Without it
+//! `Material::Glass` still deserialises and renders as a solid tint, and
+//! `Material::CutCorners` as a square solid.
 
 pub mod apply;
 pub mod material;
@@ -23,16 +25,22 @@ pub mod tokens;
 
 #[cfg(feature = "blur")]
 pub mod blur;
+#[cfg(feature = "blur")]
+pub mod cut;
 
-pub use apply::{ActiveTheme, GlassPaint, Paint, SlicedPaint, Themed, apply_theme};
-pub use material::{Material, ThemeColor};
+pub use apply::{
+    ActiveTheme, CutPaint, GlassPaint, Paint, SlicedPaint, Themed, TiledPaint, apply_theme,
+};
+pub use material::{Corners, Material, ThemeColor};
 pub use motion::{
-    ActiveMotions, Motion, MotionPreset, Tween, TweenTarget, TweenValue, advance_tweens,
+    ActiveMotions, Easing, Motion, MotionPreset, Tween, TweenTarget, TweenValue, advance_tweens,
 };
 pub use plugin::{SlottedThemePlugin, SlottedThemeSet};
 pub use role::{Role, roles};
 pub use theme::{Theme, ThemeError, ThemeLoader};
-pub use tokens::{Blur, Durations, Elevation, Radii, Spacing, Tokens};
+pub use tokens::{
+    Blur, Durations, Elevation, FontToken, MotionSpec, MotionTokens, Radii, Spacing, Tokens,
+};
 
 /// The names a widget author needs.
 pub mod prelude {

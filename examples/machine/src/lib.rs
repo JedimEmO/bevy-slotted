@@ -215,6 +215,19 @@ pub fn inventories(registries: &FrozenRegistries) -> Vec<Inventory> {
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Redstone(pub bool);
 
+/// Whether the furnace simulation advances.
+///
+/// A test that wants the screen frozen at the property values
+/// [`menu_def`] declares sets `paused` before opening the screen: with the
+/// simulation off, every readout on the screen is the value in the fixture
+/// and a tree snapshot does not depend on how many frames `settle()` ran.
+/// The windowed example leaves it running.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct MachineSim {
+    /// `true` stops [`machine_sim`] before it reads the clock.
+    pub paused: bool,
+}
+
 /// The menu the simulation drives. Set by [`track_machine_menu`] as soon as a
 /// `machine:furnace` screen appears, whoever opened it: the window's startup
 /// system or a test harness.
@@ -271,9 +284,10 @@ pub fn track_machine_menu(roots: Query<&ScreenRoot, Added<ScreenRoot>>, mut comm
 /// output, drains energy and the tank. Everything goes through
 /// `slotted_ecs::SetProperty` and `SetSlot`; the sim is the authority, so it
 /// never touches an `Inventory` or a `MenuProperty` itself.
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 pub fn machine_sim(
     time: Res<Time<Virtual>>,
+    sim: Res<MachineSim>,
     menu: Option<Res<MachineMenu>>,
     redstone: Res<Redstone>,
     menus: Query<&OpenMenu>,
@@ -281,6 +295,9 @@ pub fn machine_sim(
     mut carry: Local<SimCarry>,
     mut commands: Commands,
 ) {
+    if sim.paused {
+        return;
+    }
     let Some(entity) = menu.map(|m| m.0) else {
         return;
     };
@@ -519,6 +536,7 @@ pub struct MachineDemoPlugin;
 impl Plugin for MachineDemoPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Redstone>()
+            .init_resource::<MachineSim>()
             .add_systems(Startup, register_widgets)
             .add_systems(
                 Update,

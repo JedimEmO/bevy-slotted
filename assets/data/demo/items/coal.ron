@@ -4,4 +4,5 @@
     max_stack_size: 64,
     rarity: "common",
     tags: ["c:coal"],
+    icon: Some((shape: "sphere", color: "#32373d", roughness: 0.8)),
 )
