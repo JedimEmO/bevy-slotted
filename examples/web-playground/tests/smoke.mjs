@@ -834,6 +834,56 @@ async function main() {
       `\n      before: ${before.slice(0, 160)}\n      after:  ${after.slice(0, 160)}`;
     if (!restarted) title = 'smoke: fail';
     await sleep(1000);
+
+    // -----------------------------------------------------------------
+    // And once from the Multiplayer scene, which is the one scene whose
+    // snapshot is not the open menu's. Its state lives in a server the
+    // scene builds, so a restart there has to rebuild the server, put the
+    // containers back and tell both clients; a restore that took the first
+    // open menu would put one client's prediction back instead.
+    // -----------------------------------------------------------------
+    //
+    // On a fresh page, not on this one. The restart above spent two of the
+    // three the spiral guard allows in twenty seconds (the first replays the
+    // visitor's text, which crashes again), so a third here would be refused
+    // and the page would rightly declare itself dead. A visitor arriving at
+    // `?scene=multiplayer` is also the case worth covering.
+    await cdp.send(
+      'Page.navigate',
+      { url: new URL('index.html?scene=multiplayer', URL_).href },
+      sessionId,
+    );
+    await ready(evaluate);
+    await sleep(6000);
+    const netBefore = (await evaluate('window.slottedPlayground.snapshot_state()')) ?? '';
+    const restartsBefore = (await evaluate('window.slottedPlayground.state.restarts')) ?? 0;
+    await evaluate(`(() => {
+      const p = window.slottedPlayground;
+      p.state.modId = 'copper_chest';
+      p.state.file = 'control.lua';
+      p.state.editor.setValue(${JSON.stringify('error("boom in multiplayer")\n')});
+      p.run();
+    })()`);
+
+    let netRestarts = restartsBefore;
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      netRestarts = (await evaluate('window.slottedPlayground.state.restarts')) ?? 0;
+      if (netRestarts > restartsBefore) break;
+      await sleep(250);
+    }
+    // The module comes back, the scene is re-entered from the snapshot's own
+    // `scene` field, and the server is rebuilt before the restore lands.
+    await sleep(6000);
+    const scene = (await evaluate('window.slottedPlayground.current_scene()')) ?? '';
+    const netAfter = (await evaluate('window.slottedPlayground.snapshot_state()')) ?? '';
+    const carriedNet = netBefore.includes('net:Some(') && netAfter.includes('net:Some(');
+    const cameBack = netRestarts > restartsBefore && scene === 'multiplayer' && carriedNet;
+    pageResult +=
+      `\n${cameBack ? 'PASS' : 'FAIL'}  a crash in the Multiplayer scene restarts into the ` +
+      `Multiplayer scene with the server's state\n      restarts=${netRestarts} scene=${scene} ` +
+      `server-state-before=${netBefore.includes('net:Some(')} after=${netAfter.includes('net:Some(')}`;
+    if (!cameBack) title = 'smoke: fail';
+    await sleep(1000);
   }
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
   writeFileSync(SHOT, Buffer.from(shot.data, 'base64'));

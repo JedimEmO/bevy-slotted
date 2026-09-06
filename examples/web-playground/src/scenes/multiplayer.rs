@@ -210,10 +210,16 @@ pub fn capture(link: &NetLink, registries: &FrozenRegistries) -> Option<snapshot
 /// Puts a [`capture`] back into a freshly built server, and answers how many
 /// stacks were dropped because the current registries have no such item.
 ///
-/// The server only. The clients' local mirrors are written by the caller from
-/// the same snapshot, because they are entities in the world and this has only
-/// the resource; a client left holding its own contents would show the old
-/// chest until the next correction reached it.
+/// The clients are then told, with a full `SetContent` per session: the server
+/// is the authority and this is the message it already has for "here is the
+/// whole container, forget what you thought". Writing the two client entities
+/// by hand instead would put the same numbers in three places and leave the
+/// server's state id disagreeing with both.
+///
+/// A stack that was on a cursor goes back into that peer's own inventories,
+/// which is what [`MenuServer`] itself does when a session
+/// closes. A crashed module is a session closing; the only difference is that
+/// nothing got to run the close.
 pub fn restore(
     link: &mut NetLink,
     registries: &FrozenRegistries,
@@ -257,24 +263,72 @@ pub fn restore(
             }
         }
     }
+    // The cursors, back into the pockets they came out of.
+    for (index, bindings) in bound.iter().enumerate() {
+        let Some(Some(stack)) = wanted.carried.get(index) else {
+            continue;
+        };
+        let Some(id) = slotted_model::Namespaced::parse(&stack.item)
+            .ok()
+            .and_then(|name| registries.item_id(&name))
+        else {
+            dropped += 1;
+            continue;
+        };
+        if !return_carried(store, bindings, ItemStack::new(id, stack.count), registries) {
+            dropped += 1;
+        }
+    }
+
+    // And the clients, told the whole thing. `send_content` is the server's
+    // own "here is the container, forget what you predicted".
+    let end = link.end.clone();
+    for (menu, _peer) in link.sessions.clone() {
+        if let Err(error) = link.server.send_content(&end, menu) {
+            tracing::warn!("telling a client what was restored: {error}");
+        }
+    }
     dropped
 }
 
-/// The inventories one session is bound to, in the order a client's
-/// `OpenMenu` holds them: the shared chest, then that peer's own.
+/// Merges `stack` into the peer's own inventories, mergeable slots first.
 ///
-/// The caller writes the client's entities from this, so a restored server and
-/// the two screens over it agree before the first correction.
-#[must_use]
-pub fn inventories_of(
-    wanted: &snapshot::NetSnapshot,
-    session: usize,
-) -> Vec<&snapshot::InventorySnapshot> {
-    let mut out = vec![&wanted.chest];
-    if let Some(pockets) = wanted.players.get(session) {
-        out.extend(pockets.iter());
+/// `bindings` is the session's, whose first entry is the shared chest; a
+/// carried stack goes into the player's own pockets and never into the shared
+/// box, because the box is not theirs to leave it in.
+fn return_carried(
+    store: &mut slotted_net::ContainerStore,
+    bindings: &[slotted_net::InventoryId],
+    mut stack: ItemStack,
+    registries: &FrozenRegistries,
+) -> bool {
+    let max = registries
+        .items
+        .get(stack.id)
+        .map_or(64, |item| item.max_stack_size);
+    let private = bindings.split_first().map_or(&[][..], |(_, rest)| rest);
+    for id in private {
+        let Some(inventory) = store.inventory_mut(*id) else {
+            continue;
+        };
+        while stack.count > 0
+            && let Some(slot) = inventory.find_mergeable(&stack, max)
+        {
+            let mut held = inventory.take(slot).unwrap_or_else(|| stack.clone());
+            stack.merge_into(&mut held, max);
+            inventory.set(slot, Some(held));
+        }
+        while stack.count > 0
+            && let Some(slot) = inventory.first_empty()
+            && let Some(moved) = stack.split(max.min(stack.count))
+        {
+            inventory.set(slot, Some(moved));
+        }
+        if stack.count == 0 {
+            return true;
+        }
     }
-    out
+    false
 }
 
 /// `PostUpdate`: one tick of the link, then everything the server has to say.

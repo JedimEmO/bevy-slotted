@@ -463,26 +463,11 @@ fn apply_restore(
             }
             return;
         };
+        // The server, and then a full `SetContent` per session so both clients
+        // forget what they predicted. `restore` sends those; they cross the
+        // loopback and land through the ordinary client path, which is the
+        // same route a correction takes.
         let dropped = scenes::multiplayer::restore(link, registries, wanted);
-        // And both clients' local mirrors, from the same snapshot, so the two
-        // screens agree with the server they were just built over rather than
-        // waiting for a correction to tell them.
-        let sessions: Vec<slotted_model::MenuId> =
-            link.sessions.iter().map(|(menu, _)| *menu).collect();
-        for open in &menus {
-            let Some(session) = sessions.iter().position(|menu| *menu == open.id) else {
-                continue;
-            };
-            for (slot, entity) in open.inventories.iter().enumerate() {
-                let source = scenes::multiplayer::inventories_of(wanted, session);
-                let (Some(source), Ok(mut mirror)) =
-                    (source.get(slot).copied(), inventories.get_mut(*entity))
-                else {
-                    continue;
-                };
-                snapshot::apply_inventory(source, registries, &mut mirror.0);
-            }
-        }
         bus.log(
             "info",
             "playground",

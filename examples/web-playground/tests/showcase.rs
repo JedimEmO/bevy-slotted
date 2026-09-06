@@ -1027,3 +1027,145 @@ fn a_restart_out_of_multiplayer_restores_the_servers_chest_not_a_clients() {
         );
     }
 }
+
+/// Every item the server holds, across the shared chest and both peers'
+/// pockets, counted once. The chest is bound to both sessions, so a naive walk
+/// over the bindings counts it twice.
+fn server_total(harness: &UiHarness) -> u64 {
+    let link = harness
+        .world()
+        .resource::<web_playground::scenes::multiplayer::NetLink>();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut total = 0;
+    for (menu, _peer) in &link.sessions {
+        let Some(bindings) = link.server.bindings_of(*menu) else {
+            continue;
+        };
+        for id in bindings {
+            if !seen.insert(*id) {
+                continue;
+            }
+            if let Some(inventory) = link.server.store().inventory(*id) {
+                total += inventory
+                    .slots()
+                    .iter()
+                    .flatten()
+                    .map(|stack| u64::from(stack.count))
+                    .sum::<u64>();
+            }
+        }
+        // A stack on a cursor is in no container, so it has to be counted
+        // separately or conservation reads as a loss the moment anyone picks
+        // something up.
+        total += link
+            .server
+            .snapshot(*menu)
+            .and_then(|state| state.state.carried)
+            .map_or(0, |stack| u64::from(stack.count));
+    }
+    total
+}
+
+/// Slot 0 of the shared chest, as the server holds it.
+fn server_chest_slot_0(harness: &UiHarness) -> Option<slotted_model::ItemStack> {
+    let chest = shared_chest(harness);
+    harness
+        .world()
+        .resource::<web_playground::scenes::multiplayer::NetLink>()
+        .server
+        .store()
+        .inventory(chest)?
+        .get(0)
+        .cloned()
+}
+
+/// The round trip: a real click on client A, a snapshot, a teardown, and a
+/// restore into a rebuilt scene.
+///
+/// This is the shape a visitor produces. The click goes through
+/// `RoutingAuthority`, over the loopback, into the server and back as an
+/// answer, so what the snapshot is taken from is a state the two sides
+/// actually negotiated rather than one a test wrote by hand.
+#[test]
+fn a_move_on_one_client_survives_a_restart_through_the_servers_copy() {
+    let (mut harness, bus) = showcase_world();
+    switch_to(&mut harness, &bus, Scene::Multiplayer);
+
+    let before = server_total(&harness);
+    assert!(
+        before > 0,
+        "the server starts with a chest that has things in it"
+    );
+
+    // Pick up client A's first occupied slot and put it down in an empty one.
+    // The two screens are spawned in peer order, so the first 63 slots the
+    // query yields are client A's.
+    let slots = harness.find_all(&by::role(SemanticRole::Slot));
+    let full = slots
+        .iter()
+        .copied()
+        .find(|slot| harness.stack_at(*slot).is_some())
+        .expect("client A's chest has something in it");
+    let empty = slots
+        .iter()
+        .take(63)
+        .copied()
+        .find(|slot| harness.stack_at(*slot).is_none())
+        .expect("client A's chest has an empty slot");
+    harness.click(full);
+    harness.step(20);
+    harness.click(empty);
+    harness.step(40);
+    harness.settle();
+
+    let moved = server_total(&harness);
+    assert_eq!(
+        moved, before,
+        "the move created or destroyed items on the server"
+    );
+
+    harness
+        .world_mut()
+        .get_resource_or_init::<Schedules>()
+        .add_systems(PostUpdate, web_playground::publish_snapshot_for_test);
+    harness.step(2);
+    let ron = bus.snapshot();
+    let wanted = server_chest_slot_0(&harness);
+
+    // The teardown a crash is: the scene goes, the server with it, and the
+    // page hands the RON back into a module that came up on the default scene.
+    switch_to(&mut harness, &bus, Scene::Chest);
+    assert!(
+        harness
+            .world()
+            .get_resource::<web_playground::scenes::multiplayer::NetLink>()
+            .is_none(),
+        "leaving the scene took the server with it"
+    );
+
+    let mut restarted = restarted_with(ron);
+    assert_eq!(active(&restarted), Scene::Multiplayer);
+    assert_eq!(
+        server_total(&restarted),
+        before,
+        "the restored server holds a different number of items than it did"
+    );
+    assert_eq!(
+        server_chest_slot_0(&restarted),
+        wanted,
+        "the restored server's chest is not the one that was snapshotted"
+    );
+
+    // Both clients agree with it. `restore` sends a full `SetContent` per
+    // session, which crosses the loopback like any other server message, so
+    // the panels need the frames that takes.
+    restarted.step(40);
+    restarted.settle();
+    let chest = server_chest_slot_0(&restarted);
+    for mirror in client_chest_slot_0(&mut restarted) {
+        assert_eq!(
+            mirror, chest,
+            "a client's panel disagrees with the server it was just restored from"
+        );
+    }
+}
