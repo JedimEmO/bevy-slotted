@@ -271,6 +271,8 @@ pub struct SettleTimeout {
     pub tweens: Vec<String>,
     /// Nodes whose rect changed on the last frame, described.
     pub moving: Vec<String>,
+    /// Assets the UI references that were still loading, described.
+    pub loading: Vec<String>,
 }
 
 impl SettleTimeout {
@@ -292,6 +294,9 @@ impl std::fmt::Display for SettleTimeout {
         )?;
         for tween in &self.tweens {
             write!(f, "\n  tween: {tween}")?;
+        }
+        for asset in &self.loading {
+            write!(f, "\n  loading: {asset}")?;
         }
         for node in &self.moving {
             write!(f, "\n  moving: {node}")?;
@@ -387,7 +392,12 @@ impl UiHarness {
             let fp = self.layout_fingerprint();
             let layout_dirty = fp != self.last_layout;
             self.last_layout = fp;
-            if pending == 0 && motions == 0 && !layout_dirty {
+            // A font or image that lands after settle returns re-measures
+            // text and shifts layout under the pointer; a hovered slot then
+            // stops being hovered and its tween restarts. Wait for what the
+            // UI references, so a consumer's test sees the screen at rest.
+            let loading = self.loading_assets();
+            if pending == 0 && motions == 0 && !layout_dirty && loading.is_empty() {
                 return Ok(n + 1);
             }
         }
@@ -398,7 +408,41 @@ impl UiHarness {
             motions,
             tweens: self.running_tweens(),
             moving: self.moving_nodes(),
+            loading: self.loading_assets(),
         })
+    }
+
+    /// Assets referenced by UI nodes (fonts, images) and the active theme
+    /// whose load has not finished, described for a failure message.
+    fn loading_assets(&mut self) -> Vec<String> {
+        use bevy::asset::{LoadState, UntypedAssetId};
+        let world = self.app.world_mut();
+        let Some(server) = world.get_resource::<AssetServer>().cloned() else {
+            return Vec::new();
+        };
+        let mut ids: Vec<(UntypedAssetId, String)> = Vec::new();
+        let mut fonts = world.query::<&TextFont>();
+        for font in fonts.iter(world) {
+            if let bevy::text::FontSource::Handle(handle) = &font.font {
+                ids.push((handle.id().untyped(), format!("font {:?}", handle.path())));
+            }
+        }
+        let mut images = world.query::<&ImageNode>();
+        for image in images.iter(world) {
+            ids.push((
+                image.image.id().untyped(),
+                format!("image {:?}", image.image.path()),
+            ));
+        }
+        if let Some(active) = world.get_resource::<slotted_theme::ActiveTheme>() {
+            ids.push((active.0.id().untyped(), "the active theme".to_owned()));
+        }
+        ids.sort_by(|a, b| a.1.cmp(&b.1));
+        ids.dedup_by(|a, b| a.0 == b.0);
+        ids.into_iter()
+            .filter(|(id, _)| matches!(server.get_load_state(*id), Some(LoadState::Loading)))
+            .map(|(_, what)| what)
+            .collect()
     }
 
     fn counters(&self) -> (u32, u32) {
