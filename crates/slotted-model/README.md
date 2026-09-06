@@ -1,6 +1,6 @@
 # slotted-model
 
-The domain model of [slotted](https://github.com/mathiasmyrland/bevy-slotted):
+The domain model of [slotted](https://github.com/JedimEmO/bevy-slotted):
 identifiers, item stacks, inventories, menus and the click state machine.
 
 No Bevy, no IO. Everything here is a value type or a pure function over value

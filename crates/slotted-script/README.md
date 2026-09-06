@@ -1,6 +1,6 @@
 # slotted-script
 
-The scripting port of [slotted](https://github.com/mathiasmyrland/bevy-slotted),
+The scripting port of [slotted](https://github.com/JedimEmO/bevy-slotted),
 and the API surface every mod sees.
 
 Deliberately small and dependency-light: `serde`, `thiserror` and

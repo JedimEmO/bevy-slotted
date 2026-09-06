@@ -1,6 +1,6 @@
 # slotted-ui
 
-Screens and widgets for [slotted](https://github.com/mathiasmyrland/bevy-slotted)
+Screens and widgets for [slotted](https://github.com/JedimEmO/bevy-slotted)
 on `bevy_ui`.
 
 A screen is data: a `ScreenDef` holding a tree of `UiNodeDef`s. Rust, RON and
@@ -27,7 +27,7 @@ headless harness.
 The node types are `panel`, `slot`, `slot_grid`, `virtual_grid`, `text`,
 `button`, `tank`, `bar`, `progress`, `side_tab`, `icon_button`, `viewport`,
 `anchor` and `custom`. See
-[`docs/guide/screens.md`](https://github.com/mathiasmyrland/bevy-slotted/blob/main/docs/guide/screens.md)
+[`docs/guide/screens.md`](https://github.com/JedimEmO/bevy-slotted/blob/main/docs/guide/screens.md)
 for the full reference.
 
 ## Example

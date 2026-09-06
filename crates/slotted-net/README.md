@@ -1,7 +1,7 @@
 # slotted-net
 
 A networked [`Authority`](https://docs.rs/slotted-model) for
-[slotted](https://github.com/mathiasmyrland/bevy-slotted): the client predicts,
+[slotted](https://github.com/JedimEmO/bevy-slotted): the client predicts,
 the server decides, and neither one knows what carries the bytes between them.
 
 * `RemoteAuthority` is the client half. It implements `slotted_model::Authority`,

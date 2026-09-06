@@ -1,7 +1,7 @@
 # slotted-browser
 
 The item and recipe browser for
-[slotted](https://github.com/mathiasmyrland/bevy-slotted): a JEI-style overlay
+[slotted](https://github.com/JedimEmO/bevy-slotted): a JEI-style overlay
 that layers over any screen.
 
 Everything is registered in ordered phases at `Startup`, indexed off the main

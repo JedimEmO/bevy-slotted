@@ -1,6 +1,6 @@
 # slotted
 
-The facade for [slotted](https://github.com/mathiasmyrland/bevy-slotted): one
+The facade for [slotted](https://github.com/JedimEmO/bevy-slotted): one
 plugin group, one prelude, one set of feature flags.
 
 A game adds `SlottedPlugins` and gets the model, the ECS layer, the widgets, the

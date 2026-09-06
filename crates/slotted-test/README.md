@@ -1,6 +1,6 @@
 # slotted-test
 
-Drive a [slotted](https://github.com/mathiasmyrland/bevy-slotted) screen from
+Drive a [slotted](https://github.com/JedimEmO/bevy-slotted) screen from
 `cargo test`: no window, no GPU, virtual time.
 
 This is a normal published crate, not a dev-only helper. A game depends on it

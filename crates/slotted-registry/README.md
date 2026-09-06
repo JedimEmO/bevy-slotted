@@ -1,6 +1,6 @@
 # slotted-registry
 
-Namespaced registries for [slotted](https://github.com/mathiasmyrland/bevy-slotted),
+Namespaced registries for [slotted](https://github.com/JedimEmO/bevy-slotted),
 and the data stage that fills them.
 
 Registries are open during the data stage and frozen before the control stage

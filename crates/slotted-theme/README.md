@@ -1,7 +1,7 @@
 # slotted-theme
 
 Design tokens, themes and motion for
-[slotted](https://github.com/mathiasmyrland/bevy-slotted).
+[slotted](https://github.com/JedimEmO/bevy-slotted).
 
 A `Theme` is a RON asset mapping semantic `Role`s (`panel`, `slot`,
 `slot.hover`, `tooltip.frame`) to `Material`s, plus a token table for spacing,

@@ -1,6 +1,6 @@
 # slotted-icons
 
-Item icons for [slotted](https://github.com/mathiasmyrland/bevy-slotted).
+Item icons for [slotted](https://github.com/JedimEmO/bevy-slotted).
 
 `IconSource` is the port: hand it a stack, get back an `IconRef` the item
 renderer can draw. `AtlasIcons` is the shipped adapter, one texture atlas with

@@ -1,6 +1,6 @@
 # slotted-ecs
 
-The Bevy adapter of the [slotted](https://github.com/mathiasmyrland/bevy-slotted)
+The Bevy adapter of the [slotted](https://github.com/JedimEmO/bevy-slotted)
 domain model.
 
 This crate turns `slotted-model` into components, entity events and systems, and

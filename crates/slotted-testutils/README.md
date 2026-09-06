@@ -1,7 +1,7 @@
 # slotted-testutils
 
 Internal test doubles and builders for the
-[slotted](https://github.com/mathiasmyrland/bevy-slotted) workspace.
+[slotted](https://github.com/JedimEmO/bevy-slotted) workspace.
 
 This crate is a dev-dependency of the other members and is never published
 (`publish = false`). Consumer-facing UI automation lives in `slotted-test`

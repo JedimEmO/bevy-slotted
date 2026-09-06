@@ -1,7 +1,7 @@
 # slotted-script-luaur
 
 Luau through `luaur`: the `ScriptRuntime` adapter that reaches the browser for
-[slotted](https://github.com/mathiasmyrland/bevy-slotted), and a native one
+[slotted](https://github.com/JedimEmO/bevy-slotted), and a native one
 behind the facade's `script-luaur` feature. See ADR 0004.
 
 `luaur` is a pure-Rust, line-for-line port of Luau with an mlua-shaped API, so

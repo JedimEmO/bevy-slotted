@@ -1,7 +1,7 @@
 # slotted-packs
 
 Mods and resource packs for
-[slotted](https://github.com/mathiasmyrland/bevy-slotted).
+[slotted](https://github.com/JedimEmO/bevy-slotted).
 
 Three jobs, one crate, because they share the layering rule "resource packs,
 then mods in reverse load order, then base":
