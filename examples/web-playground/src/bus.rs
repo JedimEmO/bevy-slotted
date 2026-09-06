@@ -61,6 +61,9 @@ pub enum Request {
         /// A [`Snapshot`](crate::snapshot::Snapshot) as RON.
         state: String,
     },
+    /// Switch the canvas to another showcase scene
+    /// (docs/design/showcase-contract.md section 1).
+    SetScene(showcase::Scene),
 }
 
 /// One line the console shows.
@@ -120,6 +123,9 @@ struct Inner {
     /// functions with no handle on the app, so the world pushes and the page
     /// pulls. Empty until the first publish.
     snapshot: String,
+    /// The scene the world is showing, for `current_scene`. Same push-pull
+    /// arrangement as the snapshot.
+    scene: Option<showcase::Scene>,
 }
 
 /// The shared queue, held by the page side and by the world alike.
@@ -192,6 +198,17 @@ impl Bus {
         self.lock().snapshot.clone()
     }
 
+    /// Publishes which scene the world is showing.
+    pub fn set_scene(&self, scene: showcase::Scene) {
+        self.lock().scene = Some(scene);
+    }
+
+    /// The scene the world last said it was showing, or `None` before the
+    /// first frame.
+    pub fn scene(&self) -> Option<showcase::Scene> {
+        self.lock().scene
+    }
+
     /// Takes the lines written since the last call.
     pub fn drain_console(&self) -> Vec<Line> {
         self.lock().pending.drain(..).collect()
@@ -234,6 +251,7 @@ mod tests {
                 Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
                 Request::Write { path, .. } | Request::Restore { state: path } => path,
                 Request::CanvasConsole(on) => on.to_string(),
+                Request::SetScene(scene) => scene.id().to_owned(),
             })
             .collect();
         assert_eq!(ids, ["a", "b"]);
@@ -255,6 +273,7 @@ mod tests {
                 Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
                 Request::Write { path, .. } | Request::Restore { state: path } => path,
                 Request::CanvasConsole(on) => on.to_string(),
+                Request::SetScene(scene) => scene.id().to_owned(),
             })
             .collect();
         assert_eq!(ids, ["a", "b", "c"]);

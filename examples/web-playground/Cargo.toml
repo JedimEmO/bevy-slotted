@@ -28,6 +28,9 @@ slotted-script = { workspace = true }
 slotted-script-luaur = { path = "../../crates/slotted-script-luaur", version = "0.1.0" }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
+# The scene table the rail, the bridge and the native tests share
+# (docs/design/showcase-contract.md section 1).
+showcase = { path = "../showcase" }
 # The op implementations the Tests tab drives against the live app. Defaults
 # off: `insta` is a native snapshot library the page has no use for.
 slotted-test = { path = "../../crates/slotted-test", version = "0.1.0", default-features = false, features = ["script"] }

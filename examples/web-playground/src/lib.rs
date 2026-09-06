@@ -22,6 +22,7 @@
 pub mod bundle;
 pub mod bus;
 pub mod scene;
+pub mod showcase;
 pub mod snapshot;
 pub mod tests;
 
@@ -183,6 +184,7 @@ pub fn build_app(bus: Bus) -> App {
         .insert_resource(source)
         .insert_resource(bus)
         .add_plugins(scene::ScenePlugin)
+        .add_plugins(showcase::ShowcasePlugin)
         .add_message::<StartTests>()
         .add_message::<RestoreState>()
         .add_systems(PreUpdate, drain_requests)
@@ -363,16 +365,27 @@ fn apply_restore(
 }
 
 /// `drain_requests` under a name the integration test can add as a system.
+#[allow(clippy::too_many_arguments)]
 pub fn drain_requests_for_test(
     bus: Res<Bus>,
     source: Res<EditableSource>,
     reload: MessageWriter<ReloadMod>,
     start_tests: MessageWriter<StartTests>,
     restore: MessageWriter<RestoreState>,
+    switch: MessageWriter<showcase::SwitchScene>,
     console: ResMut<scene::ConsoleErrors>,
     visible: ResMut<scene::ConsoleVisible>,
 ) {
-    drain_requests(bus, source, reload, start_tests, restore, console, visible);
+    drain_requests(
+        bus,
+        source,
+        reload,
+        start_tests,
+        restore,
+        switch,
+        console,
+        visible,
+    );
 }
 
 /// `begin_tests` under a name the integration test can add as a system.
@@ -423,12 +436,14 @@ fn begin_tests(world: &mut World) {
 /// not read yet. Everything after the reload goes back on the queue for the
 /// next frame, so two fast reloads run as two reloads, in order, each over
 /// its own text.
-fn drain_requests(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn drain_requests(
     bus: Res<Bus>,
     source: Res<EditableSource>,
     mut reload: MessageWriter<ReloadMod>,
     mut start_tests: MessageWriter<StartTests>,
     mut restore: MessageWriter<RestoreState>,
+    mut switch: MessageWriter<showcase::SwitchScene>,
     mut console: ResMut<scene::ConsoleErrors>,
     mut visible: ResMut<scene::ConsoleVisible>,
 ) {
@@ -436,6 +451,9 @@ fn drain_requests(
     for request in queued.by_ref() {
         match request {
             Request::CanvasConsole(on) => visible.0 = on,
+            Request::SetScene(scene) => {
+                switch.write(showcase::SwitchScene(scene));
+            }
             Request::RunTests { mod_id } => {
                 start_tests.write(StartTests { mod_id });
             }

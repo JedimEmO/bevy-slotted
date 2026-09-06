@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>slotted — web playground</title>
+<title>slotted — showcase</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Manrope:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -11,20 +11,41 @@
 </head>
 <body>
 <header class="bar">
-  <h1 class="disp">slotted<span class="dim"> / web playground</span></h1>
-  <p class="blurb">The <code>modded</code> example, in a tab. The three mods on the right are the ones on disk; edit their Lua and the running game reloads without a page refresh.</p>
+  <h1 class="disp">slotted<span class="dim"> / showcase</span></h1>
+  <p class="blurb">The whole stack in one tab: one Bevy app, one wasm module, eight scenes. Pick one on the left; the controls for it are on the right.</p>
   <span class="spacer"></span>
   <span id="status" class="status">booting…</span>
 </header>
 
 <main class="split">
-  <section class="stage panel">
-    <canvas id="slotted-canvas" tabindex="0"></canvas>
-    <div id="boot" class="boot"><span class="spinner"></span><span>compiling the wasm module…</span></div>
+  <!-- The scene rail (docs/design/showcase-contract.md section 5). Filled
+       from the module's `list_scenes` export; the static list is what shows
+       while the module compiles and if it never comes up. -->
+  <nav id="rail" class="rail" aria-label="scenes">
+    <ol id="rail-list" class="rail-list" role="tablist"></ol>
+  </nav>
+
+  <section class="stage-col">
+    <div id="scene-head" class="scene-head">
+      <div class="scene-title"><span id="scene-num" class="eyebrow">01</span><h2 id="scene-title" class="disp">…</h2></div>
+      <p id="scene-caption" class="scene-caption"></p>
+      <ul id="scene-tries" class="scene-tries"></ul>
+    </div>
+    <section class="stage panel">
+      <canvas id="slotted-canvas" tabindex="0"></canvas>
+      <div id="boot" class="boot"><span class="spinner"></span><span>compiling the wasm module…</span></div>
+    </section>
   </section>
 
   <section class="side">
-    <div class="panel editor-panel">
+    <!-- One control block per scene; `renderControls` shows the active one.
+         Only the Mods block is real today; the others are the disabled shape
+         the page will fill as each scene's exports stop saying "not yet". -->
+    <div id="controls-stub" class="panel controls-stub" hidden>
+      <span class="eyebrow">controls</span>
+      <p id="controls-stub-text" class="muted"></p>
+    </div>
+    <div id="controls-mods" class="panel editor-panel">
       <div class="tabs">
         <label class="pick">
           <span class="eyebrow">mod</span>

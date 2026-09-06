@@ -67,6 +67,7 @@ fn harness() -> (App, EditableSource, Bus) {
         .add_message::<web_playground::StartTests>()
         // Phase 5 restart: `Request::Restore` becomes one of these.
         .add_message::<web_playground::RestoreState>()
+        .add_message::<web_playground::showcase::SwitchScene>()
         .insert_resource(web_playground::runtime())
         .insert_resource(PackAssets(shared))
         .insert_resource(layout)

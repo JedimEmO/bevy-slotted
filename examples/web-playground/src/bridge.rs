@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::bundle;
 use crate::bus::{Bus, Line, Request};
+use crate::showcase::{self, Scene};
 
 /// Starts the app. `wasm-bindgen`'s generated `default()` calls this.
 ///
@@ -160,6 +161,157 @@ pub fn run_tests(mod_id: &str) {
 #[wasm_bindgen]
 pub fn set_canvas_console(on: bool) {
     Bus::global().request(Request::CanvasConsole(on));
+}
+
+// ---------------------------------------------------------------------------
+// The showcase (docs/design/showcase-contract.md section 4)
+// ---------------------------------------------------------------------------
+
+/// The eight scenes as the JSON the rail renders: id, title, caption, the
+/// three things to try, and whether the scene is real yet.
+#[wasm_bindgen]
+pub fn list_scenes() -> JsValue {
+    JsValue::from_str(&showcase::scenes_json())
+}
+
+/// Switches the canvas to `id`.
+///
+/// # Errors
+///
+/// An unknown id, or a scene that is still a stub (`not yet: ...`), as a
+/// `TypeError`. The page renders the second as a disabled rail entry rather
+/// than a failure.
+#[wasm_bindgen]
+pub fn set_scene(id: &str) -> Result<(), JsValue> {
+    let scene = Scene::from_id(id).ok_or_else(|| not_a_scene(id))?;
+    if !scene.ready() {
+        return Err(not_yet(&format!("the {} scene", scene.def().title)));
+    }
+    Bus::global().request(Request::SetScene(scene));
+    Ok(())
+}
+
+/// The id of the scene the canvas is showing, or an empty string before the
+/// first frame.
+#[wasm_bindgen]
+pub fn current_scene() -> JsValue {
+    JsValue::from_str(Bus::global().scene().map_or("", Scene::id))
+}
+
+/// Applies a theme to the open scene: `glass`, `paper` or `neon`.
+///
+/// # Errors
+///
+/// Always, until the Themes scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn set_theme(name: &str) -> Result<(), JsValue> {
+    Err(not_yet(&format!("set_theme({name})")))
+}
+
+/// Turns the machine's redstone signal on or off.
+///
+/// # Errors
+///
+/// Always, until the Machine scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn machine_redstone(on: bool) -> Result<(), JsValue> {
+    Err(not_yet(&format!("machine_redstone({on})")))
+}
+
+/// Enters or leaves the HUD position editor.
+///
+/// # Errors
+///
+/// Always, until the HUD scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn hud_edit(on: bool) -> Result<(), JsValue> {
+    Err(not_yet(&format!("hud_edit({on})")))
+}
+
+/// The HUD layout as RON, for the page to keep in `localStorage`.
+///
+/// # Errors
+///
+/// Always, until the HUD scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn hud_layout() -> Result<String, JsValue> {
+    Err(not_yet("hud_layout()"))
+}
+
+/// Puts a [`hud_layout`] value back.
+///
+/// # Errors
+///
+/// Always, until the HUD scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn restore_hud_layout(_ron: &str) -> Result<(), JsValue> {
+    Err(not_yet("restore_hud_layout(..)"))
+}
+
+/// Sets the loopback link's latency and loss.
+///
+/// # Errors
+///
+/// Always, until the Multiplayer scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn net_config(latency_ms: u32, drop_percent: u8) -> Result<(), JsValue> {
+    Err(not_yet(&format!(
+        "net_config({latency_ms}, {drop_percent})"
+    )))
+}
+
+/// Loads the bundled recording into the Testing scene.
+///
+/// # Errors
+///
+/// Always, until the Testing scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn replay_load() -> Result<(), JsValue> {
+    Err(not_yet("replay_load()"))
+}
+
+/// Seeks the loaded recording to `frame`.
+///
+/// # Errors
+///
+/// Always, until the Testing scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn replay_seek(frame: u32) -> Result<(), JsValue> {
+    Err(not_yet(&format!("replay_seek({frame})")))
+}
+
+/// Plays or pauses the loaded recording.
+///
+/// # Errors
+///
+/// Always, until the Testing scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn replay_play(on: bool) -> Result<(), JsValue> {
+    Err(not_yet(&format!("replay_play({on})")))
+}
+
+/// `{"frame":n,"frames":n,"playing":bool}` for the scrubber.
+///
+/// # Errors
+///
+/// Always, until the Testing scene lands: `not yet`.
+#[wasm_bindgen]
+pub fn replay_status() -> Result<String, JsValue> {
+    Err(not_yet("replay_status()"))
+}
+
+/// What every stubbed export throws. The page tests for the prefix.
+pub const NOT_YET_PREFIX: &str = "not yet: ";
+
+fn not_yet(what: &str) -> JsValue {
+    js_sys::TypeError::new(&format!(
+        "{NOT_YET_PREFIX}{what} is a stub until its scene lands"
+    ))
+    .into()
+}
+
+fn not_a_scene(id: &str) -> JsValue {
+    js_sys::TypeError::new(&format!("`{id}` is not a showcase scene")).into()
 }
 
 /// Console lines written since the last call, as JSON.

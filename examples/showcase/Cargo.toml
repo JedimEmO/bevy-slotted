@@ -1,0 +1,19 @@
+[package]
+name = "showcase"
+description = "slotted example support: the showcase's scene table, and the code the native examples and the web playground share."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+# No dependencies yet, on purpose. The scene table is plain data the page, the
+# bridge and the native tests all read; the lifted example code
+# (docs/design/showcase-contract.md section 1) brings `slotted` and `bevy` in
+# with `default-features = false`, never `std-fs`, `x11` or `gltf-icons`.
+[dependencies]
+
+[lints]
+workspace = true

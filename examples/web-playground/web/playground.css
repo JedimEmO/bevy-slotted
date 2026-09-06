@@ -6,6 +6,7 @@
   --ink:#e6edf3; --muted:#8a97ad; --accent:#7fd1ff; --accent-soft:#12283a;
   --warn:#ffc35c; --bad:#ff7b7b; --good:#7ed37e;
   --r:12px;
+  --rail-w:200px; --side-w:400px; --accent-2:#ffb454;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.45);
 }
 *{box-sizing:border-box}
@@ -31,18 +32,51 @@ code,kbd,.mono,.console,.cm-editor{font-family:"JetBrains Mono",ui-monospace,Men
 .status{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--muted);white-space:nowrap}
 .status.busy{color:var(--warn)} .status.ok{color:var(--good)} .status.bad{color:var(--bad)}
 
-/* layout */
-/* The stage takes the larger share because the item browser docks inside the
-   canvas, beside the chest, and needs about 130 px of clear strip to appear at
-   all. At 1.25fr on a 1400 px window there was none and the panel vanished. */
-.split{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(360px,.8fr);gap:14px;padding:14px}
-@media (max-width:1080px){.split{grid-template-columns:1fr;grid-template-rows:minmax(240px,40vh) 1fr;overflow:auto}}
+/* layout: rail | stage | controls (showcase contract section 5). The stage
+   never drops below 960 px because the item browser docks inside the canvas,
+   beside the chest, and needs a clear strip to appear at all. */
+.split{flex:1;min-height:0;display:grid;grid-template-columns:var(--rail-w) minmax(960px,1fr) minmax(360px,var(--side-w));gap:14px;padding:14px;overflow:auto}
+@media (max-width:1280px){.split{--rail-w:44px;--side-w:340px}.rail-list li .rail-title,.rail-list li .rail-caption{display:none}}
+@media (max-width:1080px){
+  .split{grid-template-columns:1fr;grid-template-rows:auto auto minmax(240px,56vh) 1fr;--rail-w:auto}
+  .rail-list{flex-direction:row;overflow-x:auto}
+  .rail-list li .rail-title{display:inline}
+}
+.stage-col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+
+/* the scene rail */
+.rail{min-height:0;overflow:auto}
+.rail-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.rail-list li{
+  display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--panel);color:var(--muted);cursor:pointer;user-select:none;
+}
+.rail-list li:hover{color:var(--ink);border-color:#33415a}
+.rail-list li[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);border-color:#1d3f57}
+.rail-list li[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.rail-list li[aria-disabled="true"]:hover{color:var(--muted);border-color:var(--line)}
+.rail-num{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em}
+.rail-title{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:19px;font-weight:600;line-height:1.1}
+.rail-soon{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-2)}
+
+/* the caption strip over the canvas */
+.scene-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;padding:0 4px}
+.scene-title{display:flex;align-items:baseline;gap:8px}
+.scene-title h2{font-size:26px;font-weight:700;line-height:1}
+.scene-caption{margin:0;color:var(--muted);font-size:13px;max-width:70ch}
+.scene-tries{list-style:none;margin:0;padding:0;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.scene-tries li{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel-2);white-space:nowrap}
+@media (max-width:1280px){.scene-head{grid-template-columns:auto 1fr}.scene-tries{grid-column:1/-1;justify-content:flex-start}}
+
+.controls-stub{padding:14px;gap:8px}
+.muted{color:var(--muted);font-size:13px;margin:0}
 
 .panel{
   background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0)) ,var(--panel);
   border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
   min-height:0;display:flex;flex-direction:column;overflow:hidden;
 }
+.panel[hidden]{display:none}
 .stage{position:relative;background:var(--panel-2)}
 #slotted-canvas{display:block;width:100%;height:100%;outline:none}
 .boot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;color:var(--muted);font-size:13px;background:var(--panel-2)}

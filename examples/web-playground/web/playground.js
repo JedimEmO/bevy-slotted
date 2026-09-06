@@ -1,5 +1,5 @@
-// The page half of the playground. Everything that touches the game goes
-// through the four wasm exports; nothing here reaches into Bevy.
+// The page half of the showcase. Everything that touches the game goes
+// through the wasm exports; nothing here reaches into Bevy.
 //
 // The editor is CodeMirror 6, loaded as ES modules from a CDN. If the CDN is
 // blocked the page detects it and falls back to a plain <textarea>, because a
@@ -32,6 +32,26 @@ const MAX_RESTARTS = 3;
 const SPIRAL_MS = 20_000;
 /** The prefix `bridge.rs` puts on the Lua error it reports before a trap. */
 const LUA_ERROR_PREFIX = 'slotted-lua-error: ';
+/** What every stubbed export throws (`bridge::NOT_YET_PREFIX`). */
+const NOT_YET_PREFIX = 'not yet: ';
+
+/**
+ * The rail before the module is up, and the rail if it never comes up: the
+ * same eight entries `list_scenes` returns, copy and all
+ * (`examples/showcase/src/lib.rs` is the source; keep the two in step).
+ */
+const FALLBACK_SCENES = [
+  { id: 'chest', title: 'Chest', caption: 'The Minecraft interaction model with a modern skin. Seven click modes, a sweep, a phantom preview and a tooltip, all over one list of slots.', tries: ['Left-click a stack, then right-click to split it', 'Hold right and drag across empty slots', 'Hover an item and hold Shift'], ready: false },
+  { id: 'browser', title: 'Browser', caption: 'Every item and recipe in the game, docked beside any screen. Search has a grammar, and a recipe knows whether it can be transferred.', tries: ['Type #ingots, then -iron', 'Press R over a card', 'Press A to bookmark it'], ready: false },
+  { id: 'machine', title: 'Machine', caption: 'A furnace with a tank, an energy bar and two side tabs, driven by menu properties the simulation writes. The Sort button was injected by a mod that has never seen this screen.', tries: ['Put coal in the fuel slot and watch the arrow', 'Open the redstone tab', 'Press Sort'], ready: false },
+  { id: 'themes', title: 'Themes', caption: 'One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open screen in place.', tries: ['Switch to paper', 'Switch to neon', 'Open the Machine scene and switch again'], ready: false },
+  { id: 'mods', title: 'Mods', caption: 'Three Lua mods, editable here, hot-reloaded into the running game. The chest keeps its contents across a reload, and a crash restarts the runtime.', tries: ['Edit control.lua and press Run', 'Open Tests and run them', 'Type error("boom") and watch the restart'], ready: true },
+  { id: 'hud', title: 'HUD', caption: 'Layers anchored to the screen edges, registered from Rust or from a mod, and a position editor a player can use.', tries: ['Press the edit button and drag the hotbar', 'Drag the clock', 'Reload the page and find them where you left them'], ready: false },
+  { id: 'multiplayer', title: 'Multiplayer', caption: 'Two clients and a server in this tab, joined by a lossy loopback link. The left client predicts; the server corrects; both share one chest.', tries: ['Click a stack on the left and watch the right', 'Raise the loss slider and click again', 'Read the message log'], ready: false },
+  { id: 'testing', title: 'Testing', caption: "The mods' tests/*.lua run against the live game, one action per frame, and a recorded session replays through the real input path.", tries: ["Run the sorter's tests", 'Scrub the recording', 'Press play'], ready: false },
+];
+/** The scene the page opens on when the URL names none. */
+const DEFAULT_SCENE = 'mods';
 
 const el = (id) => document.getElementById(id);
 const statusEl = el('status');
@@ -46,6 +66,10 @@ const state = {
   original: new Map(), // "mod/file" -> the bundled text
   editor: null, // { getValue, setValue, focus }
   view: 'editor', // 'editor' or 'tests'
+
+  // The showcase: the scene table and which scene the canvas shows.
+  scenes: FALLBACK_SCENES,
+  sceneId: DEFAULT_SCENE,
 
   idle: null,
   // Filling the editor is a document change too, and an unguarded idle timer
@@ -547,6 +571,122 @@ function readHash() {
 }
 
 // ---------------------------------------------------------------------------
+// Scenes
+// ---------------------------------------------------------------------------
+
+/** Whether `error` is a stubbed export saying so, rather than a failure. */
+function isNotYet(error) {
+  return String(error?.message ?? error).includes(NOT_YET_PREFIX);
+}
+
+/** The rail: one entry per scene, stubs greyed, the active one selected. */
+function renderRail() {
+  const list = el('rail-list');
+  list.replaceChildren();
+  state.scenes.forEach((scene, index) => {
+    const item = document.createElement('li');
+    item.setAttribute('role', 'tab');
+    item.dataset.scene = scene.id;
+    item.setAttribute('aria-selected', String(scene.id === state.sceneId));
+    item.setAttribute('aria-disabled', String(!scene.ready));
+    item.title = scene.caption;
+    const num = document.createElement('span');
+    num.className = 'rail-num';
+    num.textContent = String(index + 1).padStart(2, '0');
+    const title = document.createElement('span');
+    title.className = 'rail-title';
+    title.textContent = scene.title;
+    item.append(num, title);
+    if (!scene.ready) {
+      const soon = document.createElement('span');
+      soon.className = 'rail-soon';
+      soon.textContent = 'soon';
+      item.appendChild(soon);
+    }
+    item.addEventListener('click', () => selectScene(scene.id));
+    list.appendChild(item);
+  });
+}
+
+/** The strip over the canvas: number, title, caption, the three tries. */
+function renderSceneHead() {
+  const index = state.scenes.findIndex((s) => s.id === state.sceneId);
+  const scene = state.scenes[index] ?? state.scenes[0];
+  el('scene-num').textContent = String(index + 1).padStart(2, '0');
+  el('scene-title').textContent = scene.title;
+  el('scene-caption').textContent = scene.caption;
+  const tries = el('scene-tries');
+  tries.replaceChildren();
+  for (const text of scene.tries) {
+    const item = document.createElement('li');
+    item.textContent = text;
+    tries.appendChild(item);
+  }
+}
+
+/**
+ * The right column: the active scene's control block. Today only Mods has
+ * one; every other scene shows the stub note until its exports are real.
+ */
+function renderControls() {
+  const scene = state.scenes.find((s) => s.id === state.sceneId);
+  const isMods = state.sceneId === 'mods';
+  el('controls-mods').hidden = !isMods;
+  el('controls-stub').hidden = isMods;
+  if (!isMods) {
+    el('controls-stub-text').textContent = scene?.ready
+      ? `The ${scene.title} scene has no controls yet.`
+      : `The ${scene?.title ?? 'scene'} scene is not built yet. Its controls appear here when it is.`;
+  }
+}
+
+/**
+ * Switches the canvas to `id`. A stub scene is refused by the module with a
+ * `not yet` error, which the page shows as status rather than as a failure;
+ * the rail stays where it was.
+ */
+function selectScene(id) {
+  const scene = state.scenes.find((s) => s.id === id);
+  if (!scene) return;
+  if (!scene.ready) {
+    setStatus(`the ${scene.title} scene is not built yet`, '');
+    return;
+  }
+  if (state.wasm && !state.dead) {
+    try {
+      state.wasm.set_scene(id);
+    } catch (error) {
+      if (isNotYet(error)) {
+        setStatus(String(error.message ?? error), '');
+        return;
+      }
+      if (!isTrap(error)) throw error;
+      void restart(error);
+      return;
+    }
+  }
+  state.sceneId = id;
+  renderRail();
+  renderSceneHead();
+  renderControls();
+  writeSceneQuery();
+}
+
+/** `?scene=<id>` in the URL, kept beside the hash the editor uses. */
+function writeSceneQuery() {
+  const url = new URL(location.href);
+  if (state.sceneId === DEFAULT_SCENE) url.searchParams.delete('scene');
+  else url.searchParams.set('scene', state.sceneId);
+  history.replaceState(null, '', url);
+}
+
+function readSceneQuery() {
+  const wanted = new URL(location.href).searchParams.get('scene');
+  const scene = state.scenes.find((s) => s.id === wanted);
+  if (scene?.ready) state.sceneId = scene.id;
+}
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -574,6 +714,12 @@ function watchForTraps() {
 
 async function main() {
   watchForTraps();
+  // The rail shows straight away, from the fallback table, so the page has a
+  // shape while the module compiles.
+  readSceneQuery();
+  renderRail();
+  renderSceneHead();
+  renderControls();
   setStatus('compiling wasm…', 'busy');
   try {
     await boot();
@@ -586,6 +732,17 @@ async function main() {
 
   state.mods = JSON.parse(call('list_mods', [], '[]') ?? '[]');
   readHash();
+
+  // The module's own scene table replaces the fallback, and the scene the
+  // URL asked for is applied now that there is a world to apply it to.
+  try {
+    const scenes = JSON.parse(call('list_scenes', [], '[]') ?? '[]');
+    if (Array.isArray(scenes) && scenes.length) state.scenes = scenes;
+  } catch (error) {
+    console.warn('list_scenes:', error);
+  }
+  readSceneQuery();
+  selectScene(state.sceneId);
 
   const host = el('editor-host');
   state.editor = await makeEditor(host, '', scheduleIdleRun);
@@ -628,6 +785,14 @@ async function main() {
       event.preventDefault();
       run();
     }
+    // Alt+1..8 switches scenes; plain digits stay the game's hotbar keys.
+    if (event.altKey && /^[1-8]$/.test(event.key)) {
+      const scene = state.scenes[Number(event.key) - 1];
+      if (scene) {
+        event.preventDefault();
+        selectScene(scene.id);
+      }
+    }
   });
 
   // The ring holds everything the world said while the module was booting;
@@ -649,6 +814,10 @@ window.slottedPlayground = {
   call,
   restart,
   takeSnapshot,
+  selectScene,
+  list_scenes: (...args) => call('list_scenes', args, '[]'),
+  set_scene: (...args) => call('set_scene', args),
+  current_scene: (...args) => call('current_scene', args, ''),
   reload_mod: (...args) => call('reload_mod', args),
   run_tests: (...args) => call('run_tests', args),
   list_mods: (...args) => call('list_mods', args, '[]'),

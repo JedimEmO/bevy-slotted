@@ -32,6 +32,10 @@ jobs:
         with:
           shared-key: native
           cache-on-failure: true
+          # rust-cache keys on Cargo.lock and never rewrites an existing key;
+          # a profile change in Cargo.toml would otherwise restore stale
+          # artifacts forever and rebuild everything on every run.
+          key: ${{ hashFiles('**/Cargo.toml', '.cargo/config.toml', 'rust-toolchain.toml') }}
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -71,6 +75,10 @@ jobs:
         with:
           shared-key: wasm
           cache-on-failure: true
+          # rust-cache keys on Cargo.lock and never rewrites an existing key;
+          # a profile change in Cargo.toml would otherwise restore stale
+          # artifacts forever and rebuild everything on every run.
+          key: ${{ hashFiles('**/Cargo.toml', '.cargo/config.toml', 'rust-toolchain.toml') }}
 
       - uses: extractions/setup-just@v2
 
@@ -128,6 +136,10 @@ jobs:
         with:
           shared-key: browser
           cache-on-failure: true
+          # rust-cache keys on Cargo.lock and never rewrites an existing key;
+          # a profile change in Cargo.toml would otherwise restore stale
+          # artifacts forever and rebuild everything on every run.
+          key: ${{ hashFiles('**/Cargo.toml', '.cargo/config.toml', 'rust-toolchain.toml') }}
 
       # A browser is installed rather than looked for. This used to skip
       # itself when the runner had no Chrome, which meant the one job that
@@ -166,6 +178,10 @@ jobs:
         with:
           shared-key: server
           cache-on-failure: true
+          # rust-cache keys on Cargo.lock and never rewrites an existing key;
+          # a profile change in Cargo.toml would otherwise restore stale
+          # artifacts forever and rebuild everything on every run.
+          key: ${{ hashFiles('**/Cargo.toml', '.cargo/config.toml', 'rust-toolchain.toml') }}
 
       - uses: extractions/setup-just@v2
 
@@ -194,6 +210,10 @@ jobs:
         with:
           shared-key: docs
           cache-on-failure: true
+          # rust-cache keys on Cargo.lock and never rewrites an existing key;
+          # a profile change in Cargo.toml would otherwise restore stale
+          # artifacts forever and rebuild everything on every run.
+          key: ${{ hashFiles('**/Cargo.toml', '.cargo/config.toml', 'rust-toolchain.toml') }}
 
       # A broken intra-doc link is a warning by default, which means it lives
       # forever. RUSTDOCFLAGS makes it a build failure. `--no-deps` because we
