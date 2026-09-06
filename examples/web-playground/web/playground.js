@@ -109,6 +109,14 @@ function call(name, args = [], fallback = undefined) {
 }
 
 /** Instantiates the module, wiring `state.wasm` to whatever came back. */
+// The game turns off Bevy's default-event suppression so the editor keeps the
+// keyboard, which also leaves the browser's context menu on the canvas. Right
+// click is an inventory action, so swallow it there and only there. Delegated
+// at the document so it survives the canvas swap a restart does.
+document.addEventListener('contextmenu', (event) => {
+  if (event.target && event.target.id === 'slotted-canvas') event.preventDefault();
+});
+
 async function boot() {
   const url = state.restarts === 0 ? GLUE : `${GLUE}?restart=${state.restarts}`;
   const module = await import(url);
