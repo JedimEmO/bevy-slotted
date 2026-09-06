@@ -18,6 +18,10 @@
 //! `docs/design/phase4-contract.md` section 2 is the contract this crate
 //! implements.
 
+// Bevy's `AssetReader` declares its methods as `async fn`; the layered readers in
+// `source` answer from memory or the filesystem without awaiting, which clippy on
+// Rust 1.98 flags as `unused_async_trait_impl`. The signatures are the trait's, not ours.
+#![allow(clippy::unused_async_trait_impl)]
 pub mod assets;
 pub mod error;
 pub mod install;
