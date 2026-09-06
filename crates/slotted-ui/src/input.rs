@@ -20,12 +20,21 @@
 //! gesture a paint means; the origin slot is painted then, retroactively.
 //! Until that happens the press is still a click, and a drag that ends where
 //! it started releases as one.
+//!
+//! # Sweeps
+//!
+//! Shift held while the left button is dragged across slots is the Mouse
+//! Tweaks sweep: every slot the pointer touches is quick-moved once, the
+//! press included. It is not a paint, so it never arms one, and a slot
+//! already swept is never swept twice however often the pointer crosses it.
+//! See `docs/research/research-nei-overlays.md` section 6.
 
 use bevy::picking::events::{DragEnd, DragEnter, DragStart, Pointer, Press, Release};
 use bevy::prelude::*;
 use slotted_ecs::{MenuAction, SlotClicked, SlotRef};
 use slotted_model::{Button as ModelButton, ClickAction, DragKind, DragStage, SlotIx};
 
+use crate::item::ItemView;
 use crate::widgets::{model_button, modifiers_from};
 
 /// A press that has begun to move but has not yet reached a second slot.
@@ -63,6 +72,59 @@ impl DragPaint {
     }
 }
 
+/// A shift-drag in progress: one quick-move per slot the pointer touches.
+///
+/// The slot the press landed on is swept immediately, which is the ordinary
+/// shift-click; the sweep then continues into every further slot. `visited`
+/// holds every slot already swept, empty ones included, so a pointer that
+/// wanders back over a slot it has just emptied does not move the stack that
+/// landed there back again.
+#[derive(Resource, Debug, Default, Clone, PartialEq, Eq)]
+pub struct SweepQuickMove {
+    /// `true` between the shift-press and the release that ends it.
+    pub active: bool,
+    /// Slots already swept, in sweep order.
+    pub visited: Vec<SlotIx>,
+}
+
+impl SweepQuickMove {
+    /// Ends the sweep and forgets what it touched.
+    fn end(&mut self) {
+        self.active = false;
+        self.visited.clear();
+    }
+
+    /// `true` when `slot` has not been swept yet, recording it either way.
+    fn first_visit(&mut self, slot: SlotIx) -> bool {
+        if self.visited.contains(&slot) {
+            return false;
+        }
+        self.visited.push(slot);
+        true
+    }
+}
+
+/// Quick-moves `slot` unless the sweep has already been there or it is empty.
+fn sweep_slot(
+    sweep: &mut SweepQuickMove,
+    slot: &SlotRef,
+    view: Option<&ItemView>,
+    commands: &mut Commands,
+) {
+    if !sweep.first_visit(slot.slot) {
+        return;
+    }
+    // An empty slot has nothing to move. It still counts as visited: a
+    // quick-move later in the same sweep may well fill it.
+    if view.is_none_or(|v| v.stack.is_none()) {
+        return;
+    }
+    commands.trigger(MenuAction {
+        entity: slot.menu,
+        action: ClickAction::QuickMove { slot: slot.slot },
+    });
+}
+
 /// `SlottedUiSet::Input`: clears the one-frame release suppression.
 pub fn clear_drag_suppression(mut drag: ResMut<DragPaint>) {
     if drag.suppress_release {
@@ -81,11 +143,28 @@ fn drag_kind(button: ModelButton) -> DragKind {
 /// Observer on a slot: a press is recorded but never acted on, so that a
 /// gesture is only ever interpreted once, on release. The marker it leaves is
 /// what `slot_motion` reads to hold the slot at the press scale.
-pub fn on_slot_press(press: On<Pointer<Press>>, mut commands: Commands) {
+pub fn on_slot_press(
+    press: On<Pointer<Press>>,
+    slots: Query<(&SlotRef, Option<&ItemView>)>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut sweep: ResMut<SweepQuickMove>,
+    mut commands: Commands,
+) {
     tracing::trace!(entity = ?press.entity, button = ?press.event.button, "slot pressed");
     commands
         .entity(press.entity)
         .insert(crate::motion::SlotPressed);
+    if model_button(press.event.button) != ModelButton::Left || !modifiers_from(&keys).shift {
+        return;
+    }
+    let Ok((slot, view)) = slots.get(press.entity) else {
+        return;
+    };
+    // Shift-clicking is a quick-move whether or not the pointer goes on to
+    // move, so the press acts at once and the release is swallowed below.
+    sweep.active = true;
+    sweep.visited.clear();
+    sweep_slot(&mut sweep, slot, view, &mut commands);
 }
 
 /// Observer on a slot: `Pointer<Release>` becomes [`SlotClicked`] with the
@@ -95,12 +174,18 @@ pub fn on_slot_release(
     slots: Query<&SlotRef>,
     keys: Res<ButtonInput<KeyCode>>,
     drag: Res<DragPaint>,
+    mut sweep: ResMut<SweepQuickMove>,
     mut commands: Commands,
 ) {
     let entity = release.entity;
     commands
         .entity(entity)
         .try_remove::<crate::motion::SlotPressed>();
+    if sweep.active {
+        // The press already quick-moved; releasing only ends the sweep.
+        sweep.end();
+        return;
+    }
     if drag.kind.is_some() || drag.suppress_release {
         return;
     }
@@ -123,9 +208,11 @@ pub fn on_slot_release(
 pub fn on_slot_drag_start(
     start: On<Pointer<DragStart>>,
     slots: Query<&SlotRef>,
+    sweep: Res<SweepQuickMove>,
     mut drag: ResMut<DragPaint>,
 ) {
-    if drag.kind.is_some() {
+    // A sweep is not a paint and must never arm one.
+    if drag.kind.is_some() || sweep.active {
         return;
     }
     let Ok(slot) = slots.get(start.entity) else {
@@ -144,13 +231,18 @@ pub fn on_slot_drag_start(
 /// slot first, then adds the slot just entered.
 pub fn on_slot_drag_enter(
     enter: On<Pointer<DragEnter>>,
-    slots: Query<&SlotRef>,
+    slots: Query<(&SlotRef, Option<&ItemView>)>,
+    mut sweep: ResMut<SweepQuickMove>,
     mut drag: ResMut<DragPaint>,
     mut commands: Commands,
 ) {
-    let Ok(slot) = slots.get(enter.entity) else {
+    let Ok((slot, view)) = slots.get(enter.entity) else {
         return;
     };
+    if sweep.active {
+        sweep_slot(&mut sweep, slot, view, &mut commands);
+        return;
+    }
     let kind = if let Some(kind) = drag.kind {
         kind
     } else {
@@ -197,12 +289,20 @@ pub fn on_slot_drag_enter(
 pub fn on_slot_drag_end(
     end: On<Pointer<DragEnd>>,
     slots: Query<&SlotRef>,
+    mut sweep: ResMut<SweepQuickMove>,
     mut drag: ResMut<DragPaint>,
     mut commands: Commands,
 ) {
     commands
         .entity(end.entity)
         .try_remove::<crate::motion::SlotPressed>();
+    if sweep.active {
+        // `Release` may not have run yet; suppression keeps it from reading
+        // the end of a sweep as one more shift-click.
+        sweep.end();
+        drag.suppress_release = true;
+        return;
+    }
     drag.pending = None;
     let Some(kind) = drag.kind.take() else {
         return;

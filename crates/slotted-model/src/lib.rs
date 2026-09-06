@@ -54,7 +54,8 @@ pub mod value;
 
 pub use authority::{Authority, AuthorityError, AuthorityEvent, MenuId, MenuSnapshot};
 pub use click::{
-    Actor, Button, ClickAction, Delta, DragKind, DragStage, GiveTarget, ToolbarAction, apply_click,
+    Actor, Button, ClickAction, Delta, DragKind, DragPreview, DragStage, GiveTarget, ToolbarAction,
+    apply_click, can_accept, preview_drag,
 };
 pub use error::ClickError;
 pub use id::{ComponentId, ItemId, Namespaced, NamespacedError};

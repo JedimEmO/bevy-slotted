@@ -5,7 +5,7 @@ use bevy::ui::UiSystems;
 use slotted_ecs::SlottedEcsSet;
 use slotted_theme::SlottedThemeSet;
 
-use crate::input::{DragPaint, clear_drag_suppression};
+use crate::input::{DragPaint, SweepQuickMove, clear_drag_suppression};
 use crate::item::{
     ItemView, on_slot_changed, render_items, reresolve_icons_on_source_change,
     spawn_item_view_children,
@@ -16,6 +16,10 @@ use crate::motion::{
     record_gesture_target, slot_motion,
 };
 use crate::nav::{NavKeys, directional_nav_keys};
+use crate::preview::{
+    DragGhost, HintGlyphs, load_hint_glyphs, render_overlays, update_carried_validity,
+    update_drag_phantoms, update_slot_hints,
+};
 use crate::screen::{Injections, Screens, WidgetRegistry, emit_screen_layout};
 use crate::semantic::{SemanticRole, sync_accessibility};
 use crate::tooltip::{
@@ -107,6 +111,9 @@ impl Plugin for SlottedUiPlugin {
             .init_resource::<Injections>()
             .init_resource::<NavKeys>()
             .init_resource::<DragPaint>()
+            .init_resource::<SweepQuickMove>()
+            .init_resource::<DragGhost>()
+            .init_resource::<HintGlyphs>()
             .init_resource::<GestureTarget>()
             .insert_resource(self.config.clone())
             .add_observer(show_tooltip)
@@ -131,7 +138,10 @@ impl Plugin for SlottedUiPlugin {
                     .chain(),
             )
             .configure_sets(PostUpdate, SlottedUiSet::Layout.after(UiSystems::Layout))
-            .add_systems(Startup, (load_registry_screens, spawn_layers));
+            .add_systems(
+                Startup,
+                (load_registry_screens, spawn_layers, load_hint_glyphs),
+            );
         #[cfg(feature = "viewport")]
         app.add_systems(
             Update,
@@ -179,7 +189,11 @@ impl Plugin for SlottedUiPlugin {
                 (
                     slot_state_roles,
                     crate::widgets::icon_button::icon_button_roles,
+                    update_drag_phantoms,
+                    update_slot_hints,
                     update_carried_layer,
+                    update_carried_validity,
+                    render_overlays,
                     reresolve_icons_on_source_change,
                     render_items,
                     slot_motion,
@@ -264,6 +278,10 @@ fn spawn_layers(mut commands: Commands, config: Res<SlottedUiConfig>) {
                     position_type: PositionType::Absolute,
                     width: px(size),
                     height: px(size),
+                    // A border the validity ring can colour. `carried` itself
+                    // paints none, so it costs nothing until a slot says the
+                    // stack will or will not be taken.
+                    border: UiRect::all(px(crate::widgets::BORDER_WIDTH)),
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
                     ..default()

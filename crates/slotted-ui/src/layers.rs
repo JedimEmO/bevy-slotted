@@ -95,6 +95,7 @@ pub fn update_carried_layer(
     pointers: Query<(&bevy::picking::pointer::PointerId, &PointerLocation)>,
     screens: Query<&crate::semantic::ScreenRoot>,
     menus: Query<&slotted_ecs::Carried>,
+    ghost: Res<crate::preview::DragGhost>,
     mut carried: Query<(&mut crate::item::ItemView, &mut Node, &mut Visibility), With<CarriedItem>>,
 ) {
     let stack = screens
@@ -102,6 +103,13 @@ pub fn update_carried_layer(
         .filter_map(|s| s.menu)
         .find_map(|menu| menus.get(menu).ok())
         .and_then(|c| c.0.clone());
+    // A paint in progress has already claimed some of the stack: the ghost
+    // counts down as the pointer paints, so what it shows is what would be
+    // left if the player let go here. The model is untouched until they do.
+    let stack = match (stack, ghost.remaining) {
+        (Some(stack), Some(remaining)) => (remaining > 0).then(|| stack.with_count(remaining)),
+        (stack, _) => stack,
+    };
     let position = pointers
         .iter()
         .find(|(id, _)| matches!(id, bevy::picking::pointer::PointerId::Mouse))

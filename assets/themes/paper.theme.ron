@@ -91,6 +91,12 @@
         "slot.durability": Solid(fill: "$rule", radius: 0.0),
 
         "carried": Solid(fill: "#00000000", radius: 2.0),
+        // Ink on paper: the good ring is the teal rule, the bad one the
+        // orange stamp. `slot.phantom` and `slot.hint` tint an `ImageNode`.
+        "carried.good": Solid(fill: "#00000000", border: "$teal", radius: 2.0),
+        "carried.bad": Solid(fill: "#00000000", border: "$orange", radius: 2.0),
+        "slot.phantom": Solid(fill: "#1E1B1899"),
+        "slot.hint": Solid(fill: "#1E1B1859"),
 
         // A tooltip is an index card.
         "tooltip": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "mid"),

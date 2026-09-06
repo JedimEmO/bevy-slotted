@@ -208,3 +208,99 @@ fn end_with_nothing_painted_ends_the_drag_and_changes_nothing() {
     assert_eq!(f.carried(), Some((STONE, 4)));
     assert!(f.state.drag.is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Phantom preview
+// ---------------------------------------------------------------------------
+
+/// A cheap deterministic sequence, so the loop below covers a spread of
+/// counts, kinds and slot sets without pulling in a proptest dependency.
+fn pseudo_random(seed: &mut u64) -> u64 {
+    *seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+    *seed >> 33
+}
+
+/// The contract that makes the phantom preview trustworthy: whatever
+/// `preview_drag` says the painted slots will hold is exactly what `End`
+/// writes into them, and looking never changes anything.
+#[test]
+fn previewing_a_drag_never_changes_what_ending_it_does() {
+    let mut seed = 0x5EED_1234_u64;
+    for case in 0..400 {
+        let kind = match case % 3 {
+            0 => DragKind::Left,
+            1 => DragKind::Right,
+            _ => DragKind::Middle,
+        };
+        let item = if case % 2 == 0 { STONE } else { EGG };
+        let count = u32::try_from(pseudo_random(&mut seed) % 40).unwrap() + 1;
+        let painted: Vec<u16> = (0..=u16::try_from(pseudo_random(&mut seed) % 5).unwrap())
+            .map(|_| u16::try_from(pseudo_random(&mut seed) % 9).unwrap())
+            .collect();
+
+        let build = || {
+            let mut f = Fixture::chest();
+            f.put(0, stack(item, 3));
+            f.put(1, stack(if item == STONE { EGG } else { STONE }, 2));
+            f.carry(stack(item, count));
+            f
+        };
+
+        // One fixture is previewed, then ended. The other is only ended.
+        let mut previewed = build();
+        let mut plain = build();
+        let actor = Actor {
+            creative: true,
+            can_cheat: false,
+        };
+        for f in [&mut previewed, &mut plain] {
+            f.click_as(start(kind), actor).unwrap();
+            for &s in &painted {
+                f.click_as(add(kind, s), actor).unwrap();
+            }
+        }
+
+        let preview = slotted_model::preview_drag(
+            &previewed.def,
+            &previewed.inv,
+            &previewed.state,
+            &common::Items,
+        );
+        let before: Vec<Option<(slotted_model::ItemId, u32)>> =
+            (0..9).map(|s| previewed.at_kind(s)).collect();
+        assert_eq!(
+            before,
+            (0..9).map(|s| plain.at_kind(s)).collect::<Vec<_>>(),
+            "looking at case {case} moved something"
+        );
+
+        let ended = previewed.click_as(end(kind), actor);
+        plain.click_as(end(kind), actor).ok();
+        assert_eq!(
+            (0..9).map(|s| previewed.at_kind(s)).collect::<Vec<_>>(),
+            (0..9).map(|s| plain.at_kind(s)).collect::<Vec<_>>(),
+            "case {case}: preview changed the outcome"
+        );
+
+        // And the preview described that outcome exactly.
+        if ended.is_ok() {
+            for (slot, p) in &preview {
+                assert_eq!(
+                    previewed.at(slot.0).cloned(),
+                    Some(p.stack.clone()),
+                    "case {case}: slot {slot:?} did not end up as previewed"
+                );
+            }
+            let touched: Vec<u16> = preview.iter().map(|(s, _)| s.0).collect();
+            for s in 0..9u16 {
+                if !touched.contains(&s) {
+                    assert_eq!(
+                        previewed.at_kind(s),
+                        before[usize::from(s)],
+                        "case {case}: slot {s} changed without being previewed"
+                    );
+                }
+            }
+        }
+    }
+}

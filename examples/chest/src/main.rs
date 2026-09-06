@@ -4,6 +4,7 @@
 //! cargo run -p chest                          play with it
 //! cargo run -p chest -- --shot shots/chest.png     capture and exit
 //! cargo run -p chest -- --hover 0 --shot shots/chest-hover.png
+//! cargo run -p chest -- --paint --shot shots/chest-paint.png   a right-drag mid-paint
 //! cargo run -p chest -- --cheat                  browser Ctrl+click gives
 //! cargo run -p chest -- --recipe minecraft:coal --shot shots/chest-recipe.png
 //! cargo run -p chest -- --record session.ron       record input, replay it in a test
@@ -55,6 +56,9 @@ struct Cli {
     shot: Option<PathBuf>,
     /// Park a synthetic mouse pointer over this menu slot.
     hover: Option<u16>,
+    /// Pick a stack up and hold a right-drag over three empty slots, so a
+    /// capture shows the phantom preview mid-paint.
+    paint: bool,
     /// Open the chest as a player who may cheat, so the browser's Ctrl+click
     /// give is allowed.
     cheat: bool,
@@ -73,6 +77,7 @@ fn main() {
     let cli = Cli {
         shot: value("--shot").map(PathBuf::from),
         hover: value("--hover").and_then(|v| v.parse().ok()),
+        paint: args.iter().any(|a| a == "--paint"),
         cheat: args.iter().any(|a| a == "--cheat"),
         recipe: value("--recipe"),
         record: value("--record").map(PathBuf::from),
@@ -134,6 +139,7 @@ fn main() {
             orbit_camera,
             spin_cubes,
             park_pointer,
+            park_paint,
             open_recipe_page,
             shot_and_exit,
         ),
@@ -283,6 +289,85 @@ fn park_pointer(
             PointerAction::Move { delta: Vec2::ZERO },
         ));
     }
+}
+
+/// `--paint`: pick the fullest chest stack up and hold a right-drag across
+/// three empty slots, one synthetic pointer event per frame, leaving the
+/// button down. What a capture then shows is a paint in progress: three
+/// phantoms with `+1` and a cursor that has already counted itself down.
+#[allow(clippy::too_many_arguments, clippy::similar_names)]
+fn park_paint(
+    cli: Res<Cli>,
+    time: Res<Time>,
+    windows: Query<Entity, With<PrimaryWindow>>,
+    slots: Query<(&SlotRef, &UiGlobalTransform, &slotted::ui::ItemView)>,
+    mut out: MessageWriter<PointerInput>,
+    mut plan: Local<Vec<PointerAction>>,
+    mut spots: Local<Vec<Vec2>>,
+    mut step: Local<usize>,
+) {
+    if !cli.paint || time.elapsed_secs() < SHOT_AT * 0.4 {
+        return;
+    }
+    let Ok(window) = windows.single() else { return };
+    let Some(normalized) = bevy::window::WindowRef::Primary.normalize(Some(window)) else {
+        return;
+    };
+    if plan.is_empty() {
+        // The fullest container slot is what we pick up; the first three
+        // empty ones are what we paint into.
+        let mut filled: Vec<(u32, Vec2)> = Vec::new();
+        let mut empty: Vec<(u16, Vec2)> = Vec::new();
+        for (slot, transform, view) in &slots {
+            if slot.slot.0 >= 27 {
+                continue;
+            }
+            match view.stack.as_ref() {
+                Some(stack) => filled.push((stack.count, transform.translation)),
+                None => empty.push((slot.slot.0, transform.translation)),
+            }
+        }
+        filled.sort_by_key(|(count, _)| std::cmp::Reverse(*count));
+        empty.sort_by_key(|(ix, _)| *ix);
+        let (Some((_, source)), true) = (filled.first(), empty.len() >= 3) else {
+            warn!("--paint needs a full slot and three empty ones");
+            return;
+        };
+        *spots = vec![*source, empty[0].1, empty[1].1, empty[2].1];
+        // The deltas are real: `bevy_picking` reads a zero-delta move as the
+        // pointer standing still and never calls it a drag.
+        let step = |from: usize, to: usize| PointerAction::Move {
+            delta: spots[to] - spots[from],
+        };
+        *plan = vec![
+            PointerAction::Move { delta: Vec2::ZERO },
+            PointerAction::Press(bevy::picking::pointer::PointerButton::Primary),
+            PointerAction::Release(bevy::picking::pointer::PointerButton::Primary),
+            step(0, 1),
+            PointerAction::Press(bevy::picking::pointer::PointerButton::Secondary),
+            step(1, 2),
+            step(2, 3),
+        ];
+    }
+    let Some(action) = plan.get(*step).copied() else {
+        return;
+    };
+    // Which spot the pointer is at for each step of the plan above.
+    let position = spots[match *step {
+        0..=2 => 0,
+        3 | 4 => 1,
+        5 => 2,
+        _ => 3,
+    }];
+    out.write(PointerInput::new(
+        PointerId::Mouse,
+        Location {
+            target: NormalizedRenderTarget::Window(normalized),
+            position,
+        },
+        action,
+    ));
+    *step += 1;
 }
 
 /// `--recipe <ns:item>`: open the browser's recipe page once, before the shot.

@@ -310,6 +310,7 @@ pub fn spawn_slot(ctx: &mut SpawnCtx<'_>, slot: SlotIx, tags: &Tags, tab_index: 
         ctx.world.entity_mut(entity).insert(SlotRef { menu, slot });
     }
     spawn_item_view_children(ctx.world, entity);
+    crate::preview::spawn_overlay_children(ctx.world, entity);
     let mut e = ctx.world.entity_mut(entity);
     e.observe(on_slot_press);
     e.observe(on_slot_release);
@@ -815,6 +816,19 @@ impl Widget for SlotWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
         let params: SlotParams = params_of!(params, "slotted:slot");
         spawn_slot(ctx, params.slot, &Tags::new(), 0)
+    }
+
+    /// An empty special slot explains itself: what a filter accepts, that an
+    /// output only gives, that a locked slot is frozen. An ordinary slot with
+    /// nothing in it still has nothing to say.
+    fn tooltip(&self, entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
+        if let Some(hint) = world.get::<crate::preview::SlotHint>(entity) {
+            out.push(UiNodeDef::Text {
+                key: LocKey(hint.tooltip().to_owned()),
+                style: TextRole::Body,
+                tags: Tags::new(),
+            });
+        }
     }
 }
 

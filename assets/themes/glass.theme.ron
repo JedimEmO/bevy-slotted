@@ -77,6 +77,14 @@
 
         // The stack that follows the pointer.
         "carried": Solid(fill: "#00000000", radius: 8.0),
+        // The ring the carried stack wears over the slot it is about to
+        // land in: cool accent when it will be taken, danger when it will
+        // not. `slot.phantom` and `slot.hint` are read as tints for an
+        // `ImageNode`, not as node fills.
+        "carried.good": Solid(fill: "#00000000", border: "$accent", radius: 8.0),
+        "carried.bad": Solid(fill: "#00000000", border: "$danger", radius: 8.0),
+        "slot.phantom": Solid(fill: "#E6EDF399"),
+        "slot.hint": Solid(fill: "#E6EDF359"),
 
         "tooltip": Solid(fill: "#0B0E14F2", border: None, radius: 12.0, elevation: Some("mid")),
         "tooltip.frame": Solid(fill: "#00000000", border: "$hairline", radius: 12.0),

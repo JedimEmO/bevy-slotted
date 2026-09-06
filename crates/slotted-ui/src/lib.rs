@@ -25,6 +25,7 @@ pub mod loc;
 pub mod motion;
 pub mod nav;
 pub mod plugin;
+pub mod preview;
 pub mod recording;
 pub mod screen;
 pub mod semantic;
@@ -42,7 +43,7 @@ pub use hud::{
     HudLayerPayload, HudLayerRoot, HudLayers, HudLayout, HudMenu, HudPlacement, HudUpdate,
     HudValue, NineAnchor,
 };
-pub use input::{DragPaint, PendingDrag, on_slot_press, on_slot_release};
+pub use input::{DragPaint, PendingDrag, SweepQuickMove, on_slot_press, on_slot_release};
 pub use item::{
     DurabilityBar, DurabilityFill, ItemCount, ItemIcon, ItemView, RarityRing, render_items,
 };
@@ -57,6 +58,10 @@ pub use motion::{
 };
 pub use nav::{NavKeys, directional_nav_keys};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
+pub use preview::{
+    DragGhost, HintGlyphs, SlotHint, SlotPhantom, Validity, render_overlays,
+    update_carried_validity, update_drag_phantoms, update_slot_hints,
+};
 pub use recording::{RECORDING_VERSION, RecordedButton, RecordedFrame, RecordedInput, Recording};
 pub use screen::{
     Injection, Injections, ScreenClosed, ScreenLaidOut, ScreenLayout, ScreenSpawned, Screens,

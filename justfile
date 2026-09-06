@@ -47,6 +47,7 @@ shot-chest:
     cargo run -p chest -- --hover 0 --shot examples/chest/shots/chest-hover.png
     cargo run -p chest -- --shot examples/chest/shots/chest-browser.png
     cargo run -p chest -- --recipe minecraft:coal --shot examples/chest/shots/chest-recipe.png
+    cargo run -p chest -- --paint --shot examples/chest/shots/chest-paint.png
 
 # The chest screen and its browser in the paper and neon themes (Phase 7).
 shot-chest-themes:

@@ -263,7 +263,7 @@ pub fn render_items(
     }
 }
 
-fn write_icon(image: &mut ImageNode, visible: &mut Visibility, icon: Option<&IconRef>) {
+pub(crate) fn write_icon(image: &mut ImageNode, visible: &mut Visibility, icon: Option<&IconRef>) {
     match icon {
         Some(IconRef::Atlas {
             image: handle,

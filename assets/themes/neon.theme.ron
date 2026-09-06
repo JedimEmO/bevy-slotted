@@ -91,6 +91,12 @@
         "slot.durability": Solid(fill: "$well", radius: 0.0),
 
         "carried": Solid(fill: "#00000000", radius: 0.0),
+        // Lime for a slot that takes it, danger red for one that refuses.
+        // `slot.phantom` and `slot.hint` tint an `ImageNode`.
+        "carried.good": Solid(fill: "#00000000", border: "$lime", radius: 0.0),
+        "carried.bad": Solid(fill: "#00000000", border: "$danger", radius: 0.0),
+        "slot.phantom": Solid(fill: "#F5F7FA99"),
+        "slot.hint": Solid(fill: "#F5F7FA59"),
 
         "tooltip": CutCorners(fill: "#12141AF7", border: "$edge", cut: 10.0, elevation: "mid"),
         "tooltip.frame": Solid(fill: "#00000000", border: "$edge", radius: 0.0),

@@ -329,6 +329,153 @@ fn check_layout(def: &MenuDef, inv: &Inventories) -> Result<(), ClickError> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Drag preview
+// ---------------------------------------------------------------------------
+
+/// What one painted slot would hold if the drag ended now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DragPreview {
+    /// The stack the slot would hold afterwards, ghost hints included.
+    pub stack: ItemStack,
+    /// How many items the distribution would add to this slot. `0` for a
+    /// `Ghost` or `Filter` slot, which shows a hint rather than storing items.
+    pub delta: u32,
+}
+
+/// The exact per-slot result of ending the drag in `state` right now, without
+/// touching anything.
+///
+/// Empty when no drag is running, when nothing is carried, or when the drag
+/// has painted no slots. The result is the same plan
+/// [`ClickAction::Drag`] with [`DragStage::End`] applies, because both go
+/// through the same function: a slot missing here is a slot `End` would not
+/// write.
+///
+/// `ctx` is the same lookup the click would run against; stack caps and slot
+/// filters both need it.
+pub fn preview_drag(
+    def: &MenuDef,
+    inv: &Inventories,
+    state: &MenuState,
+    ctx: &dyn LookupCtx,
+) -> Vec<(SlotIx, DragPreview)> {
+    let (Some(drag), Some(carried)) = (state.drag.as_ref(), state.carried.as_ref()) else {
+        return Vec::new();
+    };
+    plan_drag(def, inv, ctx, drag, carried).slots
+}
+
+/// `true` when `slot` would take at least one item of `stack` right now.
+///
+/// The rule a drag paint and a plain place both follow: the slot must be one
+/// that accepts placements, its filter must pass, and it must be empty, a
+/// hint slot, or a same-kind stack below its cap. A screen uses it to colour
+/// the carried ghost over the slot the pointer is on.
+pub fn can_accept(
+    def: &MenuDef,
+    inv: &Inventories,
+    ctx: &dyn LookupCtx,
+    slot: SlotIx,
+    stack: &ItemStack,
+) -> bool {
+    let Some(sd) = def
+        .slot(slot)
+        .filter(|sd| sd.behaviour != SlotBehaviour::Disabled)
+    else {
+        return false;
+    };
+    if !sd.may_place(stack, ctx) {
+        return false;
+    }
+    if sd.behaviour.is_ghost() {
+        return true;
+    }
+    match slot_content(def, inv, slot) {
+        None => true,
+        Some(existing) => existing.same_kind(stack) && existing.count < sd.cap(stack.id, ctx),
+    }
+}
+
+/// A whole distribution: what each painted slot ends up holding, and what is
+/// left on the cursor.
+struct DragPlan {
+    slots: Vec<(SlotIx, DragPreview)>,
+    remaining: u32,
+}
+
+/// The one place a drag distribution is decided. [`preview_drag`] reads the
+/// plan; `Op::distribute` reads it and writes it. Keeping them one function is
+/// what makes the phantom preview exact rather than a second guess.
+fn plan_drag(
+    def: &MenuDef,
+    inv: &Inventories,
+    ctx: &dyn LookupCtx,
+    drag: &DragState,
+    carried: &ItemStack,
+) -> DragPlan {
+    let n = u32::try_from(drag.slots.len()).unwrap_or(u32::MAX);
+    let mut plan = DragPlan {
+        slots: Vec::new(),
+        remaining: carried.count,
+    };
+    if n == 0 {
+        return plan;
+    }
+    let item_max = ctx.max_stack(carried.id).max(1);
+    let per = match drag.kind {
+        DragKind::Left => carried.count / n,
+        DragKind::Right => 1,
+        DragKind::Middle => item_max,
+    };
+    for &slot in &drag.slots {
+        let Some(sd) = def
+            .slot(slot)
+            .filter(|sd| sd.behaviour != SlotBehaviour::Disabled)
+        else {
+            continue;
+        };
+        if !sd.may_place(carried, ctx) {
+            continue;
+        }
+        if sd.behaviour.is_ghost() {
+            let ghost = carried.clone().with_count(1);
+            if slot_content(def, inv, slot) != Some(&ghost) {
+                plan.slots.push((
+                    slot,
+                    DragPreview {
+                        stack: ghost,
+                        delta: 0,
+                    },
+                ));
+            }
+            continue;
+        }
+        let existing = slot_content(def, inv, slot);
+        if existing.is_some_and(|e| !e.same_kind(carried)) {
+            continue;
+        }
+        let placed = existing.map_or(0, |e| e.count);
+        let target = (per + placed).min(sd.cap(carried.id, ctx));
+        let mut add = target.saturating_sub(placed);
+        if drag.kind != DragKind::Middle {
+            add = add.min(plan.remaining);
+        }
+        if add == 0 {
+            continue;
+        }
+        plan.remaining = plan.remaining.saturating_sub(add);
+        plan.slots.push((
+            slot,
+            DragPreview {
+                stack: carried.clone().with_count(placed + add),
+                delta: add,
+            },
+        ));
+    }
+    plan
+}
+
 fn slot_content<'i>(def: &MenuDef, inv: &'i Inventories, ix: SlotIx) -> Option<&'i ItemStack> {
     let s = def.slot(ix)?;
     inv.get(s.source)?.get(usize::from(s.index))
@@ -924,54 +1071,18 @@ impl<'a> Op<'a> {
         drag: &DragState,
         carried: &ItemStack,
     ) -> Result<bool, ClickError> {
-        let n = u32::try_from(drag.slots.len()).unwrap_or(u32::MAX);
-        if n == 0 {
+        if drag.slots.is_empty() {
             // A drag that painted nothing: the drag is over and nothing moved.
             return Ok(false);
         }
-        let per = match drag.kind {
-            DragKind::Left => carried.count / n,
-            DragKind::Right => 1,
-            DragKind::Middle => self.item_max(carried),
-        };
-        let mut remaining = carried.count;
-        let mut any = false;
-        for &slot in &drag.slots {
-            let Ok(sd) = self.slot_def(slot) else {
-                continue;
-            };
-            if !sd.may_place(carried, self.ctx) {
-                continue;
-            }
-            if sd.behaviour.is_ghost() {
-                let ghost = carried.clone().with_count(1);
-                if self.content(slot) != Some(&ghost) {
-                    self.set(slot, Some(ghost));
-                    any = true;
-                }
-                continue;
-            }
-            let existing = self.content(slot);
-            if existing.is_some_and(|e| !e.same_kind(carried)) {
-                continue;
-            }
-            let placed = existing.map_or(0, |e| e.count);
-            let target = (per + placed).min(self.cap(sd, carried));
-            let mut add = target.saturating_sub(placed);
-            if drag.kind != DragKind::Middle {
-                add = add.min(remaining);
-            }
-            if add == 0 {
-                continue;
-            }
-            remaining = remaining.saturating_sub(add);
-            self.set(slot, Some(carried.clone().with_count(placed + add)));
-            any = true;
-        }
-        if !any {
+        let plan = plan_drag(self.def, self.inv, self.ctx, drag, carried);
+        if plan.slots.is_empty() {
             return Err(ClickError::NothingToDo);
         }
-        state.carried = (remaining > 0).then(|| carried.clone().with_count(remaining));
+        for (slot, preview) in plan.slots {
+            self.set(slot, Some(preview.stack));
+        }
+        state.carried = (plan.remaining > 0).then(|| carried.clone().with_count(plan.remaining));
         Ok(true)
     }
 

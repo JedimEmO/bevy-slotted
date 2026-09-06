@@ -705,10 +705,20 @@ fn every_interactive_node_is_semantic_and_reaches_accesskit() {
     // icon child of each slot shows up in the AccessKit tree even though the
     // contract calls it purely visual and gives it no role. Pin that this is
     // the only source of extra nodes; see docs/FOLLOWUPS.md.
+    // The phantom and hint overlays are `ImageNode`s for the same reason and
+    // are excluded on the same grounds: purely visual, `Pickable::IGNORE`,
+    // no role of their own.
     let unexplained: Vec<Entity> = extra
         .iter()
         .copied()
         .filter(|e| h.world().get::<slotted_ui::ItemIcon>(*e).is_none())
+        .filter(|e| {
+            h.world()
+                .get::<slotted_ui::preview::PhantomIcon>(*e)
+                .is_none()
+        })
+        .filter(|e| h.world().get::<slotted_ui::preview::HintIcon>(*e).is_none())
+        .filter(|e| h.world().get::<slotted_ui::preview::HintInfo>(*e).is_none())
         .filter(|e| h.world().get::<Text>(*e).is_none())
         .collect();
     assert!(
