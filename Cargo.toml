@@ -113,10 +113,22 @@ inherits = "release"
 # it took the optimised module from 26.46 MiB to 23.05 MiB, and nothing here is
 # a hot inner loop: the frame cost is the renderer, not this code.
 opt-level = "z"
+lto = "thin"
+codegen-units = 16
+# Symbols too, not only debuginfo: the name section alone was 65 MiB and
+# quadrupled wasm-opt time. Thin LTO with 16 units trades a little size for a
+# compile that CI can finish in minutes; measurements in docs/FOLLOWUPS.md.
+strip = true
+panic = "abort"
+
+# The small build for a tagged release of the playground: fat LTO, one
+# codegen unit, and `cargo xtask playground --dist` pairs it with `wasm-opt -Oz`.
+# About four minutes to compile and six to optimise for a module a quarter
+# smaller; CI pushes use `wasm-release` instead.
+[profile.wasm-dist]
+inherits = "wasm-release"
 lto = "fat"
 codegen-units = 1
-strip = "debuginfo"
-panic = "abort"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -14,37 +14,71 @@ pub fn workspace_root() -> PathBuf {
 /// The example the playground command builds.
 pub const PLAYGROUND: &str = "web-playground";
 
-/// `cargo xtask wasm-build <example> [--debug]`.
-pub fn wasm_build(args: &[String]) -> Result<(), String> {
-    let mut example = None;
-    let mut release = true;
-    for arg in args {
-        match arg.as_str() {
-            "--debug" => release = false,
-            "--release" => release = true,
-            other if other.starts_with('-') => return Err(format!("unknown flag `{other}`")),
-            other => example = Some(other.to_owned()),
+/// How a wasm example is built.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// The `debug` profile, no optimiser: for a quick look.
+    Debug,
+    /// `wasm-release` (thin LTO, symbols stripped) and `wasm-opt -O1`: the
+    /// CI default, a few minutes end to end.
+    Release,
+    /// `wasm-dist` (fat LTO, one codegen unit) and `wasm-opt -Oz`: the small
+    /// module for a tagged release, ten minutes or more.
+    Dist,
+}
+
+impl Mode {
+    fn from_args(args: &[String]) -> Result<(Self, Vec<String>), String> {
+        let mut mode = Self::Release;
+        let mut rest = Vec::new();
+        for arg in args {
+            match arg.as_str() {
+                "--debug" => mode = Self::Debug,
+                "--release" => mode = Self::Release,
+                "--dist" => mode = Self::Dist,
+                other if other.starts_with('-') => return Err(format!("unknown flag `{other}`")),
+                other => rest.push(other.to_owned()),
+            }
+        }
+        Ok((mode, rest))
+    }
+
+    fn profile(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Release => "wasm-release",
+            Self::Dist => "wasm-dist",
         }
     }
-    let example = example.ok_or("wasm-build needs an example name")?;
-    build(&example, release).map(|_| ())
+
+    fn opt_level(self) -> &'static str {
+        match self {
+            Self::Debug | Self::Release => "-O1",
+            Self::Dist => "-Oz",
+        }
+    }
+}
+
+/// `cargo xtask wasm-build <example> [--debug|--release|--dist]`.
+pub fn wasm_build(args: &[String]) -> Result<(), String> {
+    let (mode, rest) = Mode::from_args(args)?;
+    let example = rest.first().ok_or("wasm-build needs an example name")?;
+    build(example, mode).map(|_| ())
 }
 
 /// Builds `example` and runs `wasm-bindgen`, returning the `.wasm` sizes
 /// before and after `wasm-opt`.
-fn build(example: &str, release: bool) -> Result<Sizes, String> {
+fn build(example: &str, mode: Mode) -> Result<Sizes, String> {
     let root = workspace_root();
-    // `wasm-release` is defined at the workspace root: release, size-tuned,
-    // and stripped, which is the difference between an 80 MiB module and a
-    // shippable one.
-    let profile = if release { "wasm-release" } else { "debug" };
+    // The profiles are defined at the workspace root; see `Mode`.
+    let profile = mode.profile();
 
     let mut cargo = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
     cargo
         .current_dir(&root)
         .args(["build", "--target", "wasm32-unknown-unknown", "-p", example]);
-    if release {
-        cargo.args(["--profile", "wasm-release"]);
+    if mode != Mode::Debug {
+        cargo.args(["--profile", profile]);
     }
     run(&mut cargo, "cargo build")?;
 
@@ -76,13 +110,27 @@ fn build(example: &str, release: bool) -> Result<Sizes, String> {
 
     // `wasm-opt` is optional: without it the page still works, it is just
     // bigger, and requiring a binstall to see the playground is a bad trade.
-    eprintln!("xtask: running wasm-opt -Oz; this takes a few minutes with no output");
+    // `-O1` by default: measured on the playground, it reaches 31 MiB raw and
+    // 7.7 MiB gzipped in about a minute, where `-Oz` reaches 26.5 MiB in six.
+    // Pages serves the module compressed, so the visitor pays under a megabyte
+    // for five minutes off every CI run. `--dist` (or `SLOTTED_WASM_OPT=-Oz`)
+    // for a release.
+    let level = std::env::var("SLOTTED_WASM_OPT").unwrap_or_else(|_| mode.opt_level().to_owned());
+    eprintln!("xtask: running wasm-opt {level}; this can take a while with no output");
     let optimised = if which("wasm-opt") {
         let mut opt = Command::new("wasm-opt");
         opt.current_dir(&root).args([
-            "-Oz",
+            &level,
+            // The module uses reference types (the function table grows at
+            // runtime for closures) and multivalue. An optimiser that is not
+            // told so emits a table that cannot grow: `Table.grow() failed`
+            // on first load, which is what an unpinned binaryen shipped.
+            "--enable-reference-types",
+            "--enable-multivalue",
             "--enable-bulk-memory",
             "--enable-nontrapping-float-to-int",
+            "--strip-debug",
+            "--strip-producers",
             &bindgen_wasm.to_string_lossy(),
             "-o",
             &bindgen_wasm.to_string_lossy(),
@@ -103,12 +151,11 @@ fn build(example: &str, release: bool) -> Result<Sizes, String> {
     Ok(sizes)
 }
 
-/// `cargo xtask playground [--debug]`: the wasm build plus the page.
+/// `cargo xtask playground [--debug|--release|--dist]`: the wasm build plus
+/// the page.
 pub fn playground(args: &[String]) -> Result<(), String> {
-    let mut owned = vec![PLAYGROUND.to_owned()];
-    owned.extend(args.iter().cloned());
-    let release = !args.iter().any(|a| a == "--debug");
-    build(PLAYGROUND, release)?;
+    let (mode, _) = Mode::from_args(args)?;
+    build(PLAYGROUND, mode)?;
 
     let root = workspace_root();
     let out = root.join("dist").join(PLAYGROUND);

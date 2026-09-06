@@ -166,6 +166,11 @@ wasm-build example:
 playground:
     cargo run -p xtask -- playground
 
+# The small module for a tagged release: fat LTO and `wasm-opt -Oz`, ten
+# minutes or more. CI and day-to-day use `playground`.
+playground-dist:
+    cargo run -p xtask -- playground --dist
+
 # dist/ over HTTP with the wasm MIME type right.
 # http://127.0.0.1:8080/web-playground/
 serve:

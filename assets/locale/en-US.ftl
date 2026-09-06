@@ -31,3 +31,9 @@ browser-uses-empty = Used in: nothing yet
 browser-button-transfer = +
 browser-button-back = <
 browser-button-forward = >
+
+# Action rail buttons (the widget falls back to these English labels).
+slotted-rail-sort = Sort
+slotted-rail-quick_stack = Quick stack
+slotted-rail-deposit_all = Deposit all
+slotted-rail-loot_all = Loot all

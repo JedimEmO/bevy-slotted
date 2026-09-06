@@ -40,8 +40,14 @@ const chrome = spawn(BROWSER, [
   '--enable-unsafe-swiftshader',
   '--no-first-run',
   '--no-default-browser-check',
+  // CI runners and containers have no user namespaces for Chrome's sandbox;
+  // without this flag Chrome exits before opening the debugging port.
+  ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
   'about:blank',
 ]);
+chrome.on('exit', (code, signal) => {
+  if (code !== 0 && code !== null) process.stderr.write(`chrome exited early: code ${code} signal ${signal}\n`);
+});
 chrome.stderr.on('data', (chunk) => {
   const text = String(chunk);
   if (/ERROR|FATAL/.test(text)) process.stderr.write(`chrome: ${text}`);

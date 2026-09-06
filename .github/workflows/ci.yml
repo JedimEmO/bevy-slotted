@@ -96,14 +96,17 @@ jobs:
       # The optimised module must actually instantiate in a browser before it
       # is allowed anywhere near Pages.
       - uses: browser-actions/setup-chrome@v1
+        id: chrome
         with:
           chrome-version: stable
       - name: Instantiate the playground in headless Chrome
+        env:
+          CI: "true"
         run: |
           cargo run -p xtask -- serve &
           sleep 3
           mkdir -p "$HOME/snap/chromium/common"
-          node examples/web-playground/tests/smoke.mjs --browser "$(which chrome)"
+          node examples/web-playground/tests/smoke.mjs --browser "${{ steps.chrome.outputs.chrome-path }}"
 
       - name: Upload the playground
         uses: actions/upload-artifact@v4
