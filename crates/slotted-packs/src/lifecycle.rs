@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use bevy::ecs::message::{Message, Messages};
 use bevy::prelude::*;
 use slotted_model::Namespaced;
-use slotted_registry::defs::{ItemDef, RecipeDef, RecipeTypeDef, ScreenDef, TagDef, WidgetDef};
+use slotted_registry::defs::{
+    FluidDef, HudLayerDef, ItemDef, RecipeDef, RecipeTypeDef, ScreenDef, TagDef, WidgetDef,
+};
 use slotted_registry::{AssetSource, DataStage, FrozenRegistries, LoadReport};
 use slotted_script::{
     API_VERSION, LogLevel, ModId, ScriptCommand, ScriptError, ScriptEvent, ScriptId, ScriptRuntime,
@@ -893,16 +895,24 @@ impl ModLoader {
                     .replace(name.clone(), WidgetDef { name, payload });
             }
             ScriptCommand::RegisterFluid { id, def } => {
-                // PHASE6-IMPL: B. Type-check as `slotted_ui::FluidDef` (fill
-                // `name` from `id`), store the payload in `registries.fluids`.
-                let _ = (id, def);
-                tracing::debug!(mod_id = %mod_id, "register_fluid is not implemented yet");
+                let name = name(id)?;
+                let payload = slotted_registry::from_model(def);
+                // Type it here for the same reason a screen is typed here: a
+                // colour the modder mistyped must name their fluid, not turn
+                // into magenta three frames into the game.
+                slotted_ui::FluidDef::from_payload(&name, &payload).map_err(&bad)?;
+                registries
+                    .fluids
+                    .replace(name.clone(), FluidDef { name, payload });
             }
             ScriptCommand::RegisterHudLayer { id, def } => {
-                // PHASE6-IMPL: B. Type-check as `slotted_ui::HudLayerPayload`,
-                // store the payload in `registries.hud_layers`.
-                let _ = (id, def);
-                tracing::debug!(mod_id = %mod_id, "register_hud_layer is not implemented yet");
+                let name = name(id)?;
+                let payload = slotted_registry::from_model(def);
+                slotted_ui::HudLayerPayload::from_value(payload.clone())
+                    .map_err(|e| bad(e.to_string()))?;
+                registries
+                    .hud_layers
+                    .replace(name.clone(), HudLayerDef { name, payload });
             }
             ScriptCommand::Inject { .. } => {
                 collected.injections.push((mod_id.clone(), command.clone()));

@@ -212,8 +212,14 @@ impl UiHarness {
     /// The semantic tree of every HUD layer root, same elision as
     /// [`screen_tree`](Self::screen_tree).
     pub fn hud_tree(&self) -> ScreenTree {
-        // PHASE6-IMPL: B. `build` over `hud_layers()`.
-        ScreenTree { roots: Vec::new() }
+        let world = self.world();
+        ScreenTree {
+            roots: self
+                .hud_layers()
+                .into_iter()
+                .filter_map(|root| crate::tree::build(world, root))
+                .collect(),
+        }
     }
 
     /// Binds HUD slot widgets to `menu` (`slotted_ui::HudMenu`).
@@ -235,9 +241,23 @@ impl UiHarness {
     /// The bound value property and its current value, from the node's
     /// `PropertyBinding` and the menu's `MenuProperty` child.
     pub fn property_of(&self, entity: Entity) -> Option<(slotted_model::PropertyId, i32)> {
-        // PHASE6-IMPL: A.
-        let _ = entity;
-        None
+        let world = self.world();
+        // An icon button names its own property; a tank or bar names two and
+        // this reports the value one, which is the one a test asserts on.
+        let (menu, id) = world
+            .get::<slotted_ui::PropertyBinding>(entity)
+            .map(|b| (b.menu, b.value))
+            .or_else(|| {
+                let state = world.get::<slotted_ui::IconButtonState>(entity)?;
+                Some((state.menu?, state.property?))
+            })?;
+        let value = world
+            .get::<bevy::prelude::Children>(menu)?
+            .iter()
+            .filter_map(|child| world.get::<slotted_ecs::MenuProperty>(child))
+            .find(|p| p.id == id)
+            .map(|p| p.value)?;
+        Some((id, value))
     }
 
     /// Whether a side tab is open.

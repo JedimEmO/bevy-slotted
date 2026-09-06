@@ -706,6 +706,7 @@ ScreenTree(
                       role: Hotbar,
                       test_id: Some("hotbar"),
                       tags: {
+                        "region": "hotbar",
                         "test_id": "hotbar",
                       },
                       widget: Some("slotted:hotbar"),

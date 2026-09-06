@@ -13,8 +13,11 @@
 -- where <step> is { type = "test_step", op = { op = "click", loc = {...} } }
 -- and <done> is { type = "test_done", name = n, passed = bool, message = s }.
 
--- PHASE6-IMPL: C. The body below is the intended shape; fill the ops and the
--- dispatch hooks, and make the conformance suite cover them.
+-- A failed expectation is raised as a table rather than a string: `error`
+-- prefixes a string with the chunk and line, which differs between the two
+-- adapters and would make both the conformance cases and a mod's test report
+-- depend on which runtime ran it. A table carries the message verbatim, and a
+-- real Lua error (a typo in the test) still arrives with its position.
 
 local T = {}
 local tests = {}          -- array of { name = ..., fn = ... }
@@ -27,11 +30,19 @@ function T.test(name, fn)
     tests[#tests + 1] = { name = name, fn = fn }
 end
 
+-- Raise `message` as an expectation failure, with no position prefix.
+local function fail(message)
+    error({ __slotted_test = tostring(message) }, 0)
+end
+
 -- Yield one op to the host and return its answer, or raise its error.
 local function step(op)
     local reply = coroutine.yield(op)
+    if type(reply) ~= "table" then
+        fail("the host resumed a test without a reply table")
+    end
     if reply.error ~= nil then
-        error(reply.error, 2)
+        fail(reply.error)
     end
     return reply.value
 end
@@ -59,13 +70,13 @@ function T.log_contains(text) return step({ op = "log_contains", text = text }) 
 -- Expectations: pure Lua, no yield.
 function T.expect(cond, msg)
     if not cond then
-        error(msg or "expectation failed", 2)
+        fail(msg or "expectation failed")
     end
 end
 
 function T.expect_eq(a, b, msg)
     if a ~= b then
-        error((msg and (msg .. ": ") or "") .. "expected " .. tostring(b) .. ", got " .. tostring(a), 2)
+        fail((msg and (msg .. ": ") or "") .. "expected " .. tostring(b) .. ", got " .. tostring(a))
     end
 end
 
@@ -73,15 +84,15 @@ function T.expect_stack(loc, item, count)
     local s = T.stack_at(loc)
     if item == nil then
         if s ~= nil then
-            error("expected an empty slot, found " .. tostring(s.item) .. " x" .. tostring(s.count), 2)
+            fail("expected an empty slot, found " .. tostring(s.item) .. " x" .. tostring(s.count))
         end
         return
     end
     if s == nil then
-        error("expected " .. item .. " x" .. tostring(count) .. ", slot is empty", 2)
+        fail("expected " .. item .. " x" .. tostring(count) .. ", slot is empty")
     end
     if s.item ~= item or (count ~= nil and s.count ~= count) then
-        error("expected " .. item .. " x" .. tostring(count) .. ", found " .. s.item .. " x" .. tostring(s.count), 2)
+        fail("expected " .. item .. " x" .. tostring(count) .. ", found " .. s.item .. " x" .. tostring(s.count))
     end
 end
 
@@ -94,12 +105,21 @@ local function names()
     return out
 end
 
+-- The message of a raised value: an expectation's own text, or whatever the
+-- runtime made of a real error.
+local function message_of(raised)
+    if type(raised) == "table" and raised.__slotted_test ~= nil then
+        return raised.__slotted_test
+    end
+    return tostring(raised)
+end
+
 local function finish(name, ok, result)
     running = nil
     if ok then
         return { type = "test_done", name = name, passed = true }
     end
-    return { type = "test_done", name = name, passed = false, message = tostring(result) }
+    return { type = "test_done", name = name, passed = false, message = message_of(result) }
 end
 
 -- Resume the running coroutine with `reply`; return the next step or done.

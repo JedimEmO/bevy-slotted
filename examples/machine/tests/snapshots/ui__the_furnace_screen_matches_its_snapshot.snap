@@ -1,0 +1,82 @@
+---
+source: examples/machine/tests/ui.rs
+assertion_line: 77
+expression: (harness.screen_tree()).to_string()
+---
+Screen screen=machine:furnace
+  Panel widget=slotted:panel
+    Panel widget=slotted:panel
+      Panel widget=slotted:panel
+        Text "machine.title" widget=slotted:text
+        Anchor anchor=title_end (hidden)
+      Panel widget=slotted:panel
+        Tank #tank "2998 / 8000 mB" tags[test_id=tank] widget=slotted:tank
+        Slot #input "minecraft:cobblestone x32" [minecraft:cobblestone x32] tags[region=machine test_id=input] widget=slotted:slot
+        Bar #cook "6 / 200" tags[test_id=cook] widget=slotted:progress
+        Slot #output "" tags[region=machine test_id=output] widget=slotted:slot
+      Panel widget=slotted:panel
+        Slot #fuel "minecraft:coal x11" [minecraft:coal x11] tags[region=machine test_id=fuel] widget=slotted:slot
+        Bar #burn "1590 / 1600" tags[test_id=burn] widget=slotted:progress
+      Bar #energy "6392 / 10000" tags[test_id=energy] widget=slotted:bar
+      Grid tags[region=player] widget=slotted:slot_grid
+        Slot "minecraft:iron_ingot x5" [minecraft:iron_ingot x5] tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "minecraft:cobblestone x9" [minecraft:cobblestone x9] tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "minecraft:iron_ingot x17" [minecraft:iron_ingot x17] tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "minecraft:oak_planks x40" [minecraft:oak_planks x40] tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+        Slot "" tags[region=player] widget=slotted:slot
+      Hotbar #hotbar tags[region=hotbar test_id=hotbar] widget=slotted:hotbar
+        Slot "minecraft:iron_pickaxe" [minecraft:iron_pickaxe x1] tags[region=hotbar] widget=slotted:slot
+        Slot "" tags[region=hotbar] widget=slotted:slot
+        Slot "minecraft:diamond x3" [minecraft:diamond x3] tags[region=hotbar] widget=slotted:slot
+        Slot "" tags[region=hotbar] widget=slotted:slot
+        Slot "" tags[region=hotbar] widget=slotted:slot
+        Slot "" tags[region=hotbar] widget=slotted:slot
+        Slot "" tags[region=hotbar] widget=slotted:slot
+        Slot "" tags[region=hotbar] widget=slotted:slot
+        Slot "" tags[region=hotbar] widget=slotted:slot
+    Panel widget=slotted:panel
+      SideTab #tab_redstone tags[test_id=tab_redstone] widget=slotted:side_tab
+        Button "machine.tab.redstone" tags[side_tab=header]
+        Panel (hidden)
+          Text "machine.tab.redstone" widget=slotted:text (hidden)
+          Button #redstone_mode "machine.redstone.ignore" tags[state=ignore test_id=redstone_mode] widget=slotted:icon_button (hidden)
+      SideTab #tab_sides tags[test_id=tab_sides] widget=slotted:side_tab
+        Button "machine.tab.sides" tags[side_tab=header]
+        Panel (hidden)
+          Text "machine.tab.sides" widget=slotted:text (hidden)
+          Panel #faces tags[test_id=faces widget=face_config] widget=machine:face_config (hidden)
+            Panel widget=slotted:panel (hidden)
+              Panel widget=slotted:panel (hidden)
+              Button #face_up "machine.face.none" tags[face=up state=none test_id=face_up] widget=slotted:icon_button (hidden)
+              Panel widget=slotted:panel (hidden)
+            Panel widget=slotted:panel (hidden)
+              Button #face_left "machine.face.none" tags[face=left state=none test_id=face_left] widget=slotted:icon_button (hidden)
+              Button #face_front "machine.face.none" tags[face=front state=none test_id=face_front] widget=slotted:icon_button (hidden)
+              Button #face_right "machine.face.none" tags[face=right state=none test_id=face_right] widget=slotted:icon_button (hidden)
+            Panel widget=slotted:panel (hidden)
+              Panel widget=slotted:panel (hidden)
+              Button #face_down "machine.face.none" tags[face=down state=none test_id=face_down] widget=slotted:icon_button (hidden)
+              Button #face_back "machine.face.none" tags[face=back state=none test_id=face_back] widget=slotted:icon_button (hidden)
+Carried

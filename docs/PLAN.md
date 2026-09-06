@@ -1,6 +1,6 @@
 # bevy_slotted implementation plan
 
-Status: v1.7, 2026-09-06, Phases 0 to 5 complete. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
+Status: v1.8, 2026-09-06, Phases 0 to 6 complete. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
 
 ## 1. Goal and non-goals
 

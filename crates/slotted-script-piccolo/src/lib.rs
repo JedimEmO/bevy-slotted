@@ -54,7 +54,7 @@ use piccolo::{
 };
 use slotted_script::{
     API_VERSION, DISPATCH_FN, Limits, ModId, PRELUDE, ScriptCommand, ScriptError, ScriptEvent,
-    ScriptId, ScriptRuntime, Stage,
+    ScriptId, ScriptRuntime, Stage, TEST_PRELUDE,
 };
 
 /// How much piccolo fuel one [`Limits::budget`] tick buys.
@@ -195,6 +195,30 @@ impl PiccoloRuntime {
         run(&mut lua, &executor, limits).map_err(|outcome| {
             sandbox(format!("the prelude did not run: {}", outcome.describe()))
         })?;
+
+        // The test stage gets `slotted.test` on top, in the same env and
+        // before the freeze below: `slotted_test.lua` rawsets into the
+        // prelude's table, which the readonly wrapper would refuse afterwards
+        // (Phase 6 contract 3.1).
+        if stage == Stage::Test {
+            let executor = lua
+                .try_enter(|ctx| {
+                    let closure = Closure::load_with_env(
+                        ctx,
+                        Some("@slotted/test_prelude"),
+                        TEST_PRELUDE.as_bytes(),
+                        ctx.fetch(&env),
+                    )?;
+                    Ok(ctx.stash(Executor::start(ctx, closure.into(), ())))
+                })
+                .map_err(|err| sandbox(format!("the test prelude did not compile: {err}")))?;
+            run(&mut lua, &executor, limits).map_err(|outcome| {
+                sandbox(format!(
+                    "the test prelude did not run: {}",
+                    outcome.describe()
+                ))
+            })?;
+        }
 
         lua.enter(|ctx| {
             let env: Table = ctx.fetch(&env);

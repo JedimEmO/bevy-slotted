@@ -3811,11 +3811,13 @@ dependencies = [
  "ron",
  "serde",
  "slotted",
+ "slotted-ecs",
  "slotted-model",
  "slotted-packs",
  "slotted-registry",
  "slotted-script",
  "slotted-test",
+ "slotted-ui",
  "tracing",
 ]
 
@@ -6596,6 +6598,7 @@ dependencies = [
  "slotted-registry",
  "slotted-script",
  "slotted-script-piccolo",
+ "slotted-test",
  "slotted-testutils",
  "slotted-ui",
  "tracing",

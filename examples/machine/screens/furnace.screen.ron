@@ -10,7 +10,7 @@
     root: (
         type: "panel",
         role: "invisible",
-        layout: (direction: "row", gap: 1.0),
+        layout: (direction: "row", gap: 0.0, center: false),
         children: [
             (type: "panel", role: "panel", layout: (direction: "column", gap: 2.0, padding: 2.0), children: [
                 (type: "panel", role: "invisible", layout: (direction: "row", gap: 2.0), children: [
@@ -22,17 +22,18 @@
                     (type: "slot", slot: 0, tags: {"test_id": "input", "region": "machine"}),
                     (type: "progress", property: 2, max: 3, direction: "right", tags: {"test_id": "cook"}),
                     (type: "slot", slot: 2, tags: {"test_id": "output", "region": "machine"}),
-                    (type: "bar", property: 4, max: 5, direction: "up", text: true, tags: {"test_id": "energy"}),
                 ]),
                 (type: "panel", role: "invisible", layout: (direction: "row", gap: 2.0, center: true), children: [
                     (type: "slot", slot: 1, tags: {"test_id": "fuel", "region": "machine"}),
                     (type: "progress", property: 0, max: 1, direction: "up", tags: {"test_id": "burn"}),
                 ]),
+                (type: "bar", property: 4, max: 5, direction: "right", text: true, tags: {"test_id": "energy"}),
                 (type: "slot_grid", inventory: 1, cols: 9, rows: 3, first: 3, tags: {"region": "player"}),
                 (type: "custom", kind: "slotted:hotbar", params: (first: 30), tags: {"region": "hotbar", "test_id": "hotbar"}),
             ]),
             (type: "panel", role: "tab.rail", layout: (direction: "column", gap: 1.0), children: [
                 (type: "side_tab", icon: (image: "icons/redstone.png"), side: "right", label: "machine.tab.redstone", tags: {"test_id": "tab_redstone"}, children: [
+                    (type: "text", key: "machine.tab.redstone", style: "muted"),
                     (type: "icon_button", property: 9, tags: {"test_id": "redstone_mode"}, states: [
                         (id: "ignore", icon: (image: "icons/redstone_ignore.png"), label: "machine.redstone.ignore"),
                         (id: "low", icon: (image: "icons/redstone_low.png"), label: "machine.redstone.low"),
@@ -40,6 +41,7 @@
                     ]),
                 ]),
                 (type: "side_tab", icon: (image: "icons/sides.png"), side: "right", label: "machine.tab.sides", tags: {"test_id": "tab_sides"}, children: [
+                    (type: "text", key: "machine.tab.sides", style: "muted"),
                     (type: "custom", kind: "machine:face_config", params: (first_property: 10), tags: {"test_id": "faces"}),
                 ]),
             ]),

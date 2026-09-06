@@ -404,18 +404,11 @@ pub fn apply_control_command(
             Ok(Vec::new())
         }
         ScriptCommand::SetHud { layer, value } => {
-            // PHASE6-IMPL: B. Contract 2.1: `value` is a map with optional
-            // `tree`, `anchor`, `offset`, `scale`, `visible`; an unknown layer
-            // is created on top of `slotted_ui::HudLayers`.
-            let _ = value;
-            tracing::debug!(mod_id = %mod_id, layer, "set_hud is not implemented yet");
+            apply_set_hud(world, layer, value, &bad)?;
             Ok(Vec::new())
         }
         ScriptCommand::HudUpdate { layer, path, value } => {
-            // PHASE6-IMPL: B. Map `Str -> Text`, `Bool -> Visible`, number or
-            // `{value, max}` -> `Fill`, then write a `slotted_ui::HudUpdate`.
-            let _ = (path, value);
-            tracing::debug!(mod_id = %mod_id, layer, "hud_update is not implemented yet");
+            apply_hud_update(world, layer, path, value, &bad)?;
             Ok(Vec::new())
         }
         // A control script's reply to `TooltipBuild` is read where the tooltip
@@ -531,4 +524,146 @@ fn check_slot(
             def.slots.len()
         )))
     }
+}
+
+/// `hud_update`: one value into one node of one layer, next `Render`.
+fn apply_hud_update(
+    world: &mut World,
+    layer: &str,
+    path: &str,
+    value: &slotted_model::Value,
+    bad: &impl Fn(String) -> ModError,
+) -> Result<(), ModError> {
+    let value = hud_value(value).ok_or_else(|| {
+        bad(format!(
+            "hud_update wants a string, a boolean, a number or a (value, max) map, not {}",
+            value.describe()
+        ))
+    })?;
+    world.write_message(slotted_ui::HudUpdate {
+        layer: slotted_ui::HudLayerId::new(layer.to_owned()),
+        path: path.to_owned(),
+        value,
+    });
+    Ok(())
+}
+
+/// One `set_hud` field, typed against what it is going to be written into.
+fn typed<T: serde::de::DeserializeOwned>(
+    key: &str,
+    value: &slotted_model::Value,
+    bad: &impl Fn(String) -> ModError,
+) -> Result<T, ModError> {
+    slotted_model::from_value(value.clone()).map_err(|e| bad(format!("set_hud {key}: {e}")))
+}
+
+/// `set_hud`: the described layer, registered. `register` replaces a layer in
+/// place and appends a new one, so "an unknown layer is created on top" needs
+/// no special case here.
+fn apply_set_hud(
+    world: &mut World,
+    layer: &str,
+    value: &slotted_model::Value,
+    bad: &impl Fn(String) -> ModError,
+) -> Result<(), ModError> {
+    let id = slotted_ui::HudLayerId::new(layer.to_owned());
+    let def = hud_def(world, &id, value, bad)?;
+    let Some(mut layers) = world.get_resource_mut::<slotted_ui::HudLayers>() else {
+        return Err(bad("this app has no HUD layers".to_owned()));
+    };
+    layers.register(def);
+    Ok(())
+}
+
+/// One `hud_update` value: a string is text, a boolean is visibility, a
+/// number is a fill of that value out of one, and a `(value, max)` map is a
+/// fill of both.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "a fill is a ratio a bar is a hundred pixels wide; f32 is the widget's own precision"
+)]
+fn hud_value(value: &slotted_model::Value) -> Option<slotted_ui::HudValue> {
+    use slotted_model::Value;
+    let number = |v: &Value| match v {
+        Value::Int(i) => Some(*i as f32),
+        Value::Float(f) => Some(*f as f32),
+        _ => None,
+    };
+    match value {
+        Value::Str(text) => Some(slotted_ui::HudValue::Text(text.clone())),
+        Value::Bool(shown) => Some(slotted_ui::HudValue::Visible(*shown)),
+        Value::Int(_) | Value::Float(_) => Some(slotted_ui::HudValue::Fill {
+            value: number(value)?,
+            max: 1.0,
+        }),
+        Value::Map(map) => Some(slotted_ui::HudValue::Fill {
+            value: number(map.get("value")?)?,
+            max: map.get("max").and_then(number).unwrap_or(1.0),
+        }),
+        Value::Null | Value::List(_) => None,
+    }
+}
+
+/// The layer `set_hud` describes: the layer as it stands, with every field
+/// the script named replaced. A layer nobody registered starts from an empty
+/// `hud.panel`, so `set_hud("mymod:mana", (tree: ..))` alone is enough.
+fn hud_def(
+    world: &World,
+    id: &slotted_ui::HudLayerId,
+    value: &slotted_model::Value,
+    bad: &impl Fn(String) -> ModError,
+) -> Result<slotted_ui::HudLayerDef, ModError> {
+    let slotted_model::Value::Map(map) = value else {
+        return Err(bad(format!(
+            "set_hud wants a map with optional tree, anchor, offset, scale and visible, not {}",
+            value.describe()
+        )));
+    };
+    let mut def = world
+        .get_resource::<slotted_ui::HudLayers>()
+        .and_then(|layers| layers.get(id).cloned())
+        .unwrap_or_else(|| slotted_ui::HudLayerDef::empty(id.clone()));
+    if let Some(tree) = map.get("tree") {
+        def.tree = typed("tree", tree, bad)?;
+    }
+    if let Some(anchor) = map.get("anchor") {
+        def.anchor.anchor = typed("anchor", anchor, bad)?;
+    }
+    if let Some(offset) = map.get("offset") {
+        def.anchor.offset = typed("offset", offset, bad)?;
+    }
+    if let Some(scale) = map.get("scale") {
+        def.anchor.scale = typed("scale", scale, bad)?;
+    }
+    if let Some(visible) = map.get("visible") {
+        def.visible = typed("visible", visible, bad)?;
+    }
+    Ok(def)
+}
+
+/// `slotted_ecs::PropertyChanged` -> `ScriptEvent::PropertyChanged`, so a
+/// control script sees a machine's progress the way it sees a click.
+pub fn on_property_changed(
+    changed: On<slotted_ecs::PropertyChanged>,
+    scripts: Res<ControlScripts>,
+    menus: Query<&OpenMenu>,
+    open: Res<OpenScreens>,
+    mut pending: ResMut<PendingScriptEvents>,
+) {
+    if !anybody_wants(&scripts, "property_changed") {
+        return;
+    }
+    let Ok(menu) = menus.get(changed.menu) else {
+        return;
+    };
+    let Some(kind) = open.kind_of(changed.menu) else {
+        return;
+    };
+    pending.0.push_back(ScriptEvent::PropertyChanged {
+        menu: menu.id,
+        screen: kind.0.to_string(),
+        property: changed.id.0,
+        value: changed.value,
+    });
 }

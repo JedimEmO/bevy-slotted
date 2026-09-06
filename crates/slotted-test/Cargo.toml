@@ -16,6 +16,10 @@ default = ["snapshots"]
 # feature, never named here: a native consumer's own `slotted` dependency
 # unifies it in.
 script = ["dep:slotted-packs", "dep:slotted-script", "slotted/packs"]
+# A native runtime of this crate's own, for the `test-mods` binary: a consumer
+# gets one through its own `slotted` dependency, but `cargo run -p slotted-test
+# --bin test-mods` has no consumer to inherit from (Phase 6 section 3.2).
+script-mlua = ["script", "slotted/script-mlua"]
 # `assert_tree_snapshot!` through `insta`. Off for a wasm build of the crate
 # (the playground shares the op implementations, not the snapshots).
 snapshots = ["dep:insta"]

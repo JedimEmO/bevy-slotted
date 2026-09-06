@@ -213,11 +213,12 @@ impl Locator {
 }
 
 /// Every entity a locator may match, in locator order: depth-first from each
-/// screen root and the carried layer, then everything else by entity index.
+/// screen root, then the HUD layers, then the carried layer, then everything
+/// else by entity index.
 fn candidate_order(world: &World) -> Vec<Entity> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for root in crate::tree::roots(world) {
+    for root in crate::tree::candidate_roots(world) {
         crate::tree::walk(world, root, &mut |e| {
             if seen.insert(e) {
                 out.push(e);
@@ -426,10 +427,14 @@ pub mod by {
     }
 
     /// A HUD layer root by id (Phase 6).
+    ///
+    /// A layer root's `SemanticLabel` is its id, so this is the same match a
+    /// reader of the tree would make by eye.
     pub fn hud_layer(id: &str) -> Locator {
-        // PHASE6-IMPL: B. Match `HudLayerRoot { id }`.
-        let _ = id;
-        role(SemanticRole::HudLayer)
+        Locator {
+            text: Some(id.to_owned()),
+            ..role(SemanticRole::HudLayer)
+        }
     }
 
     /// A node by its widget kind.

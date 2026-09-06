@@ -10,7 +10,7 @@ use bevy::ui::ui_transform::UiGlobalTransform;
 use slotted_registry::Value;
 use slotted_theme::{ActiveTheme, Theme, Tokens};
 
-use crate::def::{AnchorId, ScreenDef, ScreenKind, UiNodeDef, WidgetKind};
+use crate::def::{AnchorId, ScreenDef, ScreenKind, Tags, UiNodeDef, WidgetKind};
 use crate::layers::zbands;
 use crate::semantic::{ScreenRoot, SemanticRole, TestId, WidgetNode};
 use crate::widgets;
@@ -298,7 +298,13 @@ impl SpawnCtx<'_> {
         };
         if let Some(tags) = def.tags() {
             if !tags.0.is_empty() {
-                self.world.entity_mut(entity).insert(tags.clone());
+                // Merged, not replaced: a widget may already have written
+                // tags of its own (a slot grid's `region`, an icon button's
+                // `state`), and the def's tags are an addition to those, not
+                // a replacement for them. Same key: the def wins.
+                let mut merged = self.world.get::<Tags>(entity).cloned().unwrap_or_default();
+                merged.0.extend(tags.0.clone());
+                self.world.entity_mut(entity).insert(merged);
             }
             if let Some(id) = tags.get(crate::def::Tags::TEST_ID) {
                 self.world.entity_mut(entity).insert(TestId::new(id));

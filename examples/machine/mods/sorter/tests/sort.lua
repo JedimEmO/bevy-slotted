@@ -8,12 +8,12 @@ t.test("the injected button sorts the machine's player inventory", function()
     t.open_screen("machine:furnace", {
         slots = { 3, 27, 9 },
         fill = {
-            ["1:0"] = { item = "demo:cobblestone", count = 3 },
-            ["1:5"] = { item = "demo:cobblestone", count = 40 },
+            ["1:0"] = { item = "minecraft:cobblestone", count = 3 },
+            ["1:5"] = { item = "minecraft:cobblestone", count = 40 },
         },
     })
     t.click({ test_id = "sorter_sort" })
     t.settle()
     t.expect(t.log_contains("sorting"), "control.lua logs the sort")
-    t.expect_stack({ role = "slot", tag = { region = "player" }, index = 0 }, "demo:cobblestone", 43)
+    t.expect_stack({ role = "slot", tag = { region = "player" }, index = 0 }, "minecraft:cobblestone", 43)
 end)

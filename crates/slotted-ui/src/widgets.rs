@@ -24,7 +24,7 @@ use slotted_model::{Button as ModelButton, ClickAction, InventoryRef, SlotIx, To
 use slotted_registry::Value;
 use slotted_theme::{Role, Themed, roles};
 
-use crate::def::{Layout, LayoutDirection, LocKey, Tags, TextRole, UiNodeDef, WidgetKind};
+use crate::def::{IconDef, Layout, LayoutDirection, LocKey, Tags, TextRole, UiNodeDef, WidgetKind};
 use crate::input::{
     on_slot_drag_end, on_slot_drag_enter, on_slot_drag_start, on_slot_press, on_slot_release,
 };
@@ -127,6 +127,82 @@ pub mod kinds {
             virtual_grid(),
             viewport(),
         ]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+/// What an [`IconDef`] needs to become an `ImageNode`, as a `SystemParam`.
+///
+/// An `image` icon is an asset path; an `item` icon goes through the same
+/// [`Icons`](slotted_icons::Icons) port the slot renderer uses, so a game that
+/// swapped the icon source gets its own artwork here too.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct IconImages<'w> {
+    assets: Option<Res<'w, AssetServer>>,
+    icons: Option<Res<'w, slotted_icons::Icons>>,
+    registries: Option<Res<'w, slotted_ecs::Registries>>,
+}
+
+impl IconImages<'_> {
+    /// The `ImageNode` for `icon`.
+    pub fn image(&self, icon: &IconDef) -> ImageNode {
+        build_icon(
+            self.assets.as_deref(),
+            self.icons.as_deref(),
+            self.registries.as_deref(),
+            icon,
+        )
+    }
+}
+
+/// [`IconImages::image`] from a `&World`, for the spawn path.
+pub fn icon_image(world: &World, icon: &IconDef) -> ImageNode {
+    build_icon(
+        world.get_resource::<AssetServer>(),
+        world.get_resource::<slotted_icons::Icons>(),
+        world.get_resource::<slotted_ecs::Registries>(),
+        icon,
+    )
+}
+
+fn build_icon(
+    assets: Option<&AssetServer>,
+    icons: Option<&slotted_icons::Icons>,
+    registries: Option<&slotted_ecs::Registries>,
+    icon: &IconDef,
+) -> ImageNode {
+    match icon {
+        IconDef::Image(path) => match assets {
+            Some(assets) => ImageNode::new(assets.load(path)),
+            // No `AssetServer` (a bare unit-test world): the node still
+            // exists, it simply has nothing to draw.
+            None => ImageNode::default(),
+        },
+        IconDef::Item(name) => {
+            let icon = registries
+                .and_then(|r| r.0.items.id_of(name))
+                .zip(icons)
+                .map(|(id, icons)| icons.icon(&slotted_model::ItemStack::new(id, 1)));
+            let mut node = ImageNode::default();
+            match icon {
+                Some(slotted_icons::IconRef::Atlas {
+                    image,
+                    layout,
+                    index,
+                }) => {
+                    node.image = image;
+                    node.texture_atlas = Some(TextureAtlas { layout, index });
+                }
+                Some(slotted_icons::IconRef::Solid(color)) => node.color = color,
+                // An unknown item is the placeholder colour, the same signal
+                // the atlas bake gives an item with no artwork.
+                _ => node.color = slotted_icons::placeholder_color(name),
+            }
+            node
+        }
     }
 }
 
@@ -869,8 +945,8 @@ impl Widget for TankWidget {
         tank::spawn_tank(ctx, &p, &Tags::new())
     }
 
-    fn tooltip(&self, _entity: Entity, _world: &World, _out: &mut Vec<UiNodeDef>) {
-        // PHASE6-IMPL: A. One `Text` line "<value> / <max> <unit>".
+    fn tooltip(&self, entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
+        fill_tooltip(entity, world, out);
     }
 }
 
@@ -884,8 +960,8 @@ impl Widget for BarWidget {
         bar::spawn_bar(ctx, &p, bar::BarStyle::Bar, &Tags::new())
     }
 
-    fn tooltip(&self, _entity: Entity, _world: &World, _out: &mut Vec<UiNodeDef>) {
-        // PHASE6-IMPL: A.
+    fn tooltip(&self, entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
+        fill_tooltip(entity, world, out);
     }
 }
 
@@ -897,6 +973,10 @@ impl Widget for ProgressWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
         let p: bar::BarParams = params_of!(params, "slotted:progress");
         bar::spawn_bar(ctx, &p, bar::BarStyle::Progress, &Tags::new())
+    }
+
+    fn tooltip(&self, entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
+        fill_tooltip(entity, world, out);
     }
 }
 
@@ -921,8 +1001,18 @@ impl Widget for IconButtonWidget {
         icon_button::spawn_icon_button(ctx, &p, &Tags::new())
     }
 
-    fn tooltip(&self, _entity: Entity, _world: &World, _out: &mut Vec<UiNodeDef>) {
-        // PHASE6-IMPL: A. The current state's label.
+    fn tooltip(&self, entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
+        let Some(state) = world.get::<icon_button::IconButtonState>(entity) else {
+            return;
+        };
+        if state.states.is_empty() {
+            return;
+        }
+        out.push(UiNodeDef::Text {
+            key: state.state().label.clone(),
+            style: TextRole::Body,
+            tags: Tags::new(),
+        });
     }
 }
 
@@ -946,6 +1036,23 @@ impl Widget for ViewportWidget {
         let p: viewport::ViewportParams = params_of!(params, "slotted:viewport");
         viewport::spawn_viewport(ctx, &p, &Tags::new())
     }
+}
+
+/// The one `"<value> / <max> <unit>"` line a tank, bar or progress arrow adds
+/// to its tooltip. A literal, not a key: `LocText` leaves an unknown key
+/// verbatim, so this reads the same with and without a locale.
+fn fill_tooltip(entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
+    let Some(fill) = world.get::<tank::FillValue>(entity) else {
+        return;
+    };
+    let unit = world
+        .get::<tank::TankFluidSource>(entity)
+        .map_or("", |s| s.unit.as_str());
+    out.push(UiNodeDef::Text {
+        key: LocKey(tank::fill_label(fill, unit)),
+        style: TextRole::Body,
+        tags: Tags::new(),
+    });
 }
 
 /// Registers every built-in under its kind.

@@ -1,15 +1,20 @@
 //! `bar` and `progress`: a masked fill in one of four directions. Phase 6
-//! contract section 1.2. Shares [`FillValue`](super::tank::FillValue) and the
+//! contract section 1.2. Shares [`FillValue`] and the
 //! property binding with the tank.
 
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use slotted_model::PropertyId;
+use slotted_theme::{Role, Themed, roles};
 
 use crate::def::{Direction, Tags};
 use crate::screen::SpawnCtx;
-use crate::semantic::{SemanticRole, WidgetNode};
-use crate::widgets::tank::{FillValue, PropertyBinding, TooltipSource};
+use crate::semantic::{SemanticLabel, SemanticRole, WidgetNode};
+use crate::widgets::BORDER_WIDTH;
+use crate::widgets::tank::{
+    FillNode, FillOrigin, FillValue, PropertyBinding, TooltipSource, fill_label, fill_node,
+};
 
 /// Which pair of roles a bar paints with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -19,6 +24,32 @@ pub enum BarStyle {
     Bar,
     /// `progress` / `progress.fill`: the arrow between machine slots.
     Progress,
+}
+
+impl BarStyle {
+    /// The well and fill roles this style paints with.
+    pub const fn roles(self) -> (Role, Role) {
+        match self {
+            Self::Bar => (roles::BAR, roles::BAR_FILL),
+            Self::Progress => (roles::PROGRESS, roles::PROGRESS_FILL),
+        }
+    }
+
+    /// The widget kind published as `WidgetNode`.
+    pub fn kind(self) -> crate::def::WidgetKind {
+        match self {
+            Self::Bar => crate::widgets::kinds::bar(),
+            Self::Progress => crate::widgets::kinds::progress(),
+        }
+    }
+
+    /// Size along and across the fill axis, in logical px.
+    pub const fn size(self) -> (f32, f32) {
+        match self {
+            Self::Bar => (120.0, 12.0),
+            Self::Progress => (24.0, 16.0),
+        }
+    }
 }
 
 /// Bar state on the root.
@@ -67,40 +98,98 @@ impl Default for BarParams {
 }
 
 /// Spawns a bar or progress arrow. Root components per contract 1.2.
+///
+/// The root is `120x12` (a progress arrow `24x16`) measured along its own
+/// fill direction, so an upward bar is tall rather than wide.
 pub fn spawn_bar(
     ctx: &mut SpawnCtx<'_>,
     params: &BarParams,
     style: BarStyle,
     _tags: &Tags,
 ) -> Entity {
-    // PHASE6-IMPL: A. Node 120x12 along `direction` (progress: 24x16),
-    // Themed(BAR | PROGRESS), SemanticRole::Bar, SemanticLabel, FillValue,
-    // PropertyBinding when ctx.menu is Some, Hovered, Pickable, TooltipSource,
-    // on_slot_over; FillNode child with Themed(BAR_FILL | PROGRESS_FILL)
-    // anchored to the fill origin; BarText child when `text`.
-    let kind = match style {
-        BarStyle::Bar => crate::widgets::kinds::bar(),
-        BarStyle::Progress => crate::widgets::kinds::progress(),
+    let (well, fill_role) = style.roles();
+    let (along, across) = style.size();
+    let (width, height) = match params.direction {
+        Direction::Right | Direction::Left => (along, across),
+        Direction::Up | Direction::Down => (across, along),
     };
     let binding = ctx.menu.map(|menu| PropertyBinding {
         menu,
         value: params.property,
         max: params.max,
     });
+    let text = params.text && style == BarStyle::Bar;
+    let radius = ctx.tokens().radii.sm;
+    let fill = FillValue::default();
     let entity = ctx.spawn_node((
-        Node::default(),
+        Node {
+            width: px(width),
+            height: px(height),
+            border: UiRect::all(px(BORDER_WIDTH)),
+            position_type: PositionType::Relative,
+            overflow: Overflow::clip(),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            border_radius: BorderRadius::all(px(radius)),
+            ..default()
+        },
+        Themed(well),
         SemanticRole::Bar,
-        WidgetNode(kind),
-        FillValue::default(),
+        SemanticLabel(fill_label(&fill, "")),
+        WidgetNode(style.kind()),
+        fill,
+        FillOrigin(params.direction),
         BarState {
             direction: params.direction,
             style,
-            text: params.text && style == BarStyle::Bar,
+            text,
         },
+        Hovered::default(),
+        Pickable::default(),
         TooltipSource,
     ));
+    ctx.world.spawn((
+        fill_node(params.direction, 0.0),
+        Themed(fill_role),
+        FillNode,
+        Pickable::IGNORE,
+        ChildOf(entity),
+    ));
+    if text {
+        ctx.world.spawn((
+            Node::default(),
+            Text::new(fill_label(&fill, "")),
+            Themed(roles::BAR_TEXT),
+            BarText,
+            Pickable::IGNORE,
+            ChildOf(entity),
+        ));
+    }
     if let Some(binding) = binding {
         ctx.world.entity_mut(entity).insert(binding);
     }
+    ctx.world
+        .entity_mut(entity)
+        .observe(crate::tooltip::on_slot_over);
     entity
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_progress_arrow_paints_with_the_progress_roles() {
+        assert_eq!(
+            BarStyle::Progress.roles(),
+            (roles::PROGRESS, roles::PROGRESS_FILL)
+        );
+        assert_eq!(BarStyle::Bar.roles(), (roles::BAR, roles::BAR_FILL));
+    }
+
+    #[test]
+    fn a_bar_is_measured_along_its_fill_direction() {
+        assert_eq!(BarStyle::Bar.size(), (120.0, 12.0));
+        assert_eq!(BarStyle::Progress.size(), (24.0, 16.0));
+    }
 }

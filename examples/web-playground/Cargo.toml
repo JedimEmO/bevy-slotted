@@ -28,6 +28,9 @@ slotted-script = { workspace = true }
 slotted-script-piccolo = { path = "../../crates/slotted-script-piccolo", version = "0.1.0" }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
+# The op implementations the Tests tab drives against the live app. Defaults
+# off: `insta` is a native snapshot library the page has no use for.
+slotted-test = { path = "../../crates/slotted-test", version = "0.1.0", default-features = false, features = ["script"] }
 bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_ui_widgets",
     "bevy_asset",

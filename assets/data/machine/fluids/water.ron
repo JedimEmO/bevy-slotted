@@ -1,0 +1,9 @@
+// The one fluid the machine example's tank can hold. `payload` is what
+// `slotted_ui::FluidDef` reads: the registry itself keeps fluids opaque.
+(
+    name: "machine:water",
+    payload: (
+        color: "#3B7DD8B0",
+        unit: "mB",
+    ),
+)

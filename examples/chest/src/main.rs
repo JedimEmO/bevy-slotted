@@ -6,6 +6,7 @@
 //! cargo run -p chest -- --hover 0 --shot shots/chest-hover.png
 //! cargo run -p chest -- --cheat                  browser Ctrl+click gives
 //! cargo run -p chest -- --recipe minecraft:coal --shot shots/chest-recipe.png
+//! cargo run -p chest -- --record session.ron       record input, replay it in a test
 //! ```
 //!
 //! What to try once it is up: left-click a stack to pick it up and right-click
@@ -14,6 +15,11 @@
 //! swap it with that hotbar slot; hover for a tooltip and hold shift to expand
 //! it; Tab and the arrow keys move a focus ring; the rail on the right sorts
 //! and moves stacks in bulk; `Esc` closes the screen and `E` opens it again.
+//! `F7` toggles the HUD position editor: drag a HUD layer to move it, `Esc`
+//! puts the one you are dragging back, and where you leave them is saved to
+//! `examples/chest/hud_layout.ron` (git-ignored). With `--record <path>` every
+//! pointer, key and gamepad input is written there on exit, and
+//! `UiHarness::replay` feeds it back frame by frame.
 //! The browser panel docks beside the chest: type in its search field, press
 //! `R` over a card for its recipes, `U` for its uses, `A` to bookmark it, and
 //! `Backspace` to go back. The `+` button stays disabled because a chest has
@@ -53,6 +59,8 @@ struct Cli {
     cheat: bool,
     /// Open the browser's recipe page for this item before capturing.
     recipe: Option<String>,
+    /// Record every input to this RON file, written on exit.
+    record: Option<PathBuf>,
 }
 
 fn main() {
@@ -63,6 +71,7 @@ fn main() {
         hover: value("--hover").and_then(|v| v.parse().ok()),
         cheat: args.iter().any(|a| a == "--cheat"),
         recipe: value("--recipe"),
+        record: value("--record").map(PathBuf::from),
     };
 
     let registries = chest::load_registries();
@@ -106,7 +115,13 @@ fn main() {
     .add_plugins(ChestDemoPlugin)
     .insert_resource(ClearColor(Color::srgb(0.043, 0.055, 0.078)))
     .insert_resource(chest::CheatMode(cli.cheat))
-    .insert_resource(cli)
+    // The HUD position editor: `F7` toggles it, and where the player leaves
+    // the layers is written beside the example rather than into `assets/`,
+    // because it is this player's layout and not the game's data.
+    .insert_resource(slotted::ui::hud_editor::HudEditKey(KeyCode::F7))
+    .insert_resource(slotted::ui::hud_editor::HudLayoutStore {
+        path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("hud_layout.ron"),
+    })
     .add_systems(Startup, (setup_scene, setup_screen).chain())
     .add_systems(
         Update,
@@ -118,6 +133,17 @@ fn main() {
             shot_and_exit,
         ),
     );
+
+    if let Some(path) = cli.record.clone() {
+        info!("recording input to {}", path.display());
+        app.insert_resource(slotted::ui::recording::InputRecorder::new(
+            path,
+            Vec2::new(WIDTH, HEIGHT),
+            1.0,
+            std::time::Duration::from_secs_f64(1.0 / 60.0),
+        ));
+    }
+    app.insert_resource(cli);
 
     app.run();
 }

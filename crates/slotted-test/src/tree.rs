@@ -161,6 +161,35 @@ pub fn roots(world: &World) -> Vec<Entity> {
     screens
 }
 
+/// What a locator searches, in order: screen roots, then the HUD layers
+/// bottom to top, then the carried layer (Phase 6 contract 2.4).
+///
+/// [`roots`] deliberately leaves the HUD out: `screen_tree()` is a snapshot of
+/// the screens a test opened, and a HUD that is always there would rewrite
+/// every existing snapshot. `hud_tree()` shows the HUD instead.
+pub fn candidate_roots(world: &World) -> Vec<Entity> {
+    let mut out = roots(world);
+    let hud: Vec<Entity> = world
+        .get_resource::<slotted_ui::HudLayers>()
+        .map(|layers| {
+            layers
+                .order()
+                .iter()
+                .filter_map(|id| layers.root(id))
+                .collect()
+        })
+        .unwrap_or_default();
+    // Before the carried layer, which `roots` always puts last.
+    let at = out
+        .iter()
+        .position(|e| world.get::<CarriedLayer>(*e).is_some())
+        .unwrap_or(out.len());
+    for (i, entity) in hud.into_iter().enumerate() {
+        out.insert(at + i, entity);
+    }
+    out
+}
+
 /// Depth-first walk over `Children`, including `root`.
 pub fn walk(world: &World, root: Entity, visit: &mut impl FnMut(Entity)) {
     visit(root);

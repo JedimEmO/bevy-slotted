@@ -134,6 +134,7 @@ impl Plugin for SlottedUiPlugin {
             Update,
             (
                 crate::widgets::viewport::spawn_viewport_cameras,
+                crate::widgets::viewport::orbit_viewport_cameras,
                 crate::widgets::viewport::despawn_viewport_cameras,
             )
                 .in_set(SlottedUiSet::Render),
@@ -147,7 +148,12 @@ impl Plugin for SlottedUiPlugin {
             .add_systems(
                 Update,
                 (
-                    crate::hud_editor::toggle_hud_edit.in_set(SlottedUiSet::Input),
+                    (
+                        crate::hud_editor::toggle_hud_edit,
+                        crate::hud_editor::cancel_hud_drag,
+                    )
+                        .chain()
+                        .in_set(SlottedUiSet::Input),
                     crate::hud_editor::apply_hud_edit_mode.in_set(SlottedUiSet::Render),
                 ),
             )
@@ -169,6 +175,7 @@ impl Plugin for SlottedUiPlugin {
                     .in_set(SlottedUiSet::Input),
                 (
                     slot_state_roles,
+                    crate::widgets::icon_button::icon_button_roles,
                     update_carried_layer,
                     render_items,
                     slot_motion,
@@ -183,8 +190,10 @@ impl Plugin for SlottedUiPlugin {
                 (
                     crate::widgets::tank::bind_properties,
                     crate::widgets::tank::render_fills,
+                    crate::widgets::side_tab::measure_side_tabs,
                     crate::widgets::virtual_grid::refresh_virtual_grids,
                     crate::hud::sync_hud_layers,
+                    crate::hud::reanchor_hud_layers,
                     crate::hud::hud_screen_visibility,
                     crate::hud::apply_hud_updates,
                 )

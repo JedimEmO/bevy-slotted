@@ -192,6 +192,7 @@ impl Plugin for SlottedPacksPlugin {
             .add_observer(route::on_widget_activate)
             .add_observer(route::on_screen_spawned)
             .add_observer(route::on_screen_closed)
+            .add_observer(route::on_property_changed)
             .configure_sets(
                 Update,
                 (

@@ -5,12 +5,18 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use bevy::input::ButtonState;
+use bevy::input::keyboard::KeyboardInput;
+use bevy::input_focus::FocusedInput;
+use bevy::picking::events::{Pointer, Scroll};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+use slotted_theme::{Themed, roles};
 
 use crate::def::{DataSourceId, Tags, UiNodeDef};
 use crate::screen::SpawnCtx;
-use crate::semantic::{SemanticRole, WidgetNode};
+use crate::semantic::{ScreenRoot, SemanticRole, WidgetNode};
+use crate::widgets::SLOT_SIZE;
 
 /// What a virtual grid shows. Cells are `UiNodeDef`s spawned through the
 /// ordinary widget path, so a source can hand out slots, cards or anything.
@@ -38,6 +44,9 @@ impl VirtualGridSources {
     }
 }
 
+/// Width of the scrollbar column, in logical px.
+pub const SCROLLBAR_WIDTH: f32 = 8.0;
+
 /// Grid state on the root.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct VirtualGridState {
@@ -55,6 +64,36 @@ pub struct VirtualGridState {
     pub version: u64,
 }
 
+impl VirtualGridState {
+    /// Rows the whole source needs.
+    pub fn total_rows(&self) -> usize {
+        let cols = usize::from(self.cols).max(1);
+        self.total.div_ceil(cols)
+    }
+
+    /// The largest `first_row` that still fills the window.
+    pub fn max_first_row(&self) -> usize {
+        self.total_rows().saturating_sub(usize::from(self.rows))
+    }
+
+    /// Moves the window by `delta` rows, clamped. Returns whether it moved.
+    pub fn scroll_by(&mut self, delta: isize) -> bool {
+        let max = self.max_first_row();
+        let next = self.first_row.saturating_add_signed(delta).min(max);
+        let moved = next != self.first_row;
+        self.first_row = next;
+        moved
+    }
+
+    /// Index range of the visible window.
+    pub fn window(&self) -> std::ops::Range<usize> {
+        let cols = usize::from(self.cols).max(1);
+        let start = self.first_row * cols;
+        let end = (start + cols * usize::from(self.rows)).min(self.total);
+        start..end.max(start)
+    }
+}
+
 /// A spawned cell; `index` into the source. Also tagged `cell=<index>`.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VirtualCell(pub usize);
@@ -62,6 +101,15 @@ pub struct VirtualCell(pub usize);
 /// The scrollbar track child. `SemanticRole::Custom("scrollbar")`.
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct VirtualScrollbar;
+
+/// The draggable thumb inside a [`VirtualScrollbar`].
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct VirtualScrollThumb;
+
+/// Set on a grid whose source id is not registered, so the warning is logged
+/// once instead of every frame.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct UnknownGridSource;
 
 /// Parameters of `slotted:virtual_grid`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -97,16 +145,30 @@ impl Default for VirtualGridParams {
 }
 
 /// Spawns a virtual grid root and its first window of cells. Contract 1.5.
+///
+/// The cells themselves are spawned by [`refresh_virtual_grids`] on the next
+/// `Render`, which is the same code path a scroll takes; there is only one
+/// place that reads the source.
 pub fn spawn_virtual_grid(
     ctx: &mut SpawnCtx<'_>,
     params: &VirtualGridParams,
     _tags: &Tags,
 ) -> Entity {
-    // PHASE6-IMPL: A. Display::Grid node `cols` wide plus an 8 px scrollbar
-    // column, Themed(VIRTUAL_GRID), SemanticRole::Grid, Pickable (scroll);
-    // spawn the first `rows` rows from the source; scrollbar child with thumb.
-    ctx.spawn_node((
-        Node::default(),
+    let gap = ctx.tokens().spacing.sm;
+    let entity = ctx.spawn_node((
+        Node {
+            display: Display::Grid,
+            grid_template_columns: vec![
+                RepeatedGridTrack::px(params.cols, SLOT_SIZE),
+                RepeatedGridTrack::px(1, SCROLLBAR_WIDTH),
+            ],
+            grid_template_rows: vec![RepeatedGridTrack::px(params.rows, SLOT_SIZE)],
+            row_gap: px(gap),
+            column_gap: px(gap),
+            overflow: Overflow::clip(),
+            ..default()
+        },
+        Themed(roles::VIRTUAL_GRID),
         SemanticRole::Grid,
         WidgetNode(crate::widgets::kinds::virtual_grid()),
         VirtualGridState {
@@ -117,12 +179,302 @@ pub fn spawn_virtual_grid(
             total: 0,
             version: 0,
         },
-    ))
+        Pickable::default(),
+    ));
+    spawn_scrollbar(ctx, entity, params.cols, params.rows);
+    let mut e = ctx.world.entity_mut(entity);
+    e.observe(on_virtual_grid_scroll);
+    e.observe(on_virtual_grid_key);
+    entity
+}
+
+fn spawn_scrollbar(ctx: &mut SpawnCtx<'_>, grid: Entity, cols: u16, rows: u16) -> Entity {
+    let track = ctx
+        .world
+        .spawn((
+            Node {
+                grid_column: GridPlacement::start(column_line(cols)),
+                grid_row: GridPlacement::start(1).set_span(rows.max(1)),
+                width: px(SCROLLBAR_WIDTH),
+                height: percent(100),
+                position_type: PositionType::Relative,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            Themed(roles::VIRTUAL_GRID_SCROLLBAR),
+            SemanticRole::Custom("scrollbar".to_owned()),
+            VirtualScrollbar,
+            Pickable::default(),
+            ChildOf(grid),
+        ))
+        .id();
+    ctx.world.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            top: percent(0),
+            width: percent(100),
+            height: percent(100),
+            ..default()
+        },
+        Themed(roles::VIRTUAL_GRID_THUMB),
+        VirtualScrollThumb,
+        Pickable::default(),
+        ChildOf(track),
+    ));
+    track
+}
+
+/// The grid line the scrollbar column starts at: one past the last cell
+/// column, and grid lines are 1-based.
+fn column_line(cols: u16) -> i16 {
+    i16::try_from(cols)
+        .unwrap_or(i16::MAX - 1)
+        .saturating_add(1)
+}
+
+/// Observer: one row per scroll notch.
+pub fn on_virtual_grid_scroll(
+    scroll: On<Pointer<Scroll>>,
+    mut grids: Query<&mut VirtualGridState>,
+) {
+    let Ok(mut state) = grids.get_mut(scroll.entity) else {
+        return;
+    };
+    // Bevy reports scrolling away from the user as positive `y`; that walks
+    // the window towards the start of the source.
+    let delta = -scroll.event().y;
+    let rows = if delta > 0.0 {
+        1
+    } else if delta < 0.0 {
+        -1
+    } else {
+        0
+    };
+    if rows != 0 {
+        state.scroll_by(rows);
+    }
+}
+
+/// Observer: `PageUp` / `PageDown` on a focused cell pages the window. The
+/// event bubbles from the cell to the grid root, so the cells need no
+/// observers of their own.
+pub fn on_virtual_grid_key(
+    event: On<FocusedInput<KeyboardInput>>,
+    mut grids: Query<&mut VirtualGridState>,
+) {
+    let input = &event.input;
+    if input.state != ButtonState::Pressed || input.repeat {
+        return;
+    }
+    let Ok(mut state) = grids.get_mut(event.focused_entity) else {
+        return;
+    };
+    let page = isize::try_from(state.rows.max(1)).unwrap_or(1);
+    match input.key_code {
+        KeyCode::PageUp => state.scroll_by(-page),
+        KeyCode::PageDown => state.scroll_by(page),
+        _ => return,
+    };
 }
 
 /// `SlottedUiSet::Render`: despawns and respawns the visible cells of every
 /// grid whose `first_row`, source length or version changed.
 pub fn refresh_virtual_grids(world: &mut World) {
-    // PHASE6-IMPL: A. Exclusive: cells spawn through `SpawnCtx`.
-    let _ = world;
+    let grids: Vec<(Entity, VirtualGridState)> = world
+        .query::<(Entity, &VirtualGridState)>()
+        .iter(world)
+        .map(|(e, s)| (e, s.clone()))
+        .collect();
+    if grids.is_empty() {
+        return;
+    }
+    let sources = world
+        .get_resource::<VirtualGridSources>()
+        .cloned()
+        .unwrap_or_default();
+
+    for (entity, state) in grids {
+        let Some(source) = sources.0.get(&state.source).cloned() else {
+            if world.get::<UnknownGridSource>(entity).is_none() {
+                tracing::warn!(source = %state.source.0, "no virtual grid source registered");
+                world.entity_mut(entity).insert(UnknownGridSource);
+            }
+            continue;
+        };
+        world.entity_mut(entity).remove::<UnknownGridSource>();
+
+        let mut next = state.clone();
+        next.total = source.len();
+        next.version = source.version();
+        next.first_row = next.first_row.min(next.max_first_row());
+        let built = VirtualGridBuilt {
+            first_row: next.first_row,
+            total: next.total,
+            version: next.version,
+        };
+        if world.get::<VirtualGridBuilt>(entity) == Some(&built) {
+            continue;
+        }
+        let window = next.window();
+        if let Some(mut state) = world.get_mut::<VirtualGridState>(entity) {
+            *state = next;
+        }
+        world.entity_mut(entity).insert(built);
+
+        // No pooling this phase: the window is small and a cell is an
+        // arbitrary `UiNodeDef`, so reusing one would mean diffing trees.
+        let stale: Vec<Entity> = world
+            .query::<(Entity, &VirtualCell)>()
+            .iter(world)
+            .filter(|(cell, _)| {
+                world
+                    .get::<ChildOf>(*cell)
+                    .is_some_and(|c| c.parent() == entity)
+            })
+            .map(|(cell, _)| cell)
+            .collect();
+        for cell in stale {
+            world.entity_mut(cell).despawn();
+        }
+
+        let (screen, kind, menu) = screen_of(world, entity);
+        for index in window {
+            let def = source.cell(index);
+            let mut ctx = SpawnCtx {
+                world,
+                screen,
+                kind: kind.clone(),
+                menu,
+                parent: entity,
+            };
+            let cell = ctx.spawn_child(&def);
+            let tags = world
+                .get::<Tags>(cell)
+                .cloned()
+                .unwrap_or_default()
+                .with("cell", &index.to_string());
+            world.entity_mut(cell).insert((VirtualCell(index), tags));
+        }
+        update_scrollbar(world, entity);
+    }
+}
+
+/// The window a grid's spawned cells stand for. Compared against the source
+/// every frame: equal means the cells are current, so an unchanged grid costs
+/// one comparison and an empty source is not mistaken for "never built".
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VirtualGridBuilt {
+    /// First visible row of the spawned cells.
+    pub first_row: usize,
+    /// `source.len()` they were spawned from.
+    pub total: usize,
+    /// `source.version()` they were spawned from.
+    pub version: u64,
+}
+
+/// The screen a grid sits in, for the cells' `SpawnCtx`.
+fn screen_of(world: &World, entity: Entity) -> (Entity, crate::def::ScreenKind, Option<Entity>) {
+    let mut current = entity;
+    loop {
+        if let Some(root) = world.get::<ScreenRoot>(current) {
+            return (current, root.kind.clone(), root.menu);
+        }
+        match world.get::<ChildOf>(current) {
+            Some(parent) => current = parent.parent(),
+            // A grid outside any screen (a HUD layer, a bare test world) is
+            // its own screen as far as its cells are concerned.
+            None => {
+                return (
+                    entity,
+                    crate::def::ScreenKind::new("slotted:virtual_grid"),
+                    None,
+                );
+            }
+        }
+    }
+}
+
+fn update_scrollbar(world: &mut World, grid: Entity) {
+    let Some(state) = world.get::<VirtualGridState>(grid).cloned() else {
+        return;
+    };
+    let total_rows = state.total_rows().max(1);
+    let visible = usize::from(state.rows).max(1).min(total_rows);
+    #[allow(clippy::cast_precision_loss)]
+    let fraction = visible as f32 / total_rows as f32;
+    #[allow(clippy::cast_precision_loss)]
+    let offset = state.first_row as f32 / total_rows as f32;
+
+    let tracks: Vec<Entity> = world
+        .get::<Children>(grid)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
+    for track in tracks {
+        if world.get::<VirtualScrollbar>(track).is_none() {
+            continue;
+        }
+        let thumbs: Vec<Entity> = world
+            .get::<Children>(track)
+            .map(|c| c.iter().collect())
+            .unwrap_or_default();
+        for thumb in thumbs {
+            if world.get::<VirtualScrollThumb>(thumb).is_none() {
+                continue;
+            }
+            if let Some(mut node) = world.get_mut::<Node>(thumb) {
+                node.height = percent(100.0 * fraction);
+                node.top = percent(100.0 * offset);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(total: usize, first_row: usize) -> VirtualGridState {
+        VirtualGridState {
+            source: DataSourceId(slotted_model::Namespaced::parse("demo:src").expect("id")),
+            cols: 9,
+            rows: 3,
+            first_row,
+            total,
+            version: 0,
+        }
+    }
+
+    #[test]
+    fn only_the_visible_window_is_ever_spawned() {
+        let s = state(10_000, 0);
+        assert_eq!(s.window(), 0..27);
+        assert_eq!(state(10_000, 5).window(), 45..72);
+    }
+
+    #[test]
+    fn the_last_page_is_the_end_of_the_source() {
+        let s = state(10_000, 0);
+        assert_eq!(s.total_rows(), 1112);
+        assert_eq!(s.max_first_row(), 1109);
+        let mut s = state(10_000, 1109);
+        assert!(!s.scroll_by(5), "already at the end");
+        assert_eq!(s.first_row, 1109);
+    }
+
+    #[test]
+    fn scrolling_clamps_at_both_ends() {
+        let mut s = state(10_000, 0);
+        assert!(!s.scroll_by(-1), "already at the start");
+        assert!(s.scroll_by(3));
+        assert_eq!(s.first_row, 3);
+        assert!(s.scroll_by(-3));
+        assert_eq!(s.first_row, 0);
+    }
+
+    #[test]
+    fn a_short_source_fills_less_than_one_window() {
+        let s = state(4, 0);
+        assert_eq!(s.window(), 0..4);
+        assert_eq!(s.max_first_row(), 0);
+    }
 }

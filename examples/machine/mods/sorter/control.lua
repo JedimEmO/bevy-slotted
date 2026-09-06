@@ -13,6 +13,8 @@ slotted.on("widget_activate", function(ev)
         slotted.warn("sort pressed outside a menu")
         return nil
     end
-    slotted.info("sorting the container of menu %d", ev.menu)
-    return slotted.cmd.sort(ev.menu, 0)
+    -- Inventory 1, not 0: the machine's own three slots are inventory 0 and
+    -- the player's pockets are 1, which is the half a sort button is for.
+    slotted.info("sorting the player inventory of menu %d", ev.menu)
+    return slotted.cmd.sort(ev.menu, 1)
 end)

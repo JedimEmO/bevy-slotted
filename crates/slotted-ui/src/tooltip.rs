@@ -350,11 +350,24 @@ pub fn show_tooltip(request: On<TooltipRequest>, mut commands: Commands) {
             .get_resource::<TooltipParts>()
             .cloned()
             .unwrap_or_default();
-        let composed = parts.compose(&TooltipCtx {
+        let mut composed = parts.compose(&TooltipCtx {
             stack: stack.as_ref(),
             registries: &registries,
             tier,
         });
+        // The widget itself contributes last: a tank's amount line sits below
+        // whatever the registered parts had to say (Phase 6 contract 1.2).
+        let widget = world
+            .get::<crate::semantic::WidgetNode>(entity)
+            .map(|w| w.0.clone())
+            .and_then(|kind| {
+                world
+                    .get_resource::<crate::screen::WidgetRegistry>()
+                    .and_then(|r| r.get(&kind).cloned())
+            });
+        if let Some(widget) = widget {
+            widget.tooltip(entity, world, &mut composed);
+        }
 
         // Replace any tooltip this entity already hosts.
         let existing: Vec<Entity> = world

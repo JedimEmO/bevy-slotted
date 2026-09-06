@@ -741,11 +741,39 @@ pub fn apply_set_property(
     mut properties: Query<(Entity, &mut MenuProperty, &ChildOf)>,
     mut commands: Commands,
 ) {
-    // PHASE6-IMPL: A. Mirror the `AuthorityEvent::Property` arm of `reconcile`:
-    // write `OpenMenu.state.properties`, the child's `value`, then trigger
-    // `PropertyChanged` on the child.
-    let _ = (&event, &mut menus, &mut properties, &mut commands);
-    tracing::debug!(?event, "SetProperty is not implemented yet");
+    let crate::events::SetProperty {
+        entity: menu,
+        id,
+        value,
+    } = *event;
+    let Ok(mut open) = menus.get_mut(menu) else {
+        tracing::warn!(?menu, "SetProperty on something that is not an open menu");
+        return;
+    };
+    // The same three steps `reconcile` takes for `AuthorityEvent::Property`,
+    // minus the round trip: this write *is* the authority's (contract 0).
+    let Some(position) = open.def.properties.iter().position(|p| p.id == id) else {
+        tracing::warn!(
+            ?menu,
+            ?id,
+            "SetProperty for a property this menu has not got"
+        );
+        return;
+    };
+    if let Some(slot) = open.state.properties.get_mut(position) {
+        *slot = value;
+    }
+    for (child, mut property, child_of) in &mut properties {
+        if child_of.parent() == menu && property.id == id {
+            property.value = value;
+            commands.trigger(PropertyChanged {
+                entity: child,
+                menu,
+                id,
+                value,
+            });
+        }
+    }
 }
 
 /// Observer for [`SetSlot`](crate::events::SetSlot): a host-side slot write.
@@ -757,9 +785,43 @@ pub fn apply_set_slot(
     mut sync: MessageWriter<SlotSync>,
     mut commands: Commands,
 ) {
-    // PHASE6-IMPL: C. Resolve `def.slots[slot]` to `(inventory, index)`, write
-    // the `Inventory` component, write one `SlotSync` and trigger
-    // `SlotChanged` on `SlotEntities[slot]` when registered.
-    let _ = (&event, &menus, &mut inventories, &mut sync, &mut commands);
-    tracing::debug!(?event, "SetSlot is not implemented yet");
+    let menu_entity = event.entity;
+    let Ok((menu, slot_entities)) = menus.get(menu_entity) else {
+        tracing::warn!(?menu_entity, "SetSlot on an entity without OpenMenu");
+        return;
+    };
+    let Some(def) = menu.def.slot(event.slot) else {
+        tracing::warn!(?menu_entity, slot = ?event.slot, "SetSlot names no slot of this menu");
+        return;
+    };
+    let Some(inventory_entity) = menu.inventories.get(def.source.index()).copied() else {
+        tracing::warn!(?menu_entity, slot = ?event.slot, "SetSlot: the menu has no such inventory");
+        return;
+    };
+    let Ok(mut inventory) = inventories.get_mut(inventory_entity) else {
+        tracing::warn!(
+            ?inventory_entity,
+            "SetSlot: the inventory entity has no Inventory"
+        );
+        return;
+    };
+    let index = usize::from(def.index);
+    if inventory.get(index) == event.stack.as_ref() {
+        return;
+    }
+    inventory.set(index, event.stack.clone());
+
+    sync.write(SlotSync {
+        menu: menu_entity,
+        slot: event.slot,
+        stack: event.stack.clone(),
+    });
+    if let Some(slot_entity) = slot_entities.0.get(&event.slot).copied() {
+        commands.trigger(SlotChanged {
+            entity: slot_entity,
+            menu: menu_entity,
+            slot: event.slot,
+            stack: event.stack.clone(),
+        });
+    }
 }

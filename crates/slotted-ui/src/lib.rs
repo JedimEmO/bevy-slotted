@@ -76,6 +76,7 @@ pub use widgets::icon_button::{IconButtonCycle, IconButtonState};
 pub use widgets::side_tab::{SideTabContent, SideTabHeader, SideTabState, SideTabToggle};
 pub use widgets::tank::{
     FillNode, FillValue, PropertyBinding, TankFluid, TankFluidSource, TooltipSource,
+    UnknownFluidWarned,
 };
 pub use widgets::viewport::{VIEWPORT_LAYER_BASE, ViewportSubject};
 pub use widgets::virtual_grid::{

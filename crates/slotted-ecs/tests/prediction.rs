@@ -447,6 +447,83 @@ fn a_drag_spreads_the_carried_stack_over_three_slots() {
     assert_eq!(fixture.authority.submitted().len(), 6, "one per stage");
 }
 
+/// A host-side `SetProperty` is the machine simulation's own write: it takes
+/// the same three steps a `AuthorityEvent::Property` does, without a round
+/// trip (Phase 6 contract section 0).
+#[test]
+fn a_set_property_writes_the_menu_state_the_child_and_the_observers() {
+    let mut fixture = Fixture::new(RecordingAuthority::new());
+    fixture.app.world_mut().trigger(slotted_ecs::SetProperty {
+        entity: fixture.menu,
+        id: PropertyId(0),
+        value: 42,
+    });
+    fixture.app.update();
+
+    assert_eq!(
+        fixture.app.world().resource::<PropertyChanges>().0,
+        vec![(PropertyId(0), 42)],
+        "PropertyChanged fires on the property child"
+    );
+    let value = fixture
+        .app
+        .world_mut()
+        .query::<&MenuProperty>()
+        .iter(fixture.app.world())
+        .find(|p| p.id == PropertyId(0))
+        .map(|p| p.value);
+    assert_eq!(value, Some(42));
+    assert_eq!(
+        fixture
+            .app
+            .world()
+            .get::<OpenMenu>(fixture.menu)
+            .unwrap()
+            .state
+            .properties,
+        vec![42],
+        "OpenMenu.state carries it too"
+    );
+    assert_eq!(
+        fixture.app.world().resource::<PendingRoundTrips>().0,
+        0,
+        "a host write bypasses the authority, so nothing is pending"
+    );
+}
+
+/// A property the menu does not declare is a mistake in the caller, not a new
+/// property: the write is dropped with a warning rather than silently
+/// growing the state vector.
+#[test]
+fn a_set_property_for_an_unknown_property_changes_nothing() {
+    let mut fixture = Fixture::new(RecordingAuthority::new());
+    fixture.app.world_mut().trigger(slotted_ecs::SetProperty {
+        entity: fixture.menu,
+        id: PropertyId(99),
+        value: 7,
+    });
+    fixture.app.update();
+    assert!(
+        fixture
+            .app
+            .world()
+            .resource::<PropertyChanges>()
+            .0
+            .is_empty()
+    );
+    assert_eq!(
+        fixture
+            .app
+            .world()
+            .get::<OpenMenu>(fixture.menu)
+            .unwrap()
+            .state
+            .properties,
+        vec![7],
+        "the property keeps the value the menu opened with"
+    );
+}
+
 #[test]
 fn a_property_update_reaches_the_child_entity_and_an_observer() {
     let mut fixture = Fixture::new(RecordingAuthority::new());
@@ -714,4 +791,57 @@ fn open_container_menu_fills_the_handles_the_definition_needs() {
             "handle backing {entity} must hold {size} slots"
         );
     }
+}
+
+/// A host-side `SetSlot` is the machine simulation moving its own output: it
+/// writes the backing inventory and tells the slot entity, without a click,
+/// a prediction or a round trip (Phase 6 contract section 0).
+#[test]
+fn a_set_slot_writes_the_inventory_and_the_slot_entity() {
+    let mut fixture = Fixture::new(RecordingAuthority::new());
+    let moved = ItemStack::new(fixture.items.egg, 3);
+    fixture.app.world_mut().trigger(slotted_ecs::SetSlot {
+        entity: fixture.menu,
+        slot: SlotIx(4),
+        stack: Some(moved.clone()),
+    });
+    fixture.app.update();
+
+    assert_eq!(
+        fixture.slot_of(fixture.player, 0),
+        Some(moved.clone()),
+        "the backing inventory holds it"
+    );
+    assert!(
+        fixture.app.world().resource::<SlotChanges>().0.contains(&(
+            fixture.slots[4],
+            SlotIx(4),
+            Some(moved)
+        )),
+        "SlotChanged fires on the registered slot entity"
+    );
+    assert_eq!(
+        fixture.app.world().resource::<PendingRoundTrips>().0,
+        0,
+        "a host write bypasses the authority, so nothing is pending"
+    );
+}
+
+/// A slot the menu does not have is a mistake in the caller: the write is
+/// dropped with a warning rather than growing an inventory.
+#[test]
+fn a_set_slot_for_an_unknown_slot_changes_nothing() {
+    let mut fixture = Fixture::new(RecordingAuthority::new());
+    let before = fixture.app.world().resource::<SlotChanges>().0.len();
+    fixture.app.world_mut().trigger(slotted_ecs::SetSlot {
+        entity: fixture.menu,
+        slot: SlotIx(99),
+        stack: Some(ItemStack::new(fixture.items.egg, 1)),
+    });
+    fixture.app.update();
+    assert_eq!(
+        fixture.app.world().resource::<SlotChanges>().0.len(),
+        before,
+        "nothing was told about a slot that does not exist"
+    );
 }

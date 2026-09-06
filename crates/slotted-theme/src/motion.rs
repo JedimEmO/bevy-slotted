@@ -228,7 +228,7 @@ pub fn advance_tweens(
                     tracing::trace!(?entity, "alpha tween on a node with no BackgroundColor");
                 }
             },
-            // PHASE6-IMPL: A. Writes the size onto the node; the side tab
+            // Writes the size onto the node; the side tab
             // relies on this to grow and shrink.
             TweenValue::Size(size) => match node {
                 Some(mut node) => {

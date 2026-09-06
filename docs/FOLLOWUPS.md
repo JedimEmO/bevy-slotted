@@ -197,3 +197,51 @@ Decisions deferred during phases. Each entry names the phase that should pick it
 - **`Injections` has one wildcard (`slotted:any`) and no per-screen-type filter.** A mod that
   wants "every container screen but not settings pages" has no way to say so. Add an
   `InjectionTarget` enum when the second filter shape appears. **Phase 7**.
+
+## From Phase 6
+
+- **The side tab's header and content were spawned as siblings of the tab root, not its
+  children.** `spawn_side_tab` used `SpawnCtx::spawn_node`, which parents to the *rail*, so a
+  closed tab was a 44x2 line with two loose nodes beside it and an open tab's content sat in the
+  rail's flow. Fixed here by parenting both to the root. What made it survive review is that every
+  assertion the contract names (`side_tab_open`, the content's `Visibility`, the exclusion zone)
+  is true of a detached content node too; only the screenshot showed it. A widget whose children
+  matter should assert its own tree shape, not only its state. **Phase 7**: a
+  `assert_widget_tree!`-style helper, or a debug check that a widget's spawned entities all
+  descend from the root it returned.
+- **`measure_side_tabs` writes the tab root's height every frame it disagrees.** A closed tab's
+  content still takes part in layout (it is hidden and clipped, not removed), so the root cannot
+  inherit its height and the system has to assert it. Removing the content from layout while
+  closed (`Display::None`) would be cheaper and would drop the system, but it also drops the
+  measurement `open_width` is computed from. **Phase 7**, with a measure-once cache.
+- **A recording refuses to replay at another resolution or scale factor.** Contract 2.3 asked for
+  a warning; a warning let a drifted replay report every input delivered and pass green while
+  clicking the wrong nodes. `ReplayError` gained `Resolution` and `ScaleFactor`. The real fix is a
+  recording that stores a locator beside each pointer position, so a replay can say "this click
+  was meant for the sort button" and survive a layout change. **Phase 7**.
+- **The built-in `hotbar` HUD layer now sets `hide_with_screen`.** A screen draws the player's
+  hotbar row itself, so leaving the HUD one up put two hotbars on the glass. The contract listed
+  `hide_with_screen` only against the crosshair; this is the deviation.
+- **A tank carries a `BarText` readout child.** Contract 1.2 gave the tank a `SemanticLabel` and a
+  tooltip and no visible reading, which left the machine screenshot with an unlabelled column of
+  blue. The stacked three-line label (`tank_label`) is what fits a well one slot wide. A tank wide
+  enough for the one-line form should use it; nothing measures that yet. **Phase 7**.
+- **`open_screen` inside a Lua mod test closes whatever screen was open.** Two tests in one file
+  each opening the same screen left two screens in the world, and every locator in the second test
+  matched twice. `just test-mods examples/modded/mods` was red on exactly this. The headless driver
+  now closes first; `LiveDriver` still means "the screen you have open", which is the contract's
+  choice and unaffected.
+- **`UiHarness::mod_layout` panics on a malformed `mod.toml`.** `test-mods` therefore aborts with a
+  panic message rather than printing an error and exiting 1. The message names the file and the
+  missing field, so it is actionable, and the exit code is still non-zero. Turning it into a
+  reported error means a fallible `mod_layout`, which every existing caller would have to unwrap.
+  **Phase 7**.
+- **A tank warns once per unknown fluid id, through a marker component.** `UnknownFluidWarned`
+  exists because the warning lives on the render path, which runs every frame. A crate-wide
+  warn-once utility would be better than a component per case. **Phase 7**.
+
+## For Phase 7 polish (from the Phase 6 machine screenshots)
+
+- `examples/machine` items render as magenta placeholders: the demo data declares no icon colour, so the CPU atlas bake falls back to the missing-texture colour. Either give the bake a hash-based colour like the chest demo or declare `icon` data in the machine RON.
+- The tank's `BarText` readout overlaps the fill; place it beside or below the tank at narrow widths.
+- Progress arrows are small (about 20 px); the moodboard sizes them at 40 px with a rounded track.

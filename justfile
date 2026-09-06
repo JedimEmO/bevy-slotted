@@ -51,9 +51,10 @@ shot-modded:
 run-machine:
     cargo run -p machine
 
-# Recapture the machine example's reference screenshot.
+# Recapture the machine example's reference screenshots.
 shot-machine:
     cargo run -p machine -- --shot examples/machine/shots/machine.png
+    cargo run -p machine -- --tab tab_redstone --shot examples/machine/shots/machine-tab.png
 
 # Run every mod's tests/*.lua through the headless harness (Phase 6).
 test-mods dir="examples/machine/mods":

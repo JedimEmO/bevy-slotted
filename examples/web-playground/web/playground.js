@@ -10,6 +10,7 @@ import init, {
   list_mods,
   get_mod_file,
   reload_mod,
+  run_tests,
   drain_console,
   console_history,
 } from './web_playground.js';
@@ -38,6 +39,8 @@ const state = {
   buffers: new Map(), // "mod/file" -> text
   original: new Map(), // "mod/file" -> the bundled text
   editor: null, // { getValue, setValue, focus }
+  view: 'editor', // 'editor' or 'tests'
+
   idle: null,
   // Filling the editor is a document change too, and an unguarded idle timer
   // would reload a mod every time the user switched tabs.
@@ -139,7 +142,7 @@ function renderTabs() {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = file.name;
-    button.setAttribute('aria-selected', String(file.name === state.file));
+    button.setAttribute('aria-selected', String(state.view === 'editor' && file.name === state.file));
     const buffer = state.buffers.get(key(mod.id, file.name));
     if (buffer !== undefined && buffer !== state.original.get(key(mod.id, file.name))) {
       button.classList.add('dirty');
@@ -147,6 +150,59 @@ function renderTabs() {
     button.addEventListener('click', () => selectFile(file.name));
     tabs.appendChild(button);
   }
+  // The Tests tab sits beside the files: same mod, a different thing to do
+  // with it. Results arrive on the console as `[test]` lines.
+  const tests = document.createElement('button');
+  tests.type = 'button';
+  tests.textContent = 'Tests';
+  tests.setAttribute('aria-selected', String(state.view === 'tests'));
+  tests.addEventListener('click', showTests);
+  tabs.appendChild(tests);
+}
+
+/** Shows the editor or the tests pane, whichever `state.view` names. */
+function renderView() {
+  el('editor-host').hidden = state.view !== 'editor';
+  el('tests-host').hidden = state.view !== 'tests';
+  if (state.view === 'tests') renderTests();
+  renderTabs();
+}
+
+function showTests() {
+  stash();
+  state.view = 'tests';
+  renderView();
+}
+
+/** The selected mod's bundled tests, and the button that runs them. */
+function renderTests() {
+  const host = el('tests-host');
+  host.replaceChildren();
+  const mod = state.mods.find((m) => m.id === state.modId);
+  const names = mod?.tests ?? [];
+  const blurb = document.createElement('p');
+  if (names.length === 0) {
+    blurb.textContent = `${state.modId ?? 'this mod'} bundles no tests/*.lua.`;
+    host.appendChild(blurb);
+    return;
+  }
+  blurb.textContent =
+    'These run against the running game, one action per frame, and report on the console.';
+  const list = document.createElement('ul');
+  for (const name of names) {
+    const item = document.createElement('li');
+    item.textContent = `tests/${name}`;
+    list.appendChild(item);
+  }
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'primary';
+  button.textContent = 'Run tests';
+  button.addEventListener('click', () => {
+    setStatus(`running ${state.modId} tests…`, 'busy');
+    run_tests(state.modId);
+  });
+  host.append(blurb, list, button);
 }
 
 function stash() {
@@ -184,9 +240,10 @@ function textFor(modId, file) {
 
 function selectFile(file) {
   stash();
+  state.view = 'editor';
   state.file = file;
   setText(textFor(state.modId, file));
-  renderTabs();
+  renderView();
 }
 
 function selectMod(modId, preferred = null) {
@@ -196,7 +253,7 @@ function selectMod(modId, preferred = null) {
   const wanted = mod?.files.find((f) => f.name === preferred);
   state.file = (wanted ?? mod?.files[0])?.name ?? null;
   setText(state.file ? textFor(modId, state.file) : '');
-  renderTabs();
+  renderView();
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +428,7 @@ window.slottedPlayground = {
   run,
   state,
   reload_mod,
+  run_tests,
   list_mods,
   get_mod_file,
   drain_console,

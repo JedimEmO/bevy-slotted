@@ -169,9 +169,10 @@ impl ConformanceCase {
                     stage = Some(match rest {
                         "data" => Stage::Data,
                         "control" => Stage::Control,
+                        "test" => Stage::Test,
                         other => {
                             return Err(bad(format!(
-                                "STAGE must be data or control, not {other:?}"
+                                "STAGE must be data, control or test, not {other:?}"
                             )));
                         }
                     });
@@ -241,7 +242,8 @@ fn default_event(stage: Stage) -> ScriptEvent {
             api_version: slotted_script::API_VERSION,
             mods: vec![CASE_MOD_ID.to_owned()],
         },
-        // PHASE6-IMPL: C. A test-stage case lists its tests.
+        // A test-stage case that lists no events asks for its test names, the
+        // one event a test file always answers (Phase 6 contract 3.1).
         Stage::Test => ScriptEvent::TestList,
     }
 }

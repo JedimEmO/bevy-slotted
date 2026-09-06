@@ -174,3 +174,39 @@ fn a_dir_source_refuses_to_climb_out_of_its_root() {
     let escaped = slotted_registry::loader::AssetSource::read(&source, "../../Cargo.toml");
     assert!(escaped.is_err(), "a mod cannot read outside its root");
 }
+
+/// The `fluids` registry (Phase 6): a fluid loads like any other entry, keeps
+/// its payload untouched for `slotted_ui::FluidDef` to type, and takes its
+/// dense id from registration order.
+#[test]
+fn fluids_load_with_their_payload_intact_and_dense_ids() {
+    use slotted_registry::loader::InMemorySource;
+    use slotted_registry::manifest::ModId;
+
+    let source = InMemorySource::new()
+        .with(
+            "data/base/fluids/water.ron",
+            r##"(name: "base:water", payload: (color: "#3B7DD8B0", unit: "mB"))"##,
+        )
+        .with(
+            "data/base/fluids/lava.ron",
+            r##"(name: "base:lava", payload: (color: "#D2601AFF"))"##,
+        );
+    let loaded = DataStage::new(vec![ModId::new("base").unwrap()])
+        .load(&source)
+        .unwrap();
+    let fluids = &loaded.registries.fluids;
+    assert_eq!(fluids.len(), 2);
+
+    // Files are read in sorted order, so `lava` is registered first and the
+    // dense ids follow the load, not the alphabet of the ids themselves.
+    let ids: Vec<&Namespaced> = fluids.iter().map(|(_, name, _)| name).collect();
+    assert_eq!(ids, vec![&id("base:lava"), &id("base:water")]);
+
+    let water = fluids.get_by_name(&id("base:water")).unwrap();
+    assert!(
+        !matches!(water.payload, slotted_registry::Value::Unit),
+        "the payload survives the data stage untouched"
+    );
+    assert_eq!(water.name, id("base:water"));
+}

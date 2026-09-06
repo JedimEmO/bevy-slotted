@@ -59,6 +59,8 @@ fn harness() -> (App, EditableSource, Bus) {
         .add_message::<ModFailed>()
         .add_message::<ModReloaded>()
         .add_message::<ReloadMod>()
+        // Phase 6: `Request::RunTests` becomes a `StartTests` message.
+        .add_message::<web_playground::StartTests>()
         .insert_resource(web_playground::runtime())
         .insert_resource(PackAssets(shared))
         .insert_resource(layout)

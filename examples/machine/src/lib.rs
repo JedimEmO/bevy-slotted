@@ -2,7 +2,7 @@
 //!
 //! A furnace-like screen: input, fuel and output slots, a water tank, an
 //! energy bar, two progress arrows, and two side tabs (redstone mode, side
-//! configuration). [`MachineSim`] advances the machine on virtual time through
+//! configuration). [`machine_sim`] advances the machine on virtual time through
 //! `SetProperty` and `SetSlot`, so the same code runs in the window and under
 //! `slotted_test::UiHarness`. The `sorter` mod in `mods/` injects a sort
 //! button at `title_end` through the wildcard target `slotted:any`.
@@ -12,10 +12,14 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use slotted::prelude::*;
-use slotted::ui::{SpawnCtx, UiNodeDef, Widget, WidgetRegistry};
+use slotted::theme::Role;
+use slotted::ui::{
+    IconButtonStateDef, IconDef, Layout, LayoutDirection, LocKey, SLOT_SIZE, SpawnCtx, Tags,
+    UiNodeDef, Widget, WidgetRegistry,
+};
 use slotted_model::{Inventory, MenuDef, PropertyDef, PropertyId, SlotBehaviour};
 use slotted_packs::PackLayout;
-use slotted_registry::{FrozenRegistries, Value};
+use slotted_registry::{DataStage, DirSource, FrozenRegistries, ModId, Value};
 
 /// The screen this example opens.
 pub const FURNACE: &str = "machine:furnace";
@@ -101,15 +105,33 @@ pub fn furnace_screen() -> ScreenDef {
 }
 
 /// Runs the data stage over `assets/data/demo/` and `assets/data/machine/`.
+///
+/// The machine's own directory holds one file, the `machine:water` fluid, and
+/// it is read only when it is there: the example still opens on a checkout
+/// where nothing has registered a fluid yet, with the tank drawing its
+/// theme fill instead of water.
+///
+/// # Panics
+///
+/// If a data file is missing or does not parse, which in an example means the
+/// checkout is broken rather than that the game should limp on.
 pub fn load_registries() -> Arc<FrozenRegistries> {
-    // PHASE6-IMPL: C. As `chest::load_registries` plus the machine's fluid.
-    Arc::new(
-        slotted_registry::Registries::new()
-            .freeze()
-            .expect("empty registries freeze")
-            .0,
-    )
+    let source = DirSource::new(assets_dir());
+    let mut order = vec![ModId::new(DEMO_MOD).expect("`demo` is a valid mod id")];
+    if assets_dir().join("data").join(MACHINE_MOD).is_dir() {
+        order.push(ModId::new(MACHINE_MOD).expect("`machine` is a valid mod id"));
+    }
+    let loaded = DataStage::new(order)
+        .load(&source)
+        .unwrap_or_else(|e| panic!("loading assets/data: {e}"));
+    for warning in &loaded.report.warnings {
+        tracing::warn!(%warning, "machine data");
+    }
+    Arc::new(loaded.registries)
 }
+
+/// The mod id the shared demo content is loaded under: `assets/data/demo/`.
+pub const DEMO_MOD: &str = "demo";
 
 /// The menu: three machine slots (output is `Output`), player main and
 /// hotbar, sixteen properties at their initial values.
@@ -136,36 +158,234 @@ pub fn menu_def() -> Arc<MenuDef> {
     Arc::new(def)
 }
 
-/// The demo's inventories: raw ore in the input, coal in the fuel slot, a
-/// deliberately unsorted player inventory for the sorter mod to tidy.
+/// One seeded stack: which inventory, which slot, what, how many.
+struct Row {
+    inventory: usize,
+    slot: usize,
+    item: &'static str,
+    count: u32,
+}
+
+const fn row(inventory: usize, slot: usize, item: &'static str, count: u32) -> Row {
+    Row {
+        inventory,
+        slot,
+        item,
+        count,
+    }
+}
+
+/// Raw material in the input, coal in the fuel slot, and a player inventory
+/// left deliberately unsorted for the `sorter` mod to tidy.
+const CONTENTS: &[Row] = &[
+    row(0, 0, "minecraft:cobblestone", 32),
+    row(0, 1, "minecraft:coal", 12),
+    row(1, 0, "minecraft:iron_ingot", 5),
+    row(1, 4, "minecraft:cobblestone", 9),
+    row(1, 11, "minecraft:iron_ingot", 17),
+    row(1, 20, "minecraft:oak_planks", 40),
+    row(2, 0, "minecraft:iron_pickaxe", 1),
+    row(2, 2, "minecraft:diamond", 3),
+];
+
+/// The demo's inventories, built against the registries the data stage
+/// produced.
+///
+/// # Panics
+///
+/// If the table names an item `assets/data/demo` does not register.
 pub fn inventories(registries: &FrozenRegistries) -> Vec<Inventory> {
-    // PHASE6-IMPL: C.
-    let _ = registries;
-    vec![Inventory::new(3), Inventory::new(27), Inventory::new(9)]
+    let mut out: Vec<Inventory> = menu_def()
+        .inventory_sizes()
+        .into_iter()
+        .map(Inventory::new)
+        .collect();
+    for row in CONTENTS {
+        let name = slotted_model::Namespaced::parse(row.item)
+            .unwrap_or_else(|e| panic!("bad id {:?} in the machine table: {e}", row.item));
+        let id = registries
+            .item_id(&name)
+            .unwrap_or_else(|| panic!("{name} is not in assets/data/demo/items"));
+        out[row.inventory].set(row.slot, Some(slotted_model::ItemStack::new(id, row.count)));
+    }
+    out
 }
 
 /// Whether the machine's redstone signal is on. `R` toggles it.
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Redstone(pub bool);
 
-/// The menu the simulation drives.
+/// The menu the simulation drives. Set by [`track_machine_menu`] as soon as a
+/// `machine:furnace` screen appears, whoever opened it: the window's startup
+/// system or a test harness.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MachineMenu(pub Entity);
 
+/// Cook units per second. `cook_max` is 200, so an item takes two seconds.
+pub const COOK_PER_SECOND: f32 = 100.0;
+/// Fuel units per second. `burn_max` is 1600, so one coal lasts eight.
+pub const BURN_PER_SECOND: f32 = 200.0;
+/// Energy drained per second while cooking.
+pub const ENERGY_PER_SECOND: f32 = 120.0;
+/// Millibuckets drained per second while cooking.
+pub const TANK_PER_SECOND: f32 = 40.0;
+
+/// Sub-unit remainders, so a rate that is not a whole number of units per
+/// frame still adds up to that rate over a second. Only the fraction lives
+/// here; the whole part is written to the property, which stays the one
+/// place the value is kept.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SimCarry {
+    cook: f32,
+    burn: f32,
+    energy: f32,
+    tank: f32,
+}
+
+/// Adds `rate * dt` to `carry` and returns the whole units that came out.
+///
+/// The cast is exact by construction: `whole` is a non-negative integral
+/// `f32` no larger than one frame of one rate, and every rate here is a few
+/// hundred units per second.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn tick(carry: &mut f32, rate: f32, dt: f32) -> i32 {
+    *carry += rate * dt;
+    let whole = carry.floor();
+    *carry -= whole;
+    whole as i32
+}
+
+/// `Startup`-independent binding: the first `machine:furnace` screen to
+/// appear names the menu the simulation drives.
+pub fn track_machine_menu(roots: Query<&ScreenRoot, Added<ScreenRoot>>, mut commands: Commands) {
+    for root in &roots {
+        if root.kind == ScreenKind::new(FURNACE)
+            && let Some(menu) = root.menu
+        {
+            commands.insert_resource(MachineMenu(menu));
+        }
+    }
+}
+
 /// Advances the furnace on `Time<Virtual>`: burns fuel, cooks input into
 /// output, drains energy and the tank. Everything goes through
-/// `slotted_ecs::SetProperty` and `SetSlot`; the sim is the authority.
+/// `slotted_ecs::SetProperty` and `SetSlot`; the sim is the authority, so it
+/// never touches an `Inventory` or a `MenuProperty` itself.
+#[allow(clippy::needless_pass_by_value)]
 pub fn machine_sim(
     time: Res<Time<Virtual>>,
     menu: Option<Res<MachineMenu>>,
     redstone: Res<Redstone>,
     menus: Query<&OpenMenu>,
+    inventories: Query<&slotted::ecs::Inventory>,
+    mut carry: Local<SimCarry>,
     mut commands: Commands,
 ) {
-    // PHASE6-IMPL: C. Read the properties from `OpenMenu.state`, apply the
-    // redstone gate (0 ignore, 1 needs signal off, 2 needs signal on), and
-    // write back with `SetProperty` / `SetSlot`.
-    let _ = (&time, &menu, &redstone, &menus, &mut commands);
+    let Some(entity) = menu.map(|m| m.0) else {
+        return;
+    };
+    let Ok(open) = menus.get(entity) else { return };
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+
+    let read = |id: PropertyId| -> i32 {
+        open.def
+            .properties
+            .iter()
+            .position(|p| p.id == id)
+            .and_then(|i| open.state.properties.get(i).copied())
+            .unwrap_or(0)
+    };
+    let stack_of = |slot: slotted_model::SlotIx| -> Option<slotted_model::ItemStack> {
+        let def = open.def.slot(slot)?;
+        let inventory = *open.inventories.get(def.source.index())?;
+        inventories
+            .get(inventory)
+            .ok()?
+            .get(usize::from(def.index))
+            .cloned()
+    };
+    let mut writes: Vec<(PropertyId, i32)> = Vec::new();
+    let mut set = |id: PropertyId, value: i32| writes.push((id, value));
+
+    let mut burn = read(props::BURN);
+    let mut cook = read(props::COOK);
+    let cook_max = read(props::COOK_MAX).max(1);
+    let burn_max = read(props::BURN_MAX).max(1);
+
+    // The redstone gate: 0 ignore, 1 run while the signal is off, 2 run while
+    // it is on. Anything else is treated as ignore rather than as "off", so a
+    // property a mod has not set yet does not stop the machine.
+    let gate = match read(props::REDSTONE_MODE) {
+        1 => !redstone.0,
+        2 => redstone.0,
+        _ => true,
+    };
+
+    let input = stack_of(slots::INPUT);
+    let output = stack_of(slots::OUTPUT);
+    let output_has_room = match (&input, &output) {
+        (Some(input), Some(output)) => input.same_kind(output) && output.count < 64,
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    let wants_to_run = gate && input.is_some() && output_has_room;
+
+    // Burning. One fuel item buys `burn_max` units and the item is gone: the
+    // machine is the authority over its own slots, so this is a `SetSlot`.
+    if burn > 0 {
+        burn = (burn - tick(&mut carry.burn, BURN_PER_SECOND, dt)).max(0);
+        set(props::BURN, burn);
+    } else if wants_to_run && let Some(fuel) = stack_of(slots::FUEL) {
+        commands.trigger(SetSlot {
+            entity,
+            slot: slots::FUEL,
+            stack: (fuel.count > 1).then(|| fuel.clone().with_count(fuel.count - 1)),
+        });
+        burn = burn_max;
+        set(props::BURN, burn);
+    }
+
+    // Cooking. The result is the input item: a demo furnace with no recipe
+    // table still has to conserve items, and the tests assert exactly that.
+    if wants_to_run && burn > 0 {
+        cook += tick(&mut carry.cook, COOK_PER_SECOND, dt);
+        if cook >= cook_max {
+            cook = 0;
+            if let Some(input) = input {
+                commands.trigger(SetSlot {
+                    entity,
+                    slot: slots::INPUT,
+                    stack: (input.count > 1).then(|| input.clone().with_count(input.count - 1)),
+                });
+                let moved = match output {
+                    Some(present) => present.clone().with_count(present.count + 1),
+                    None => input.clone().with_count(1),
+                };
+                commands.trigger(SetSlot {
+                    entity,
+                    slot: slots::OUTPUT,
+                    stack: Some(moved),
+                });
+            }
+        }
+        set(props::COOK, cook);
+
+        let energy = (read(props::ENERGY) - tick(&mut carry.energy, ENERGY_PER_SECOND, dt)).max(0);
+        set(props::ENERGY, energy);
+        let tank = (read(props::TANK) - tick(&mut carry.tank, TANK_PER_SECOND, dt)).max(0);
+        set(props::TANK, tank);
+    } else if cook > 0 {
+        // Progress falls back when the machine stops, as a furnace's does.
+        cook = (cook - tick(&mut carry.cook, COOK_PER_SECOND, dt)).max(0);
+        set(props::COOK, cook);
+    }
+
+    for (id, value) in writes {
+        commands.trigger(SetProperty { entity, id, value });
+    }
 }
 
 /// `machine:face_config`: a 3x3 panel of six icon buttons cycling
@@ -190,15 +410,106 @@ impl Default for FaceConfigParams {
     }
 }
 
+/// The six faces, in the order the 3x3 pad shows them: top row up, middle row
+/// left / front / right, bottom row down and back.
+const FACES: [(&str, usize, usize); 6] = [
+    ("up", 0, 1),
+    ("left", 1, 0),
+    ("front", 1, 1),
+    ("right", 1, 2),
+    ("down", 2, 1),
+    ("back", 2, 2),
+];
+
+/// What one face may be set to, in cycle order.
+const FACE_MODES: [&str; 3] = ["none", "input", "output"];
+
 impl Widget for FaceConfigWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
-        // PHASE6-IMPL: C. Build a `Panel` grid of `IconButton` defs with
-        // `property: Some(first + face)` and spawn it through `ctx.spawn_child`.
-        let _ = params;
-        ctx.spawn_node((
-            Node::default(),
-            SemanticRole::Custom("face_config".to_owned()),
-        ))
+        let params: FaceConfigParams = match params {
+            Value::Unit => FaceConfigParams::default(),
+            other => slotted_registry::to_model(other)
+                .map_err(|e| e.to_string())
+                .and_then(|v| slotted_model::from_value(v).map_err(|e| e.to_string()))
+                .unwrap_or_else(|e| {
+                    tracing::warn!(%e, "machine:face_config params; using the defaults");
+                    FaceConfigParams::default()
+                }),
+        };
+
+        // Three rows of three, with an empty cell wherever no face sits: the
+        // pad reads as a block seen from the front, which is the whole reason
+        // this widget is not a plain row of buttons.
+        let mut rows = Vec::with_capacity(3);
+        for row in 0..3usize {
+            let mut cells = Vec::with_capacity(3);
+            for column in 0..3usize {
+                cells.push(
+                    match FACES
+                        .iter()
+                        .enumerate()
+                        .find(|(_, (_, r, c))| *r == row && *c == column)
+                    {
+                        Some((face, (name, _, _))) => face_button(&params, face, name),
+                        None => UiNodeDef::Panel {
+                            role: Role::new_static("invisible"),
+                            layout: Layout {
+                                width: Some(SLOT_SIZE),
+                                height: Some(SLOT_SIZE),
+                                ..Layout::default()
+                            },
+                            children: Vec::new(),
+                            tags: Tags::new(),
+                        },
+                    },
+                );
+            }
+            rows.push(UiNodeDef::Panel {
+                role: Role::new_static("invisible"),
+                layout: Layout {
+                    direction: LayoutDirection::Row,
+                    gap: 0.5,
+                    ..Layout::default()
+                },
+                children: cells,
+                tags: Tags::new(),
+            });
+        }
+
+        let mut tags = Tags::new();
+        tags.0.insert("widget".to_owned(), "face_config".to_owned());
+        ctx.spawn_child(&UiNodeDef::Panel {
+            role: Role::new_static("panel"),
+            layout: Layout {
+                direction: LayoutDirection::Column,
+                gap: 0.5,
+                padding: 0.5,
+                ..Layout::default()
+            },
+            children: rows,
+            tags,
+        })
+    }
+}
+
+/// One face's icon button, bound to `first_property + face`.
+fn face_button(params: &FaceConfigParams, face: usize, name: &str) -> UiNodeDef {
+    let mut tags = Tags::new();
+    tags.0.insert("test_id".to_owned(), format!("face_{name}"));
+    tags.0.insert("face".to_owned(), name.to_owned());
+    UiNodeDef::IconButton {
+        states: FACE_MODES
+            .iter()
+            .map(|mode| IconButtonStateDef {
+                id: (*mode).to_owned(),
+                icon: IconDef::Image(format!("icons/face_{mode}.png")),
+                label: LocKey(format!("machine.face.{mode}")),
+            })
+            .collect(),
+        property: Some(PropertyId(
+            params.first_property.0 + u16::try_from(face).unwrap_or(0),
+        )),
+        tags,
     }
 }
 
@@ -209,7 +520,10 @@ impl Plugin for MachineDemoPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Redstone>()
             .add_systems(Startup, register_widgets)
-            .add_systems(Update, (toggle_redstone, machine_sim));
+            .add_systems(
+                Update,
+                (toggle_redstone, track_machine_menu, machine_sim).chain(),
+            );
     }
 }
 

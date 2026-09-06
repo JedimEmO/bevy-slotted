@@ -37,7 +37,7 @@ use mlua::{
 };
 use slotted_script::{
     API_VERSION, FORBIDDEN_GLOBALS, Limits, ModId, PRELUDE, ScriptCommand, ScriptError,
-    ScriptEvent, ScriptId, ScriptRuntime, Stage,
+    ScriptEvent, ScriptId, ScriptRuntime, Stage, TEST_PRELUDE,
 };
 
 /// Message prefix the interrupt raises with; the adapter maps it to
@@ -166,7 +166,15 @@ impl MluaRuntime {
     }
 
     fn build_state(mod_id: &ModId, stage: Stage, limits: &Limits) -> mlua::Result<Lua> {
-        let libs = StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::BIT | StdLib::UTF8;
+        let mut libs = StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::BIT | StdLib::UTF8;
+        // A test body is a coroutine (Phase 6 contract 3.1), so the test
+        // stage is the one stage that needs `coroutine`. Data and control
+        // scripts keep the smaller surface they have always had; piccolo
+        // installs coroutine unconditionally, which is the one place the two
+        // sandboxes differ and it is invisible to a mod.
+        if stage == Stage::Test {
+            libs |= StdLib::COROUTINE;
+        }
         let lua = Lua::new_with(libs, LuaOptions::new())?;
 
         {
@@ -202,6 +210,15 @@ impl MluaRuntime {
         }
 
         lua.load(PRELUDE).set_name("@slotted/prelude").exec()?;
+
+        // The test stage gets `slotted.test` on top, before the sandbox seals
+        // the state: `slotted_test.lua` rawsets into the prelude's table and a
+        // frozen state would refuse it (Phase 6 contract 3.1).
+        if stage == Stage::Test {
+            lua.load(TEST_PRELUDE)
+                .set_name("@slotted/test_prelude")
+                .exec()?;
+        }
 
         {
             let ticks = hooks.ticks.clone();

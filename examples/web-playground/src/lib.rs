@@ -21,6 +21,7 @@
 pub mod bundle;
 pub mod bus;
 pub mod scene;
+pub mod tests;
 
 #[cfg(target_arch = "wasm32")]
 pub mod bridge;
@@ -176,7 +177,9 @@ pub fn build_app(bus: Bus) -> App {
         .insert_resource(source)
         .insert_resource(bus)
         .add_plugins(scene::ScenePlugin)
+        .add_message::<StartTests>()
         .add_systems(PreUpdate, drain_requests)
+        .add_systems(Update, (begin_tests, tests::run_live_tests).chain())
         .add_systems(PostUpdate, pump_console);
     app
 }
@@ -186,10 +189,50 @@ pub fn drain_requests_for_test(
     bus: Res<Bus>,
     source: Res<EditableSource>,
     reload: MessageWriter<ReloadMod>,
+    start_tests: MessageWriter<StartTests>,
     console: ResMut<scene::ConsoleErrors>,
     visible: ResMut<scene::ConsoleVisible>,
 ) {
-    drain_requests(bus, source, reload, console, visible);
+    drain_requests(bus, source, reload, start_tests, console, visible);
+}
+
+/// `begin_tests` under a name the integration test can add as a system.
+///
+/// The Tests tab's whole path is `Request::RunTests` -> `StartTests` ->
+/// `LiveTestRunner` -> ops against the live world, and a native test that
+/// skipped this step would prove only half of it.
+pub fn begin_tests_for_test(world: &mut World) {
+    begin_tests(world);
+}
+
+/// The page pressed Run tests. A message rather than a direct start: the
+/// runner needs the whole `World` and `drain_requests` is a plain system.
+#[derive(Message, Debug, Clone, PartialEq, Eq)]
+pub struct StartTests {
+    /// Which mod's bundled tests.
+    pub mod_id: String,
+}
+
+/// `Update`, exclusive: one `StartTests` begins a run, replacing whatever was
+/// running. A second press while a run is in flight is a restart, which is
+/// what pressing it again means.
+fn begin_tests(world: &mut World) {
+    let Some(mut messages) = world.get_resource_mut::<Messages<StartTests>>() else {
+        return;
+    };
+    let Some(request) = messages.drain().last() else {
+        return;
+    };
+    let bus = world.resource::<Bus>().clone();
+    bus.log(
+        "info",
+        "test",
+        format!("running {}'s tests", request.mod_id),
+    );
+    match tests::LiveTestRunner::start(world, &request.mod_id) {
+        Ok(runner) => world.insert_resource(runner),
+        Err(message) => bus.log("error", "test", format!("{}: {message}", request.mod_id)),
+    }
 }
 
 /// `PreUpdate`: what the page asked for, up to and including one reload.
@@ -205,6 +248,7 @@ fn drain_requests(
     bus: Res<Bus>,
     source: Res<EditableSource>,
     mut reload: MessageWriter<ReloadMod>,
+    mut start_tests: MessageWriter<StartTests>,
     mut console: ResMut<scene::ConsoleErrors>,
     mut visible: ResMut<scene::ConsoleVisible>,
 ) {
@@ -213,14 +257,7 @@ fn drain_requests(
         match request {
             Request::CanvasConsole(on) => visible.0 = on,
             Request::RunTests { mod_id } => {
-                // PHASE6-IMPL: C. Start a `LiveTestRunner` over
-                // `slotted_test::live::LiveDriver` for the mod's bundled
-                // `tests/*.lua`; it performs one op per frame and logs results.
-                bus.log(
-                    "warn",
-                    "test",
-                    format!("tests for {mod_id} are not wired yet"),
-                );
+                start_tests.write(StartTests { mod_id });
             }
             Request::Write { path, contents } => source.write(&path, &contents),
             Request::Reload { mod_id } => match ModId::new(&mod_id) {

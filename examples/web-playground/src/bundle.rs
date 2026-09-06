@@ -26,17 +26,55 @@ pub fn mod_ids() -> Vec<String> {
     ids
 }
 
+/// A mod's bundled `tests/*.lua` as `(name, logical path)`, sorted.
+///
+/// The name is the file's own (`sort.lua`); the path is what the loader
+/// reads. These are not editor tabs: they are what the Tests tab lists and
+/// what `Request::RunTests` runs against the live app (Phase 6 contract 3.2).
+pub fn test_files(mod_id: &str) -> Vec<(String, String)> {
+    let prefix = format!("scripts/{mod_id}/tests/");
+    let mut files: Vec<(String, String)> = FILES
+        .iter()
+        .filter_map(|(path, _)| path.strip_prefix(&prefix).map(|name| (name, *path)))
+        .filter(|(name, _)| {
+            !name.contains('/')
+                && std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|e| e == "lua")
+        })
+        .map(|(name, path)| (name.to_owned(), path.to_owned()))
+        .collect();
+    files.sort();
+    files
+}
+
+/// One bundled test file's source, by the name [`test_files`] gives.
+///
+/// # Errors
+///
+/// A mod or a test file the bundle does not carry.
+pub fn read_test_file(mod_id: &str, name: &str) -> Result<String, String> {
+    let source = EditableSource::from_bundle();
+    source
+        .read_text(&format!("scripts/{mod_id}/tests/{name}"))
+        .ok_or_else(|| format!("`{mod_id}` has no test file `{name}`"))
+}
+
 /// A mod's script entry points as `(name, logical path)`, in the order the
 /// editor should show them.
+///
+/// `tests/` is left out: those are not files the editor opens, and a tab bar
+/// with `tests/sort.lua` in it would reload the mod on every keystroke there.
 pub fn script_files(mod_id: &str) -> Vec<(String, String)> {
     let prefix = format!("scripts/{mod_id}/");
     let mut files: Vec<(String, String)> = FILES
         .iter()
         .filter_map(|(path, _)| path.strip_prefix(&prefix).map(|name| (name, *path)))
         .filter(|(name, _)| {
-            std::path::Path::new(name)
-                .extension()
-                .is_some_and(|e| e == "lua")
+            !name.contains('/')
+                && std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|e| e == "lua")
         })
         .map(|(name, path)| (name.to_owned(), path.to_owned()))
         .collect();
@@ -49,7 +87,7 @@ pub fn script_files(mod_id: &str) -> Vec<(String, String)> {
 /// The mods and their editable files, as the JSON the page reads.
 ///
 /// ```json
-/// [{"id":"copper_chest","files":[{"name":"data.lua","path":"scripts/..."}]}]
+/// [{"id":"copper_chest","files":[{"name":"data.lua","path":"scripts/..."}],"tests":["sort.lua"]}]
 /// ```
 ///
 /// It lives here rather than in `bridge` so a native test can assert the shape
@@ -64,7 +102,16 @@ pub fn mods_json() -> String {
                     format!("{{\"name\":{},\"path\":{}}}", quote(&name), quote(&path))
                 })
                 .collect();
-            format!("{{\"id\":{},\"files\":[{}]}}", quote(&id), files.join(","))
+            let tests: Vec<String> = test_files(&id)
+                .into_iter()
+                .map(|(name, _)| quote(&name))
+                .collect();
+            format!(
+                "{{\"id\":{},\"files\":[{}],\"tests\":[{}]}}",
+                quote(&id),
+                files.join(","),
+                tests.join(",")
+            )
         })
         .collect();
     format!("[{}]", mods.join(","))
