@@ -1,5 +1,12 @@
 # Phase 5 notes, package B: wasm stack and web playground
 
+> **The runtime changed after this was written.** ADR 0004 replaced piccolo with
+> luaur on 2026-09-06 and removed `slotted-script-piccolo` and `vendor/piccolo`.
+> Everything below about the playground's shape still holds; wherever it says
+> piccolo, read luaur, and note that on wasm a Lua error now aborts the module
+> and the page restarts it.
+
+
 Status: 2026-09-06. Bevy 0.19.1. Companions: `docs/PLAN.md` section 5.4 and
 Phase 5, ADR 0001 (script runtime), ADR 0003 (glass rendering),
 `docs/design/phase4-contract.md` sections 2.3 to 2.7.

@@ -17,7 +17,7 @@ publish = false
 [features]
 default = []
 # The script conformance suite (Phase 4 contract section 1.7). Pulls in
-# `slotted-script` and `ron`; adapters enable it from their dev-dependencies.
+# `slotted-script` and `ron`; an adapter enables it from its dev-dependencies.
 conformance = ["dep:slotted-script", "dep:ron", "dep:serde"]
 
 [dependencies]

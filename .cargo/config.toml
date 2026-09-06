@@ -1,28 +1,17 @@
-# The developer shell on this machine exports an Anaconda C/C++ toolchain
-# (CC/CXX pointing into ~/anaconda3, CFLAGS with `-march=nocona`, CPPFLAGS and
-# LDFLAGS pointing at Anaconda's sysroot). ADR 0001 records what that does to a
-# vendored C++ build: mlua's Luau compiles and links, then dies with SIGFPE
-# inside `Lua::new()` because a global constructor never ran. The failure mode is
-# a crash at runtime, not a build error, so it has to be prevented rather than
-# detected. `force = true` makes these win over the inherited environment for
-# every `cargo` invocation in this workspace, including `cc`-driven builds in
-# build scripts.
-[env]
-CC = { value = "cc", force = true }
-CXX = { value = "c++", force = true }
-CFLAGS = { value = "", force = true }
-CXXFLAGS = { value = "", force = true }
-CPPFLAGS = { value = "", force = true }
-LDFLAGS = { value = "", force = true }
+# There is deliberately no `[env]` block pinning `CC`/`CXX`/`CFLAGS` here any
+# more. It existed for exactly one thing: mlua's vendored Luau, a C++ build that
+# the developer shell's Anaconda toolchain (`CC`/`CXX` into ~/anaconda3,
+# `CFLAGS` with `-march=nocona`, `CPPFLAGS` into Anaconda's sysroot)
+# miscompiled into a binary that died with `SIGFPE` inside `Lua::new()`.
+# ADR 0001 has the details.
+#
+# ADR 0004 made luaur the only script runtime and `slotted-script-mlua` is
+# gone, so nothing in the workspace compiles C or C++:
+# `cargo tree -e build --workspace --all-features` lists no build dependencies
+# at all, `cc` and `luau0-src` among them. Bring the pin back, naming the crate
+# that needs it, if a dependency ever reintroduces a `cc`-driven build script.
 
 [build]
 # Intentionally no shared `target-dir`: each checkout keeps its own ./target so
 # a wasm build and a native build never race for the same lock. Add rustflags
 # here only if every member needs them; per-crate flags belong in the crate.
-
-# piccolo's `ahash` seeds from `getrandom` 0.3, which refuses to build for
-# wasm32-unknown-unknown unless a backend is named. Set here rather than in the
-# crate so `cargo check --target wasm32-unknown-unknown`, `wasm-pack test` and
-# the web playground all agree without an exported RUSTFLAGS.
-[target.wasm32-unknown-unknown]
-rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]

@@ -14,7 +14,7 @@ instead, which is a normal published crate.
 | `RecordingAuthority`, `RejectingAuthority`, `Submitted` | Fake authorities. |
 | `minimal_ecs_app`, `ecs_app_with` | A headless `App` factory. |
 | `builders::*` | Inventory and registry builders the crates' tests share. |
-| `conformance::*` | The script conformance suite every adapter runs. |
+| `conformance::*` | The script conformance suite, over any `&mut dyn ScriptRuntime`. |
 
 ## Example
 

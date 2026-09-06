@@ -44,13 +44,9 @@ impl PluginGroup for SlottedPlugins {
         {
             group = group.add(slotted_browser::SlottedBrowserPlugin::default());
         }
-        #[cfg(feature = "script-mlua")]
+        #[cfg(feature = "script-luaur")]
         {
-            group = group.add(MluaHostPlugin);
-        }
-        #[cfg(feature = "script-piccolo")]
-        {
-            group = group.add(PiccoloHostPlugin);
+            group = group.add(LuaurHostPlugin);
         }
         #[cfg(feature = "packs")]
         {
@@ -155,39 +151,24 @@ impl Plugin for HeadlessRenderAssets {
     }
 }
 
-/// Inserts `slotted_packs::ScriptHost` holding a `PiccoloRuntime` unless the
-/// app already provided a host, the wasm counterpart of [`MluaHostPlugin`].
-/// With both features on, whichever plugin runs first wins and this one does
-/// nothing, so a native build that adds `script-piccolo` for a test keeps
-/// Luau.
-#[cfg(feature = "script-piccolo")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct PiccoloHostPlugin;
-
-#[cfg(feature = "script-piccolo")]
-impl Plugin for PiccoloHostPlugin {
-    fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<slotted_packs::ScriptHost>() {
-            app.insert_resource(slotted_packs::ScriptHost::new(
-                slotted_script_piccolo::PiccoloRuntime::default(),
-            ));
-        }
-    }
-}
-
-/// Inserts `slotted_packs::ScriptHost` holding an `MluaRuntime` unless the
-/// app already provided a host. Added before `SlottedPacksPlugin` so the
+/// Inserts `slotted_packs::ScriptHost` holding a `LuaurRuntime` unless the app
+/// already provided a host. Added before `SlottedPacksPlugin` so the
 /// `PreStartup` load finds it.
-#[cfg(feature = "script-mlua")]
+///
+/// One runtime on every target (ADR 0004), so there is nothing to choose
+/// between and no per-target feature to set. A game that wants its own
+/// `ScriptRuntime` inserts a `ScriptHost` before `add_plugins` and this plugin
+/// leaves it alone.
+#[cfg(feature = "script-luaur")]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct MluaHostPlugin;
+pub struct LuaurHostPlugin;
 
-#[cfg(feature = "script-mlua")]
-impl Plugin for MluaHostPlugin {
+#[cfg(feature = "script-luaur")]
+impl Plugin for LuaurHostPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<slotted_packs::ScriptHost>() {
             app.insert_resource(slotted_packs::ScriptHost::new(
-                slotted_script_mlua::MluaRuntime::default(),
+                slotted_script_luaur::LuaurRuntime::default(),
             ));
         }
     }

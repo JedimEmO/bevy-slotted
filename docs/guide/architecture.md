@@ -12,9 +12,9 @@ slotted-model ──► slotted-registry ──► slotted-ecs ──► slotted
       │                                     │              ├── slotted-theme
       │                                     │              └── slotted-icons
       │
-      └──► slotted-script ──► slotted-script-mlua        slotted-packs
-                          └─► slotted-script-piccolo         │
-                                                              ▼
+      └──► slotted-script ──► slotted-script-luaur       slotted-packs
+                                                             │
+                                                             ▼
                                         slotted (facade, wires everything)
                                         slotted-test (depends on the facade)
 ```
@@ -40,7 +40,7 @@ milliseconds, and equally usable in a headless authoritative server.
 | Port | Lives in | Implementations |
 |---|---|---|
 | `Authority` | `slotted-model`, resource in `slotted-ecs` | `LocalAuthority` ships. A networked adapter is a later crate. |
-| `ScriptRuntime` | `slotted-script` | `slotted-script-mlua` natively, `slotted-script-piccolo` in a browser. |
+| `ScriptRuntime` | `slotted-script` | `slotted-script-luaur`, the same runtime natively and in a browser. |
 | `AssetSource` | `slotted-registry` | `DirSource` for a plain directory, `LayeredSource` in `slotted-packs` for mods and resource packs. |
 | `IconSource` | `slotted-icons` | `AtlasIcons` over a baked atlas; `LiveIcons` behind the `live` feature. |
 

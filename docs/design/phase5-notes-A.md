@@ -1,5 +1,11 @@
 # Phase 5 notes A: `slotted-script-piccolo`
 
+> **Superseded by [ADR 0004](../adr/0004-web-runtime-luaur.md).**
+> `slotted-script-piccolo` and `vendor/piccolo` were removed on 2026-09-06;
+> `slotted-script-luaur` is the web runtime now. This note is kept as the record
+> of what was built and what it cost, which is half of ADR 0004's argument.
+
+
 The web `ScriptRuntime` adapter (PLAN.md 4.9, ADR 0001). One state per loaded
 script, the shared prelude unchanged, the same 30 conformance cases as the
 native mlua adapter, and the same `ScriptError` classification. What follows is

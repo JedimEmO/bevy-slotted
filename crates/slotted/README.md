@@ -14,12 +14,12 @@ which are compiled in.
 |---|---|
 | `SlottedPlugins` | The plugin group. `default()` for a game with a window, `headless()` for a dedicated server or a test. |
 | `HeadlessBevyPlugins`, `HeadlessRenderAssets` | The Bevy plugins ADR 0002 proved sufficient for layout, picking, focus and keyboard with no renderer. |
-| `MluaHostPlugin`, `PiccoloHostPlugin` | Insert a `ScriptHost` when none exists. |
+| `LuaurHostPlugin` | Inserts a `ScriptHost` when none exists. |
 | `prelude` | Everything a game touches day to day. |
 
 The member crates are re-exported as `slotted::model`, `::registry`, `::ecs`,
 `::theme`, `::ui`, `::icons`, `::browser`, `::packs`, `::script` and
-`::script_mlua`, so a game normally depends on this crate alone.
+`::script_luaur`, so a game normally depends on this crate alone.
 
 ## Example
 
@@ -42,15 +42,15 @@ fn main() {
 | `ui` | yes | `slotted-ui`, `slotted-theme`, `slotted-icons`. Off for a dedicated server. |
 | `browser` | yes | `slotted-browser`. |
 | `packs` | yes | `slotted-packs` and `slotted-script`: mod discovery, `pack://`, the data/control lifecycle. |
-| `script-mlua` | yes | `slotted-script-mlua`, the native Luau runtime. |
-| `script-piccolo` | no | `slotted-script-piccolo`, the pure-Rust runtime and the only one that builds for wasm. |
+| `script-luaur` | yes | `slotted-script-luaur`, the Luau runtime. The same one natively and on wasm (ADR 0004). |
 | `blur` | no | Backdrop blur for glass panels. |
 | `dev` | no | Exclusion-zone highlighter, id tooltips, the HUD position editor, the input recorder. |
 | `viewport` | no | Real cameras behind `viewport` nodes. |
 
-Cargo has no per-target defaults, so a wasm build passes
-`--no-default-features --features "ui,browser,packs,script-piccolo"`. Luau is C++
-and cannot target wasm at all; see ADR 0001.
+The defaults build for wasm as they stand: there is one script runtime and it
+is pure Rust, so a browser build takes the same feature set a native one does.
+On wasm an uncaught Lua error aborts the module and the host has to restart it;
+see ADR 0004 and `slotted-script-luaur`'s crate docs.
 
 ## Licence
 

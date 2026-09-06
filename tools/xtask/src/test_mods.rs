@@ -4,10 +4,10 @@
 
 use std::process::Command;
 
-/// Runs `cargo run -p slotted-test --features script-mlua --bin test-mods --
+/// Runs `cargo run -p slotted-test --features script-luaur --bin test-mods --
 /// <args>`, inheriting stdout and stderr so the report is the binary's own.
 ///
-/// `script-mlua` rather than `script`: the binary needs a script runtime of
+/// `script-luaur` rather than `script`: the binary needs a script runtime of
 /// its own, which a consumer of the harness would otherwise unify in through
 /// its own `slotted` dependency.
 ///
@@ -41,7 +41,7 @@ pub fn test_mods(args: &[String]) -> Result<(), String> {
             "-p",
             "slotted-test",
             "--features",
-            "script-mlua",
+            "script-luaur",
             "--bin",
             "test-mods",
             "--",

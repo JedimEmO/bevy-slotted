@@ -80,12 +80,12 @@ test-mods dir="examples/machine/mods":
     cargo run -p xtask -- test-mods {{dir}}
 
 # Every crate that has to reach a browser, on wasm32, with the feature set a
-# wasm build actually uses. `slotted` drops `script-mlua`: Luau is C++ and
-# cannot target wasm at all (ADR 0001).
+# wasm build actually uses. There is one script runtime and it builds for both
+# targets (ADR 0004), so nothing here has to swap it out.
 wasm-check:
     cargo check --target wasm32-unknown-unknown -p slotted-model
     cargo check --target wasm32-unknown-unknown -p slotted-script
-    cargo check --target wasm32-unknown-unknown -p slotted-script-piccolo
+    cargo check --target wasm32-unknown-unknown -p slotted-script-luaur
     cargo check --target wasm32-unknown-unknown -p slotted-registry --no-default-features
     cargo check --target wasm32-unknown-unknown -p slotted-ecs
     cargo check --target wasm32-unknown-unknown -p slotted-theme
@@ -96,6 +96,13 @@ wasm-check:
     cargo check --target wasm32-unknown-unknown -p slotted-packs
     cargo check --target wasm32-unknown-unknown -p slotted --no-default-features --features ui,browser,packs,gpu-icons
     cargo check --target wasm32-unknown-unknown -p web-playground
+
+# The luaur adapter in a real browser. Needs `cargo install wasm-pack` and a
+# Chromium; the shim is there because the snap installs the driver as
+# `chromium.chromedriver` and wasm-pack looks for that exact name.
+wasm-test:
+    PATH="$PWD/spikes/script-runtimes/chromedriver-shim:$PATH" \
+        wasm-pack test --headless --chrome crates/slotted-script-luaur --test wasm
 
 # One example to dist/<example>/: release wasm, wasm-bindgen, wasm-opt if it
 # is installed. Needs `cargo install wasm-bindgen-cli` matching the crate.
@@ -115,9 +122,12 @@ serve:
 run-playground:
     cargo run -p web-playground
 
-# End to end in headless Chromium: load dist/, edit a mod's control.lua through
-# the same export the editor uses, assert the reloaded chunk's line comes back
-# out of the console queue. Needs `just playground` and `just serve` first.
+# End to end in headless Chromium. Two pages: `smoke.html` drives the raw
+# exports (edit a mod's control.lua, assert the reloaded chunk's line comes back
+# out of the console queue, and that a runaway chunk aborts the module as
+# ADR 0004 says it must), then `index.html` is driven the way a person drives
+# it, including an `error()` that traps the module and the restart that brings
+# the chest back. Needs `just playground` and `just serve` first.
 smoke:
     node examples/web-playground/tests/smoke.mjs
 

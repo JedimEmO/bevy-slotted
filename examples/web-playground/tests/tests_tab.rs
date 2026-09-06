@@ -28,7 +28,7 @@ fn playground_world() -> (UiHarness, Bus) {
         .theme("glass")
         .build();
     // Before the mods load: the data stage needs a runtime, and this crate's
-    // is piccolo, the one the browser gets.
+    // is luaur, the one the browser gets.
     harness
         .world_mut()
         .insert_resource(web_playground::runtime());

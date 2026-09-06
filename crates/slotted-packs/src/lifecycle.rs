@@ -44,7 +44,7 @@ pub enum ModStage {
 
 /// The script runtime, shared by the lifecycle and the tooltip part.
 ///
-/// The facade inserts an `MluaRuntime` here when its `script-mlua` feature is
+/// The facade inserts a `LuaurRuntime` here when its `script-luaur` feature is
 /// on and nothing else did. Absent, data-only mods still load and scripted
 /// ones report [`ModError::NoRuntime`].
 #[derive(Resource, Clone)]

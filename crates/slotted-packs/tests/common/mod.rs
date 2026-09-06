@@ -1,6 +1,6 @@
 //! A scripted [`ScriptRuntime`] for the packs tests.
 //!
-//! Package A owns the mlua adapter; these tests must not wait for it, so the
+//! Package A owned the script adapter; these tests must not wait for it, so the
 //! runtime here simply replays commands the test wrote down, keyed by mod and
 //! event name.
 

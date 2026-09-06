@@ -17,14 +17,13 @@ categories = ["game-development", "development-tools::testing"]
 default = ["snapshots"]
 # `UiHarness::load_mods` and friends (Phase 4 contract section 3), plus the
 # Lua `slotted.test` runner and the `test-mods` binary (Phase 6 section 3.2).
-# The runtime comes from the facade's `script-mlua` or `script-piccolo`
-# feature, never named here: a native consumer's own `slotted` dependency
-# unifies it in.
+# The runtime comes from the facade's `script-luaur` feature, never named
+# here: a consumer's own `slotted` dependency unifies it in.
 script = ["dep:slotted-packs", "dep:slotted-script", "slotted/packs"]
-# A native runtime of this crate's own, for the `test-mods` binary: a consumer
-# gets one through its own `slotted` dependency, but `cargo run -p slotted-test
+# A runtime of this crate's own, for the `test-mods` binary: a consumer gets
+# one through its own `slotted` dependency, but `cargo run -p slotted-test
 # --bin test-mods` has no consumer to inherit from (Phase 6 section 3.2).
-script-mlua = ["script", "slotted/script-mlua"]
+script-luaur = ["script", "slotted/script-luaur"]
 # `assert_tree_snapshot!` through `insta`. Off for a wasm build of the crate
 # (the playground shares the op implementations, not the snapshots).
 snapshots = ["dep:insta"]
@@ -37,9 +36,9 @@ path = "src/bin/test_mods.rs"
 required-features = ["script"]
 
 [dependencies]
-# A path dependency with the facade's defaults off, so this crate builds for
-# wasm32 (Phase 6 contract 3.2). `script-mlua` is a C++ build that cannot
-# reach wasm; native consumers depend on `slotted` with defaults and Cargo
+# A path dependency with the facade's defaults off, so a consumer that wants
+# the harness without the script stack pays for neither (Phase 6 contract 3.2).
+# A consumer that does want it depends on `slotted` with defaults and Cargo
 # unifies the runtime back in. The crate's own tests re-enable it below.
 slotted = { path = "../slotted", version = "0.1.0", default-features = false, features = ["ui", "browser"] }
 slotted-model = { workspace = true }
@@ -79,7 +78,7 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
-slotted = { path = "../slotted", version = "0.1.0", features = ["script-mlua"] }
+slotted = { path = "../slotted", version = "0.1.0", features = ["script-luaur"] }
 slotted-testutils = { workspace = true }
 pretty_assertions = { workspace = true }
 

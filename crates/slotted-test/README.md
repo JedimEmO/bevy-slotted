@@ -48,7 +48,7 @@ harness.settle();
 ## The `test-mods` binary
 
 ```
-cargo run -p slotted-test --features script-mlua --bin test-mods -- examples/machine/mods
+cargo run -p slotted-test --features script-luaur --bin test-mods -- examples/machine/mods
 ```
 
 Runs every mod's `tests/*.lua` and prints a report. `cargo xtask test-mods <dir>`
@@ -60,7 +60,7 @@ and `just test-mods` are the shorthands.
 |---|---|---|
 | `snapshots` | yes | `assert_tree_snapshot!` through `insta`. Turn it off for a wasm build. |
 | `script` | no | `UiHarness::load_mods`, the Lua `slotted.test` runner and the `test-mods` binary. The runtime comes from the consumer's own `slotted` dependency. |
-| `script-mlua` | no | A native runtime of this crate's own, so `cargo run --bin test-mods` works with no consumer to inherit from. |
+| `script-luaur` | no | A runtime of this crate's own, so `cargo run --bin test-mods` works with no consumer to inherit from. |
 | `render` | no | Run the real renderer with a software adapter and compare pixels. Not implemented yet. |
 
 ## Licence

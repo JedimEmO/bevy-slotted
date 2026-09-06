@@ -7,8 +7,12 @@
 //! open a stale share link — and none of it may take the tab down, because on
 //! `wasm32-unknown-unknown` a panic is an aborted module and a dead canvas.
 //!
-//! It runs natively against the same piccolo runtime the browser gets, so a
-//! failure here is a failure there.
+//! It runs natively against the same luaur runtime the browser gets, so a
+//! failure here is a failure there. One caveat the native run cannot cover:
+//! on wasm a raised Lua error aborts the module instead of returning `Err`
+//! (ADR 0004), so the page's own recovery is what keeps the tab alive there.
+//! `web/playground.js` restarts the module and `restore_state` puts the chest
+//! back.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -61,6 +65,8 @@ fn harness() -> (App, EditableSource, Bus) {
         .add_message::<ReloadMod>()
         // Phase 6: `Request::RunTests` becomes a `StartTests` message.
         .add_message::<web_playground::StartTests>()
+        // Phase 5 restart: `Request::Restore` becomes one of these.
+        .add_message::<web_playground::RestoreState>()
         .insert_resource(web_playground::runtime())
         .insert_resource(PackAssets(shared))
         .insert_resource(layout)
@@ -209,9 +215,9 @@ fn an_infinite_loop_in_data_lua_is_stopped_by_the_budget_and_the_game_runs_on() 
     let before = registries(&app);
     let _ = drained(&bus);
 
-    // Not a hang: `Limits::default().budget` is 1,000,000 ticks, and the
-    // piccolo adapter charges 8 fuel to the tick, so this runs out and comes
-    // back as a value.
+    // Not a hang: `Limits::default().budget` is 1,000,000 interrupt ticks and
+    // Luau raises one per loop back-edge, so this runs out in well under a
+    // second and comes back as a value.
     press_run(&bus, DATA, "while true do end\n");
     frame(&mut app);
 

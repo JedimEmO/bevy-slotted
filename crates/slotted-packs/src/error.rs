@@ -12,7 +12,7 @@ pub enum ModError {
     #[error("no PackLayout resource: insert one before SlottedPacksPlugin runs")]
     NoLayout,
     /// A mod has scripts but there is no `ScriptHost`.
-    #[error("no script runtime: enable the facade's `script-mlua` feature or insert a ScriptHost")]
+    #[error("no script runtime: enable the facade's `script-luaur` feature or insert a ScriptHost")]
     NoRuntime,
     /// A `mod.toml` did not parse.
     #[error(transparent)]

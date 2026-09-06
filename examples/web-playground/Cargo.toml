@@ -18,14 +18,14 @@ crate-type = ["cdylib", "rlib"]
 blur = ["slotted/blur"]
 
 [dependencies]
-# `script-mlua` is off: Luau is C++ and cannot reach wasm at all (ADR 0001).
-# A path dependency rather than the workspace one: the facade's default
-# features include `script-mlua`, and a workspace dependency cannot be
-# inherited with `default-features = false`.
+# `gpu-icons` is off, which is the only thing the facade's defaults carry that
+# this page does not want. A path dependency rather than the workspace one,
+# because a workspace dependency cannot be inherited with
+# `default-features = false`. The runtime comes in below, inserted directly.
 slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "packs", "dev"] }
 slotted-packs = { workspace = true }
 slotted-script = { workspace = true }
-slotted-script-piccolo = { path = "../../crates/slotted-script-piccolo", version = "0.1.0" }
+slotted-script-luaur = { path = "../../crates/slotted-script-luaur", version = "0.1.0" }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
 # The op implementations the Tests tab drives against the live app. Defaults
@@ -60,6 +60,10 @@ bevy = { version = "0.19.1", default-features = false, features = [
 ] }
 tracing = { workspace = true }
 serde = { workspace = true }
+# The snapshot the page hands back after a restart. RON rather than JSON:
+# already in the graph through `slotted-registry`, and the same format the
+# rest of the workspace serialises with.
+ron = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

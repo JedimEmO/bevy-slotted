@@ -1,7 +1,6 @@
 //! What the page can call.
 //!
-//! Seven functions, all of them free, because the browser holds no handle on
-//! the `App`. They talk to the world through [`Bus::global`] and to the editor's
+//! All free functions, because the browser holds no handle on the `App`. They talk to the world through [`Bus::global`] and to the editor's
 //! text through the same bundle the loader reads, so a `reload_mod` here and a
 //! file save on disk take the identical path through
 //! `ModLoader::reload_mod`: re-run the data stage, freeze, remap every live
@@ -14,10 +13,84 @@ use crate::bundle;
 use crate::bus::{Bus, Line, Request};
 
 /// Starts the app. `wasm-bindgen`'s generated `default()` calls this.
+///
+/// Two hooks go in before the app does, and both exist for the same reason:
+/// on `wasm32` a Lua error raised by a mod is a trap that takes the module
+/// down (ADR 0004), so anything the page is going to learn about it has to be
+/// said before that happens.
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
+    install_lua_error_reporter();
     crate::build_app(Bus::global()).run();
+}
+
+/// Puts a mod's Lua error on the browser console the moment it is raised.
+///
+/// The adapter calls this from the `xpcall` message handler, which Luau runs
+/// *before* it throws, so the text is out of the module before the trap. The
+/// page reads it back out of the console when it handles the
+/// `WebAssembly.RuntimeError` and repeats it in its own console pane, which is
+/// the only place a visitor is looking.
+///
+/// It also goes on the bus, for the native run and for the case where the
+/// error did not abort anything.
+fn install_lua_error_reporter() {
+    slotted_script_luaur::install_error_reporter(|raised| {
+        let detail = if raised.traceback.is_empty() {
+            String::new()
+        } else {
+            format!("\n{}", raised.traceback)
+        };
+        let text = format!("{}: {}{detail}", raised.script, raised.message);
+        console_error(&format!("{LUA_ERROR_PREFIX}{text}"));
+        Bus::global().log("error", raised.script.clone(), text);
+    });
+}
+
+/// What [`install_lua_error_reporter`] prefixes its `console.error` with, so
+/// the page can pick its own line out of everything else on the console.
+pub const LUA_ERROR_PREFIX: &str = "slotted-lua-error: ";
+
+/// `console.error(text)`, through `js_sys` rather than a `web-sys` dependency
+/// the bundle would otherwise carry for one call.
+fn console_error(text: &str) {
+    let Ok(console) = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("console")) else {
+        return;
+    };
+    let Ok(error) = js_sys::Reflect::get(&console, &JsValue::from_str("error")) else {
+        return;
+    };
+    if let Ok(error) = error.dyn_into::<js_sys::Function>() {
+        let _ = error.call1(&console, &JsValue::from_str(text));
+    }
+}
+
+/// The open menu's inventories, as RON, for the page to hold across a restart.
+///
+/// The world republishes this about once a second (`SNAPSHOT_EVERY`), so what
+/// comes back is at most that stale. An empty string means nothing has been
+/// published yet, and the page should keep whatever it already had.
+#[wasm_bindgen]
+pub fn snapshot_state() -> JsValue {
+    JsValue::from_str(&Bus::global().snapshot())
+}
+
+/// Puts a [`snapshot_state`] value back into the running app.
+///
+/// Called once after a restart, before or after the module has finished
+/// booting: the request waits for the chest to exist rather than being
+/// dropped. A value that is not a snapshot is reported on the console and the
+/// demo's own starting contents are kept.
+#[wasm_bindgen]
+pub fn restore_state(state: JsValue) {
+    let Some(state) = state.as_string() else {
+        return;
+    };
+    if state.is_empty() {
+        return;
+    }
+    Bus::global().request(Request::Restore { state });
 }
 
 /// The mods and their editable files, as JSON.

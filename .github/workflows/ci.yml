@@ -111,19 +111,23 @@ jobs:
       - name: Say why there are no browser tests
         if: steps.chrome.outputs.path == ''
         run: |
-          echo "::notice title=Browser tests skipped::No Chrome or Chromium on this runner, so slotted-script-piccolo's wasm-bindgen tests did not run. Each of them has a native twin in the same crate, which the Test (ubuntu) job ran."
+          echo "::notice title=Browser tests skipped::No Chrome or Chromium on this runner, so slotted-script-luaur's wasm-bindgen tests did not run. Each of them has a native twin in the same crate, which the Test (ubuntu) job ran."
 
       - name: Install wasm-pack
         if: steps.chrome.outputs.path != ''
         run: cargo install wasm-pack --version 0.13.1 --locked
 
-      # The piccolo adapter is the runtime the browser gets, and the four
-      # tombstone cases are the ones that used to abort the whole module.
-      - name: piccolo in a browser
+      # The one script runtime, in the one place its behaviour differs from
+      # the native run (ADR 0004). The cases here are the ones that must work
+      # in a tab; the error-recovery ones are deliberately absent, because on
+      # wasm a raise aborts the module rather than returning, which is the
+      # trade ADR 0004 accepts. Their native twins are in the same crate and
+      # the Test (ubuntu) job runs them.
+      - name: luaur in a browser
         if: steps.chrome.outputs.path != ''
         env:
           CHROME: ${{ steps.chrome.outputs.path }}
-        run: wasm-pack test --headless --chrome crates/slotted-script-piccolo --test wasm
+        run: wasm-pack test --headless --chrome crates/slotted-script-luaur --test wasm
 
   docs:
     name: Docs

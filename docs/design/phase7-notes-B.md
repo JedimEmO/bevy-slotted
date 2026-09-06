@@ -112,6 +112,11 @@ fails with "no matching package named `slotted-model`", which is correct: none
 of these are on crates.io yet. Cargo 1.96 resolves in-workspace when several
 crates are published in one invocation, which is how the real publish will run.
 
+> **No longer true.** ADR 0004 removed `slotted-script-piccolo`, `vendor/piccolo`
+> and the `[patch.crates-io]` block on 2026-09-06 and put `slotted-script-luaur`
+> in its place, which has no patched dependency and publishes normally. The
+> paragraph below is kept as the record of why the blocker existed.
+
 **`slotted-script-piccolo` must not be published yet, even though it dry-runs
 green.** The workspace patches `piccolo` to `vendor/piccolo`, which backports an
 upstream fix: 0.3.3 panics when a table that has had a key removed is grown, and

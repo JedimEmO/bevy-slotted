@@ -6,14 +6,13 @@
 // playground that will not open at all on a locked-down network is worse than
 // one without syntax colours.
 
-import init, {
-  list_mods,
-  get_mod_file,
-  reload_mod,
-  run_tests,
-  drain_console,
-  console_history,
-} from './web_playground.js';
+// The module is imported by URL rather than by a static `import`, because the
+// page has to be able to instantiate it more than once. On wasm32 a Lua error
+// raised by a mod is a trap that kills the module (ADR 0004), and the answer
+// is to build a new one; a static import would hand back the same dead
+// instance every time. A cache-busting query gives each restart a fresh module
+// scope and a fresh wasm instance.
+const GLUE = './web_playground.js';
 
 // esm.sh rather than cdnjs or jsDelivr, and the reason is not taste:
 // CodeMirror 6 is half a dozen packages that must share one copy of
@@ -26,6 +25,13 @@ const IDLE_MS = 800;
 const OPENING_MOD = 'copper_chest';
 const OPENING_FILE = 'control.lua';
 const MAX_ROWS = 400;
+/** How often the page asks the world for a snapshot, at most. */
+const SNAPSHOT_EVERY_MS = 1000;
+/** Restarts allowed inside SPIRAL_MS before the page stops trying. */
+const MAX_RESTARTS = 3;
+const SPIRAL_MS = 20_000;
+/** The prefix `bridge.rs` puts on the Lua error it reports before a trap. */
+const LUA_ERROR_PREFIX = 'slotted-lua-error: ';
 
 const el = (id) => document.getElementById(id);
 const statusEl = el('status');
@@ -45,7 +51,176 @@ const state = {
   // Filling the editor is a document change too, and an unguarded idle timer
   // would reload a mod every time the user switched tabs.
   quiet: false,
+
+  // The module, and what it takes to build another one.
+  wasm: null, // the current module namespace
+  restarts: 0,
+  restartTimes: [], // when each restart happened, for the spiral guard
+  restarting: false,
+  dead: false, // gave up: the page is showing a corpse
+  snapshot: '', // the last state the world published
+  nextSnapshot: 0, // Date.now() before which we do not ask again
+  luaError: '', // the last thing the runtime said before a trap
 };
+
+// ---------------------------------------------------------------------------
+// The module, and surviving its death
+// ---------------------------------------------------------------------------
+
+// The runtime reports a mod's Lua error through `console.error` at the moment
+// it is raised, which on wasm is the last instruction before the trap. Keeping
+// the text here is what lets the restart say *what* crashed rather than only
+// that something did.
+const realConsoleError = console.error.bind(console);
+console.error = (...args) => {
+  const text = args.map((a) => String(a)).join(' ');
+  if (text.startsWith(LUA_ERROR_PREFIX)) state.luaError = text.slice(LUA_ERROR_PREFIX.length);
+  realConsoleError(...args);
+};
+
+/**
+ * Whether `error` is the module trapping rather than a plain JS exception.
+ *
+ * `WebAssembly.RuntimeError` covers it in every browser that follows the
+ * spec; the string check is for the ones that report an unreachable as a
+ * bare `Error`, and for the `unreachable executed` wrappers wasm-bindgen puts
+ * around a panic.
+ */
+function isTrap(error) {
+  if (typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError) return true;
+  return /RuntimeError|unreachable|out of bounds|table index/i.test(String(error));
+}
+
+/**
+ * Calls an export by name. Every call into the module goes through here, so
+ * that a trap becomes a restart instead of a dead page.
+ *
+ * Returns `fallback` when the module is not up, or when the call trapped.
+ */
+function call(name, args = [], fallback = undefined) {
+  if (!state.wasm || state.dead) return fallback;
+  try {
+    return state.wasm[name](...args);
+  } catch (error) {
+    if (!isTrap(error)) throw error;
+    void restart(error);
+    return fallback;
+  }
+}
+
+/** Instantiates the module, wiring `state.wasm` to whatever came back. */
+async function boot() {
+  const url = state.restarts === 0 ? GLUE : `${GLUE}?restart=${state.restarts}`;
+  const module = await import(url);
+  // Before `default()`, not after: Bevy's winit loop unwinds out of it by
+  // design and never returns, so the exports have to be reachable already.
+  state.wasm = module;
+  try {
+    await module.default();
+  } catch (error) {
+    // Bevy's winit loop on the web unwinds out of `start` by design; anything
+    // else is a real failure and belongs on screen.
+    if (!String(error).includes('control flow')) throw error;
+  }
+}
+
+/**
+ * The module trapped. Say so, build another one, and put the chest back.
+ *
+ * The editor's current text goes into the new module, because that is what the
+ * visitor believes is running. If the same text traps again immediately the
+ * spiral guard stops after `MAX_RESTARTS` and the page says what to do.
+ */
+async function restart(error) {
+  if (state.restarting || state.dead) return;
+  state.restarting = true;
+
+  const now = Date.now();
+  state.restartTimes = state.restartTimes.filter((at) => now - at < SPIRAL_MS);
+  state.restartTimes.push(now);
+
+  const why = state.luaError ? `: ${state.luaError}` : '';
+  appendLines([
+    { level: 'error', who: 'playground', text: `the mod crashed the Lua runtime; restarting${why}` },
+  ]);
+  console.warn('the wasm module trapped, restarting:', error);
+
+  if (state.restartTimes.length > MAX_RESTARTS) {
+    state.dead = true;
+    state.restarting = false;
+    setStatus('the mod keeps crashing the runtime; edit it and reload the page', 'bad');
+    appendLines([
+      {
+        level: 'error',
+        who: 'playground',
+        text:
+          `restarted ${MAX_RESTARTS} times in ${SPIRAL_MS / 1000}s and it crashed again. ` +
+          'Fix the script and reload the page.',
+      },
+    ]);
+    return;
+  }
+
+  setStatus('restarting the runtime…', 'busy');
+
+  // A fresh canvas. The trapped module still owns the old one's WebGL context
+  // and its event listeners, and a clone carries neither.
+  const canvas = el('slotted-canvas');
+  if (canvas) {
+    const fresh = canvas.cloneNode(false);
+    canvas.replaceWith(fresh);
+  }
+
+  state.restarts += 1;
+  state.luaError = '';
+  try {
+    await boot();
+  } catch (bootError) {
+    state.dead = true;
+    state.restarting = false;
+    setStatus('the runtime could not be restarted', 'bad');
+    console.error('restarting the module:', bootError);
+    return;
+  }
+
+  if (state.snapshot) call('restore_state', [state.snapshot]);
+  state.restarting = false;
+
+  // The visitor's text, not the bundle's: the editor is what they think is
+  // running, and a restart that silently reverted it would be a lie.
+  //
+  // Once, though. A chunk that crashes while it is *loading* crashes again the
+  // moment it is put back, and a page that keeps doing that never comes up at
+  // all. The second time round the new module keeps the bundled scripts, which
+  // are known to work, and the editor keeps the text so Run is still one
+  // keystroke away.
+  if (state.restartTimes.length === 1) {
+    run({ quiet: true });
+  } else {
+    appendLines([
+      {
+        level: 'warn',
+        who: 'playground',
+        text:
+          'that script crashed the runtime again, so this restart kept the bundled ' +
+          'scripts. Your edit is still in the editor; fix it and press Run.',
+      },
+    ]);
+  }
+  setStatus('runtime restarted', 'ok');
+}
+
+/**
+ * Asks the world for the open menu's contents, at most every
+ * `SNAPSHOT_EVERY_MS`. This is the value handed back after a restart.
+ */
+function takeSnapshot(force = false) {
+  const now = Date.now();
+  if (!force && now < state.nextSnapshot) return;
+  state.nextSnapshot = now + SNAPSHOT_EVERY_MS;
+  const text = call('snapshot_state', [], '');
+  if (typeof text === 'string' && text.length > 0) state.snapshot = text;
+}
 
 /** Replaces the editor's text without arming the idle run. */
 function setText(text) {
@@ -200,7 +375,7 @@ function renderTests() {
   button.textContent = 'Run tests';
   button.addEventListener('click', () => {
     setStatus(`running ${state.modId} tests…`, 'busy');
-    run_tests(state.modId);
+    call('run_tests', [state.modId]);
   });
   host.append(blurb, list, button);
 }
@@ -220,7 +395,7 @@ function stash() {
  */
 function bundledText(modId, file) {
   try {
-    return get_mod_file(modId, file);
+    return call('get_mod_file', [modId, file], '');
   } catch (error) {
     console.warn(`no bundled ${modId}/${file}:`, error);
     return '';
@@ -260,19 +435,29 @@ function selectMod(modId, preferred = null) {
 // Running
 // ---------------------------------------------------------------------------
 
-function run() {
+/**
+ * Sends the editor's current text to the world and reloads the mod.
+ *
+ * `quiet` is the restart's own call: the mod is being put back into a module
+ * the visitor did not ask for, so the status line stays as the restart left
+ * it. A snapshot is taken first either way, because a reload is the moment
+ * the chest is most likely to be about to change.
+ */
+function run({ quiet = false } = {}) {
   stash();
   const modId = state.modId;
   if (!modId) return;
   const data = state.buffers.get(key(modId, 'data.lua')) ?? '';
   const control = state.buffers.get(key(modId, 'control.lua')) ?? '';
-  setStatus(`reloading ${modId}…`, 'busy');
-  reload_mod(modId, data, control);
+  if (!quiet) setStatus(`reloading ${modId}…`, 'busy');
+  takeSnapshot(true);
+  call('reload_mod', [modId, data, control]);
   writeHash();
   // The world answers on its next frame; the console poll picks up whatever it
   // says, and an error there turns the status red.
   setTimeout(() => {
-    if (statusEl.classList.contains('busy')) setStatus(`${modId} reloaded`, 'ok');
+    takeSnapshot(true);
+    if (!quiet && statusEl.classList.contains('busy')) setStatus(`${modId} reloaded`, 'ok');
   }, 400);
 }
 
@@ -308,8 +493,12 @@ function appendLines(lines) {
 
 function pollConsole() {
   try {
-    const lines = JSON.parse(drain_console());
+    const drained = call('drain_console', [], '[]');
+    const lines = JSON.parse(drained ?? '[]');
     if (lines.length) appendLines(lines);
+    // After the batch, not before: a line the world just wrote may be the one
+    // that says the chest changed.
+    takeSnapshot();
   } catch (error) {
     console.error('draining the console:', error);
   }
@@ -353,22 +542,41 @@ function readHash() {
 // Boot
 // ---------------------------------------------------------------------------
 
+/**
+ * Watches for a trap that happened inside the module's own animation frame
+ * rather than inside a call the page made.
+ *
+ * This is the common case and the one `call` cannot see: Bevy drives its loop
+ * from a `requestAnimationFrame` the module registered itself, so a mod that
+ * raises during a frame surfaces here as an uncaught error and nowhere else.
+ */
+function watchForTraps() {
+  window.addEventListener('error', (event) => {
+    const error = event.error ?? event.message;
+    if (!isTrap(error)) return;
+    event.preventDefault();
+    void restart(error);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    if (!isTrap(event.reason)) return;
+    event.preventDefault();
+    void restart(event.reason);
+  });
+}
+
 async function main() {
+  watchForTraps();
   setStatus('compiling wasm…', 'busy');
   try {
-    await init();
+    await boot();
   } catch (error) {
-    // Bevy's winit loop on the web unwinds out of `start` by design; anything
-    // else is a real failure and belongs on screen.
-    if (!String(error).includes('control flow')) {
-      setStatus('the module failed to start', 'bad');
-      console.error(error);
-    }
+    setStatus('the module failed to start', 'bad');
+    console.error(error);
   }
   el('boot').classList.add('gone');
   setStatus('running', 'ok');
 
-  state.mods = JSON.parse(list_mods());
+  state.mods = JSON.parse(call('list_mods', [], '[]') ?? '[]');
   readHash();
 
   const host = el('editor-host');
@@ -388,7 +596,7 @@ async function main() {
   selectMod(opening?.id ?? null, OPENING_FILE);
   select.value = state.modId ?? '';
 
-  el('run').addEventListener('click', run);
+  el('run').addEventListener('click', () => run());
   el('clear').addEventListener('click', () => consoleEl.replaceChildren());
   el('reset').addEventListener('click', () => {
     const id = key(state.modId, state.file);
@@ -417,8 +625,9 @@ async function main() {
   // The ring holds everything the world said while the module was booting;
   // show that, then drop the pending copies of the same lines so the poll
   // below does not print them twice.
-  appendLines(JSON.parse(console_history()));
-  drain_console();
+  appendLines(JSON.parse(call('console_history', [], '[]') ?? '[]'));
+  call('drain_console', []);
+  takeSnapshot(true);
   requestAnimationFrame(pollConsole);
 }
 
@@ -427,12 +636,19 @@ async function main() {
 window.slottedPlayground = {
   run,
   state,
-  reload_mod,
-  run_tests,
-  list_mods,
-  get_mod_file,
-  drain_console,
-  console_history,
+  // The exports, through the same guard the page uses, so a poke from a
+  // devtools console cannot leave the page holding a dead module either.
+  call,
+  restart,
+  takeSnapshot,
+  reload_mod: (...args) => call('reload_mod', args),
+  run_tests: (...args) => call('run_tests', args),
+  list_mods: (...args) => call('list_mods', args, '[]'),
+  get_mod_file: (...args) => call('get_mod_file', args, ''),
+  drain_console: (...args) => call('drain_console', args, '[]'),
+  console_history: (...args) => call('console_history', args, '[]'),
+  snapshot_state: (...args) => call('snapshot_state', args, ''),
+  restore_state: (...args) => call('restore_state', args),
 };
 
 main();

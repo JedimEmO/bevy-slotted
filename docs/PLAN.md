@@ -17,7 +17,7 @@ Status: v2.0, 2026-09-06, Phases 0 to 7 complete. Targets Bevy 0.19.1. Companion
 ## 2. Principles
 
 1. **Domain never knows about IO or rendering.** The item, inventory, menu and click logic is a plain Rust crate with no Bevy dependency. It is testable with `cargo test` in milliseconds and can back a headless server.
-2. **Ports for every boundary that has two implementations.** Authority (local vs networked), script runtime (native Luau vs pure-Rust Lua on wasm), asset source (plain dir vs layered packs), icon source (baked atlas vs live viewport).
+2. **Ports for every boundary that has two implementations.** Authority (local vs networked), script runtime (the shipped Luau adapter vs a game's own), asset source (plain dir vs layered packs), icon source (baked atlas vs live viewport).
 3. **Screens are data.** A screen is a tree that the ui crate spawns into entities. Rust, RON and Lua all produce the same tree type. Injection is a patch onto that tree at a named anchor.
 4. **Registries freeze.** Data stage fills registries, then they freeze, then the control stage runs. Browser lookups are pure functions over frozen data.
 5. **Scripts declare and react, never mutate.** Events go out to scripts, commands come back, the authority validates. This is what makes the same script safe on a server and in a browser tab.
@@ -41,9 +41,7 @@ bevy-slotted/
 │   ├── slotted-icons/              offscreen icon baking to an atlas, cache, IconSource port + adapters
 │   ├── slotted-browser/            ingredient registry, categories, search index, browser panel, transfer
 │   ├── slotted-script/             ScriptRuntime port, the slotted.* API surface, event/command types
-│   ├── slotted-script-mlua/        adapter: Luau via mlua, native only
-│   ├── slotted-script-piccolo/     adapter: pure-Rust Lua 5.4 (piccolo), wasm32 and native, recoverable errors
-│   ├── slotted-script-luaur/       adapter: pure-Rust Luau (luaur), behind a feature until wasm error handling lands
+│   ├── slotted-script-luaur/       adapter: Luau via luaur (pure Rust), the one runtime, native and wasm32 (ADR 0004)
 │   ├── slotted-packs/              layered AssetReader for mods and resource packs, mod.toml loading, Fluent
 │   ├── slotted/                    facade: SlottedPlugins, prelude, feature flags
 │   ├── slotted-test/               public UI test harness for consumers: headless app, locators, synthetic input, snapshots
@@ -67,13 +65,12 @@ Every crate is a workspace member and inherits edition, lints and shared depende
 
 ```
 slotted-model ◄── slotted-registry ◄── slotted-ecs ◄── slotted-ui ◄── slotted-browser
-     ▲               ▲               ▲          ▲   ▲
-     │               │               │          │   └── slotted-theme, slotted-icons
-     └── slotted-script ┘               │          │
-           ▲   ▲                     └──────────┴── slotted-packs
-           │   ├── slotted-script-piccolo
-           │   └── slotted-script-luaur (feature-gated)
-           └────── slotted-script-mlua
+     ▲                                                   ▲   ▲
+     │                                                   │   └── slotted-theme, slotted-icons
+     └── slotted-script ◄── slotted-script-luaur         │
+              ▲                                          │
+              └───────────── slotted-packs ──────────────┘
+
                                     slotted  (facade, wires everything, feature flags)
                                     slotted-test  (depends on the facade; used by consumers' dev-dependencies)
 ```
@@ -86,9 +83,7 @@ Rule: an arrow never points from a lower crate to a higher one. `slotted-ui` doe
 |---|---|---|
 | `ui` | yes | slotted-ui, slotted-theme, slotted-icons |
 | `browser` | yes | slotted-browser |
-| `script-mlua` | yes on native | slotted-script-mlua (Luau, sandboxed) |
-| `script-piccolo` | yes on wasm | slotted-script-piccolo |
-| `script-luaur` | no | slotted-script-luaur, experimental until luaur errors are recoverable on wasm |
+| `script-luaur` | yes | slotted-script-luaur (Luau, sandboxed). The same runtime on every target, so there is nothing to swap for a wasm build |
 | `packs` | yes | slotted-packs |
 | `blur` | no | scene blur pass for glass panels |
 | `dev` | no | hot reload, exclusion-zone highlighter, id tooltips, script console |
@@ -235,13 +230,14 @@ pub trait ScriptRuntime: Send + Sync {
 - Sandbox: no `io`, `os`, `package`, `load`; per-script globals; instruction budget and memory cap through the adapter; scripts that exceed limits are unloaded and reported.
 - API versioning: `api_version` in `mod.toml`; the prelude exposes `slotted.api_version`; deprecated calls warn once.
 
-### 4.9 Script adapters: slotted-script-mlua, slotted-script-piccolo, slotted-script-luaur
+### 4.9 The script adapter: slotted-script-luaur
 
-Decided in Phase 0 (ADR 0001, measurements in `spikes/script-runtimes/`):
+Decided in Phase 0 (ADR 0001), revised twice in Phase 5 and settled by ADR 0004: **one runtime, luaur, on every target.** Measurements in `spikes/script-runtimes/`:
 
-- **Native: `mlua` with the `luau` feature**, vendored, `Lua::sandbox(true)`, `set_interrupt` for instruction budgets, `set_memory_limit`. Cold start about 41 µs, a call with a small table about 310 ns. Does not build for wasm32 because Luau is C++ and the target has no C++ runtime. Note: sandboxed globals silently ignore writes, so stdlib removals must happen before `sandbox(true)`; and a stray C toolchain in the environment (the user's shell exports an Anaconda `CC`/`CXX`) miscompiles Luau, so the workspace pins `CC`/`CXX` through `.cargo/config.toml` and CI pins its toolchain.
-- **Web: `piccolo` 0.3**, pure-Rust Lua 5.4 with a fuel budget and arena-tracked memory. Runtime errors come back as `Result` and the VM stays usable, verified in headless Chrome. Wasm size about 990 KiB before `wasm-opt`. Cost: no serde bridge and no `Function::call` convenience, so its adapter is roughly three times the code of the mlua one, and its stdlib is incomplete (`string`, `table`, `utf8` partially), which the shared prelude must paper over or avoid.
-- **luaur 0.1.8 stays in the tree behind a feature, not as the default web runtime.** It is the fastest of the three (265 ns per call, 743 KiB wasm) and its API mirrors mlua so closely that the two adapters share nearly all glue, but it implements Lua errors with Rust panics and `catch_unwind`, and wasm32-unknown-unknown has no unwinding: any `error()`, runtime type error or even an in-VM `pcall` aborts the whole module in the browser. Only compile errors are recoverable there. One buggy mod would take down the page. When luaur gains non-unwinding error propagation, the conformance suite tells us it is ready and the web default flips to it.
+- **`luaur` 0.1.8**, a pure-Rust line-for-line port of Luau, with `Lua::sandbox(true)`, `set_interrupt` for instruction budgets, `set_memory_limit` and a serde bridge. It builds for `wasm32-unknown-unknown` and for native from the same source, so there is one adapter, one prelude, one value model and one conformance run. Faster than the mlua adapter it replaced (4.6 µs against 7.2 µs for a `SlotClick` round trip).
+- **Nothing compiles C or C++ any more.** mlua's vendored Luau was the only such build, and with it goes the Anaconda-toolchain miscompile ADR 0001 documents; `.cargo/config.toml`'s `CC`/`CXX` pin is deleted and the file records what would bring it back.
+- **The sandbox order is load-bearing and tested.** `sandbox(true)` installs a proxy global table whose `__index` falls through to the real environment, so a name set to `nil` afterwards is still reachable from a script while the call reports `Ok(())`. Removals happen before sealing; the adapter pins both halves of the behaviour in a test.
+- **The price is that an uncaught Lua error aborts the wasm module.** luaur raises by panicking and `wasm32-unknown-unknown` has no unwinding, so `error()`, a runtime type error, an exhausted budget and a refused allocation all trap in a browser, and `pcall` in a script does not contain them. Only compile errors are recoverable there. ADR 0004 accepts this: the host reports the error through `install_error_reporter` before the trap, then re-instantiates the module and restores its state. `examples/web-playground` is the reference. piccolo, which did report errors as `Result`, was removed: its adapter was three times the code, its stdlib was not Luau's, and the vendored fix it needed made it unpublishable.
 
 The conformance suite in `slotted-testutils` is therefore load-bearing: it runs the same `.lua` cases against all enabled adapters and is the gate for any swap.
 
@@ -255,7 +251,7 @@ The conformance suite in `slotted-testutils` is therefore load-bearing: it runs 
 
 ### 4.11 slotted facade
 
-`SlottedPlugins` plugin group wiring the defaults: `LocalAuthority`, `AtlasIcons`, the glass theme, the mlua or piccolo runtime depending on target, `LayeredReader`. Everything is a resource holding an `Arc<dyn Port>` so an app can replace any adapter before `add_plugins`.
+`SlottedPlugins` plugin group wiring the defaults: `LocalAuthority`, `AtlasIcons`, the glass theme, the luaur runtime, `LayeredReader`. Everything is a resource holding an `Arc<dyn Port>` so an app can replace any adapter before `add_plugins`.
 
 `SlottedPlugins::headless()` is the same group without rendering, icon baking, blur and motion side effects. It is what `slotted-test` builds on, and it is also the right group for a dedicated server.
 
@@ -331,7 +327,7 @@ The showcase. A static site with the Bevy canvas on the left and a code editor o
 
 Flow: the editor calls a `wasm-bindgen` export `reload_mod(mod_id, data_src, control_src)`. The Bevy app receives it through a channel resource, tears down that mod's registrations, re-runs its data stage (re-freezing the affected registries), re-spawns open screens from the new `ScreenDef`, and reloads the control script. Errors surface in a console pane through the `Log` command and `ScriptError`. Because scripts only emit commands, a broken script cannot corrupt the inventory state; the worst case is a rejected reload with the previous version kept running.
 
-Runtime: `slotted-script-piccolo`. Built with `wasm-bindgen` through the `xtask`, served by `just serve`. Icons bake lazily in the browser.
+Runtime: `slotted-script-luaur`. Built with `wasm-bindgen` through the `xtask`, served by `just serve`. Icons bake lazily in the browser. The page catches a module abort and restarts it (ADR 0004).
 
 Stretch: a share button that encodes the two scripts into the URL hash.
 
@@ -344,11 +340,11 @@ Each phase ends with something runnable and a short verification list. Estimates
 Throwaway code in `spikes/`, deleted after decisions are recorded as ADRs in `docs/adr/`.
 
 - luaur, piccolo and mlua natively and on wasm32: load a script, call a function, round-trip a table, recover from a runtime error. Measure binary size and call cost.
-- mlua Luau sandbox with interrupt budget in a Bevy system.
+- The Luau sandbox with an interrupt budget in a Bevy system.
 - Glass panel: `BorderRadius` + `BoxShadow` + a `UiMaterial` sampling a blurred scene texture. Measure cost at 1080p.
 - `bsn!` templates for a slot and a slot grid, and whether `ViewportNode` icons are viable for a hovered item.
 - Headless UI: `MinimalPlugins` plus `bevy_ui` layout with a spawned `Window` entity and a non-rendering UI camera; drive `bevy_picking`'s UI backend with a custom pointer and confirm `Pointer<Click>` lands on the right node. This is the foundation of `slotted-test`.
-- Decisions (all taken, see `docs/adr/0001` to `0003`): mlua native + piccolo web with luaur feature-gated; blur is a `blur` feature on `slotted-theme`; `bsn!` is used internally; the real picking backend works headless with three workarounds (fill `Camera::computed.target_info`, register the render asset types, use `PointerId::Mouse` for the primary pointer because `Hovered` is hard-wired to it).
+- Decisions (all taken, see `docs/adr/0001` to `0004`): one runtime, luaur, on every target (ADR 0004 superseded ADR 0001 entirely); blur is a `blur` feature on `slotted-theme`; `bsn!` is used internally; the real picking backend works headless with three workarounds (fill `Camera::computed.target_info`, register the render asset types, use `PointerId::Mouse` for the primary pointer because `Hovered` is hard-wired to it).
 
 ### Phase 1. Model and registry (2 weeks)
 
@@ -364,11 +360,11 @@ Throwaway code in `spikes/`, deleted after decisions are recorded as ADRs in `do
 
 ### Phase 4. Scripting, packs, modded example (4 weeks)
 
-`slotted-script` with the Lua prelude and the event and command enums; `slotted-script-mlua`; `slotted-packs` with `mod.toml`, layered reader and Fluent; `examples/modded` with the `copper_chest` mod and hot reload. Verification: conformance suite passes on mlua; a mod adds an item, recipe and screen without Rust; hot reload keeps inventory state.
+`slotted-script` with the Lua prelude and the event and command enums; `slotted-script-luaur`; `slotted-packs` with `mod.toml`, layered reader and Fluent; `examples/modded` with the `copper_chest` mod and hot reload. Verification: conformance suite passes; a mod adds an item, recipe and screen without Rust; hot reload keeps inventory state.
 
 ### Phase 5. Web playground (3 weeks)
 
-`slotted-script-piccolo` (and the feature-gated luaur adapter); conformance suite passes on all enabled adapters; `xtask wasm`; `examples/web-playground` with editor, reload channel, console; CI builds and publishes the site. Verification: edit `control.lua` in the browser and see the behaviour change without a page reload; a script with an infinite loop is stopped and reported.
+`slotted-script-luaur`; conformance suite passes on all enabled adapters; `xtask wasm`; `examples/web-playground` with editor, reload channel, console; CI builds and publishes the site. Verification: edit `control.lua` in the browser and see the behaviour change without a page reload; a script with an infinite loop is stopped and reported.
 
 ### Phase 6. Machine widgets, injection, HUD (3 weeks)
 
@@ -401,7 +397,7 @@ Two audiences. Our own crates are tested with the usual unit and integration tes
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| piccolo's incomplete stdlib and heavier adapter | prelude has to avoid some string/table functions; web adapter is more code | shared prelude tested by the conformance suite; polyfill the few missing functions in Lua inside the prelude; luaur ready to swap in when its wasm error handling lands |
+| luaur aborts the wasm module on an uncaught Lua error | one bad mod kills the page until it is rebuilt | the adapter reports the error before the trap and the host restarts and restores state; `examples/web-playground` proves the path in headless Chromium (ADR 0004) |
 | Two script adapters drift | mods behave differently on web | single Lua prelude, shared event and command enums, conformance suite in CI on both |
 | Glass blur cost or complexity | v1 theme looks flat | `blur` is a feature; tinted translucent panels without blur are the default and still on-brand |
 | `bevy_ui_widgets` API churn | breakage on upgrade | wrap widget state components behind `slotted-ui` types; only that crate imports them |
@@ -415,7 +411,7 @@ Two audiences. Our own crates are tested with the usual unit and integration tes
 
 1. ~~Confirm the workspace crate names~~ Decided 2026-09-05: the project is **slotted**. Facade crate `bevy_slotted`, member crates `slotted-*` (published as `slotted_*`), Lua namespace `slotted.*`, built-in id namespace `slotted:`. Both `slotted` and `bevy_slotted` were free on crates.io at decision time.
 2. Confirm glass as the first theme.
-3. ~~Confirm the two-adapter scripting approach~~ Decided by the Phase 0 spike: mlua (Luau) native, piccolo on wasm, luaur feature-gated. See ADR 0001.
+3. ~~Confirm the two-adapter scripting approach~~ Decided by the Phase 0 spike: mlua (Luau) native, piccolo on wasm, luaur feature-gated (ADR 0001). Settled in Phase 5 the other way: one adapter, luaur, on every target, with piccolo and mlua both removed (ADR 0004).
 4. Confirm that networking stays a port with a local adapter in v1.
 5. Confirm `slotted-test` as a published, public crate with locators over a semantic tree (which also gives us accessibility), rather than a test-only helper.
 
@@ -442,19 +438,16 @@ harness tests and its mods' `tests/*.lua`.
 
 Known limitations, in the order they would block someone:
 
-- `slotted-script-piccolo` cannot be published while the workspace patches
-  `piccolo` to `vendor/piccolo`. The other twelve crates dry-run green.
+- On `wasm32` a Lua error a mod raises aborts the module and the host has to
+  restart; `pcall` in a script does not contain it (ADR 0004).
 - No font files ship, so both new themes render in Bevy's default face.
 - `LiveIcons` and the viewport draw shapes only; `IconDef::Model` warns.
 - The GPU icon bake is confirmed on a WebGL2 context, but only a software one
   (ANGLE over SwiftShader). Its cost on hardware is unmeasured.
-- `a_slot_click_round_trip_is_cheap` fails intermittently under a full
-  parallel workspace run, in mlua rather than in this code.
 - `cargo deny check advisories` fails on `ttf-parser`, through Bevy's text
   stack, and is left unignored on purpose.
 
-Recommended next steps: take the mlua intermittent upstream with a minimal
-reproduction; add the glTF loader behind `IconDef::Model`; ship or fetch the
+Recommended next steps: add the glTF loader behind `IconDef::Model`; ship or fetch the
 OFL font files so paper and neon are complete; measure the GPU bake on a
 hardware WebGL2 context; and implement `ScreenDef::inherits`.
 `docs/FOLLOWUPS.md` carries the rest.

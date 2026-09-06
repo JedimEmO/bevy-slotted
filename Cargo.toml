@@ -33,16 +33,20 @@ wgpu-types = { version = "29.0.3", default-features = false }
 # Pinned to the version bevy_a11y 0.19 uses; slotted-ui builds AccessKit nodes.
 accesskit = { version = "0.24", default-features = false }
 uuid = { version = "1", features = ["v4"] }
-# Luau through mlua: the native script adapter (ADR 0001). The feature set is
-# the one the Phase 0 spike verified; `serialize` is the serde bridge.
-mlua = { version = "0.11", features = ["luau", "vendored", "serialize", "send"] }
-# piccolo: the pure-Rust web adapter (ADR 0001). No C++ build, errors come back
-# as `Result` and leave the VM usable, which is what wasm needs.
+# luaur: a pure-Rust, line-for-line port of Luau. The one script runtime, on
+# every target (ADR 0004). Nothing else in the workspace is a Lua VM.
 #
-# Patched through `[patch.crates-io]` at the bottom of this file: 0.3.3 panics
-# when a table that has had a key removed is grown, and a panic on wasm is an
-# abort of the whole module. `vendor/piccolo/VENDOR.md` has the details.
-piccolo = "0.3.3"
+# `luaur-rt` rather than the `luaur` umbrella. The umbrella depends on
+# `luaur-analysis`, `luaur-config` and `luaur-require` unconditionally — a
+# static type checker and a module resolver an embedder never calls. `luaur-rt`
+# is the safe embedding API and nothing else, and it is what the umbrella
+# re-exports anyway. It did not change the optimised wasm size (26.47 MiB
+# against 26.46), so linker DCE was already dropping the analyser; it is one
+# fewer thing to compile and one fewer thing in the dependency graph.
+#
+# `send` makes the VM movable between threads, which the
+# `ScriptRuntime: Send + Sync` bound needs.
+luaur-rt = { version = "0.1.8", default-features = false, features = ["serde", "send"] }
 # Own `.ftl` loader for mod localisation (Phase 4 contract section 2.7).
 fluent-bundle = "0.16"
 unic-langid = { version = "0.9", features = ["macros"] }
@@ -80,8 +84,7 @@ slotted-browser = { path = "crates/slotted-browser", version = "0.1.0" }
 # `slotted-test` normally; nothing publishable here does.
 slotted-test = { path = "crates/slotted-test" }
 slotted-script = { path = "crates/slotted-script", version = "0.1.0" }
-slotted-script-mlua = { path = "crates/slotted-script-mlua", version = "0.1.0" }
-slotted-script-piccolo = { path = "crates/slotted-script-piccolo", version = "0.1.0" }
+slotted-script-luaur = { path = "crates/slotted-script-luaur", version = "0.1.0" }
 slotted-packs = { path = "crates/slotted-packs", version = "0.1.0" }
 slotted = { path = "crates/slotted", version = "0.1.0" }
 
@@ -130,9 +133,3 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 unwrap_used = "warn"
 
-# Vendored piccolo, one upstream fix backported. `vendor/piccolo/VENDOR.md`
-# says what changed and how to drop this once piccolo releases past 0.3.3.
-# A path patch keeps `cargo deny`'s `unknown-git = "deny"` satisfied, which a
-# git dependency on piccolo `main` would not: it pulls `gc-arena` from git too.
-[patch.crates-io]
-piccolo = { path = "vendor/piccolo" }

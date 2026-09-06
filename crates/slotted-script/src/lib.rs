@@ -3,8 +3,8 @@
 //! This crate is deliberately small and dependency-light: `serde`,
 //! `thiserror` and `slotted-model`. It defines
 //!
-//! - the [`ScriptRuntime`] port an adapter (`slotted-script-mlua` natively,
-//!   `slotted-script-piccolo` on the web) implements,
+//! - the [`ScriptRuntime`] port an adapter (`slotted-script-luaur`, on every
+//!   target) implements,
 //! - the [`ScriptEvent`]s the host sends and the [`ScriptCommand`]s a script
 //!   answers with, both plain serde enums,
 //! - the untagged serde form of [`slotted_model::Value`] Lua tables map onto

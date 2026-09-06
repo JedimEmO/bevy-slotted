@@ -256,13 +256,30 @@ A script has `table`, `string`, `math`, `pairs`, `ipairs`, `type`, `error`,
 `pcall` and `setmetatable`. It has no `io`, no `os`, no `require` and no
 filesystem. `print` goes to the script console.
 
-Two calls behave differently on the two runtimes, because piccolo's stdlib is
-partial: `string.find` is plain-text only (no patterns) and `table.sort` takes
-no comparator. Write to that subset and your mod behaves identically in a
-browser and on a desktop.
+There is one script runtime, luaur, and it is the same one in a browser and on a
+desktop, so the standard library is the same and your mod behaves identically on
+both.
 
 Every call is budgeted. A script that loops forever is stopped and reported
 rather than hanging the game.
+
+### One difference in a browser
+
+In a browser the game runs as a WebAssembly module, and there a raised Lua error
+ends the module rather than being caught: the host has to build a new one and
+put the game back where it was. Two consequences for a mod:
+
+- `pcall` does not protect you on the web. It works on a desktop and does
+  nothing in a browser, so do not use it to recover from an error you expect;
+  check the value instead. (There is a test for both halves of that: the
+  desktop behaviour is pinned in `slotted-script-luaur`, and the browser
+  behaviour is why its wasm test file has no error cases in it.)
+- An `error(...)` you raise on purpose is a crash a visitor sees, not a line in
+  the console. Use `slotted.warn` for something that went wrong but is
+  survivable, and keep `error` for a bug.
+
+[ADR 0004](../adr/0004-web-runtime-luaur.md) has the reasoning and what a host
+has to do about it.
 
 ## Testing it
 

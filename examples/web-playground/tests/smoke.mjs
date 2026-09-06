@@ -178,6 +178,41 @@ async function main() {
     pageResult = `${ok ? 'PASS' : 'FAIL'}  the page's Run button reloaded the mod and showed its line\n      ${text.slice(-220)}`;
     if (!ok) title = 'smoke: fail';
     await sleep(1500);
+
+    // ---------------------------------------------------------------------
+    // The restart. On wasm a raised Lua error aborts the whole module
+    // (ADR 0004), so the page's answer is to build another one and put the
+    // chest back. This is the only place that whole path can be exercised:
+    // it needs a real trap in a real tab.
+    // ---------------------------------------------------------------------
+    const before = (await evaluate('window.slottedPlayground.snapshot_state()')) ?? '';
+    await evaluate(`(() => {
+      const p = window.slottedPlayground;
+      p.state.modId = 'copper_chest';
+      p.state.file = 'control.lua';
+      p.state.editor.setValue(${JSON.stringify('error("boom")\n')});
+      p.run();
+    })()`);
+
+    let restarts = 0;
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      restarts = (await evaluate('window.slottedPlayground.state.restarts')) ?? 0;
+      if (restarts > 0) break;
+      await sleep(250);
+    }
+    // Let the second module boot and take the restored state back.
+    await sleep(4000);
+    const console_ = (await evaluate("document.getElementById('console').textContent")) ?? '';
+    const said = console_.includes('the mod crashed the Lua runtime; restarting');
+    const after = (await evaluate('window.slottedPlayground.snapshot_state()')) ?? '';
+    const kept = before.length > 0 && after === before;
+    const restarted = restarts > 0 && said && kept;
+    pageResult +=
+      `\n${restarted ? 'PASS' : 'FAIL'}  an error() in control.lua restarted the runtime ` +
+      `with the chest intact\n      restarts=${restarts} reported=${said} chest-kept=${kept}` +
+      `\n      before: ${before.slice(0, 160)}\n      after:  ${after.slice(0, 160)}`;
+    if (!restarted) title = 'smoke: fail';
+    await sleep(1000);
   }
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
   writeFileSync(SHOT, Buffer.from(shot.data, 'base64'));

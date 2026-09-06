@@ -128,17 +128,6 @@ Decisions deferred during phases. Each entry names the phase that should pick it
 
 ## From Phase 4
 
-- **`a_slot_click_round_trip_is_cheap` fails intermittently under a full-workspace test run.** Seen
-  twice on 2026-09-05 during `cargo test --workspace`, never in 30-odd standalone runs of the same
-  binary, never with `--test-threads=1`, and not reproducible under synthetic CPU load. The two
-  failures raised *different* Lua errors from the same 21 000-call loop, which is what a corrupted
-  value looks like rather than a script bug: `test/control.lua:4: attempt to index number with
-  'slot'` and `slotted/prelude:239: attempt to index string with number` inside `append_result`.
-  Each `MluaRuntime` owns its own `Lua`, the counters are per-state `Arc`s and nothing in the
-  adapter is shared, so the suspicion is mlua 0.11 or the vendored Luau across parallel states, and
-  the memory limit's allocator path is the first thing to rule out. The test is deliberately left
-  running rather than `#[ignore]`d, so the next occurrence is visible. **Phase 5**, and worth a
-  minimal reproduction to take upstream.
 - **The browser's own chrome is not localised.** The item names on cards, in the search index and
   in a recipe page title now resolve through `slotted_ui::Localization`, but "Search items",
   "R recipes / U uses / A bookmark", "indexing…" and a category chip's label are English literals
@@ -301,6 +290,45 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   colour over the filled part, or a readout beside the bar the way the tank's now is, would fix
   it. Cosmetic, present since Phase 6. **Phase 8**.
 
-## Intermittent test failure (observed 2026-09-06, still open)
+## From the luaur swap (ADR 0004)
 
-- One full-workspace run in about ten showed a single failing test that passed on every rerun; three saved reruns were clean, so the test name was not captured. The earlier sighting during Phase 4 was `a_slot_click_round_trip_is_cheap` in `slotted-script-mlua`. Next step: run `cargo test --workspace --all-features --no-fail-fast` in CI with `--test-threads` at the default and archive the log on failure; if it is the mlua test again, run it under `--test-threads=1` and try `mlua` without the `send` feature.
+- **There is no second script runtime any more, and luaur is 0.1.8 with one
+  maintainer.** ADR 0004 deleted mlua deliberately, and the mitigation is the
+  32-case conformance suite: it takes a `&mut dyn ScriptRuntime`, not a concrete
+  type, so a replacement has a definition of done on day one. That is what made
+  the piccolo removal a day's work. Worth revisiting only if luaur goes
+  unmaintained or a case it cannot pass turns up; the thing to watch is the
+  upstream repository, not this file.
+- **luaur costs about 3.4 MiB of optimised wasm more than piccolo did.** The
+  playground's module went from 23.05 MiB to 26.46 MiB. It is not the VM core
+  (the Phase 0 spike measured luaur smaller than piccolo standalone) but the
+  Luau lexer, parser and bytecode compiler a real embedding keeps live.
+  Depending on `luaur-rt` instead of the `luaur` umbrella changed nothing, so
+  the analyser was already being dropped. If the bundle ever becomes the binding
+  constraint, the thing to try is precompiling each mod's chunk to bytecode at
+  build time and shipping a VM without the compiler, which luaur's layering
+  (`luaur-compiler` beside `luaur-vm`) would allow.
+- **A trap inside the module's own animation frame is detected by a `window`
+  error listener, not by the call wrapper.** `web/playground.js` guards every
+  call it makes into the module, but Bevy drives its loop from a
+  `requestAnimationFrame` the module registered itself, so the common case
+  surfaces as an uncaught error and is matched by a string test
+  (`/RuntimeError|unreachable|out of bounds|table index/i`). A page that threw an
+  unrelated error whose text matched would restart for nothing. A narrower
+  signal would be the module marking itself dead before it traps, which needs a
+  hook luaur does not currently offer.
+- **The restart rebuilds the whole app, not just the Lua state.** Everything the
+  visitor did outside the chest — the camera, the console history, an open
+  browser panel — is gone. Only the open menu's inventories are carried across.
+  Restoring more would mean serialising more of the world, which is a bigger
+  contract than a playground needs; a game that ships a browser build with
+  untrusted mods will want to decide this for itself.
+- **`install_error_reporter` is a process-wide `OnceLock`.** One host, one
+  reporter, set at start-up and never replaced. That is the right shape for a
+  page and the wrong one for a test that wants to assert on reports, which is
+  why the adapter has exactly one test that installs one.
+- **The reporter fires natively too, for errors that are also returned as
+  `Err`.** A native host that installs one sees each error twice. Gating it on
+  `cfg(target_arch = "wasm32")` inside the adapter would fix that and would also
+  stop a native test from covering the path, so it is documented rather than
+  gated.

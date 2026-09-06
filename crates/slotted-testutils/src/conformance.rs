@@ -1,6 +1,12 @@
 //! The script conformance suite: `conformance/*.lua` cases run against any
-//! [`ScriptRuntime`]. Phase 4 contract section 1.7; ADR 0001 makes this the
-//! gate for swapping adapters.
+//! [`ScriptRuntime`]. Phase 4 contract section 1.7.
+//!
+//! The workspace ships one adapter, `slotted-script-luaur` (ADR 0004), and the
+//! suite still takes a `&mut dyn ScriptRuntime` rather than that type: the
+//! cases are the port's contract, not one implementation's tests. It is what a
+//! game writing its own runtime checks itself against, and it is what would
+//! make a future swap cheap — which is the job it did when piccolo was
+//! replaced.
 //!
 //! A case is a Lua file whose leading `-- ` comment lines carry directives:
 //!

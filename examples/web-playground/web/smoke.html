@@ -16,6 +16,10 @@ canvas{position:absolute;left:-4000px;width:640px;height:360px}
 // `just smoke` (see docs/design/phase5-notes-B.md section 7). It edits a mod's
 // control.lua through the same export the editor uses and asserts the reloaded
 // script's log line comes back out of the console queue.
+//
+// This page talks to the raw exports and has no restart machinery of its own,
+// so the one check that ends the module is deliberately last. `index.html` is
+// the page that survives an abort; `tests/smoke.mjs` drives that half.
 import init, {
   list_mods,
   get_mod_file,
@@ -105,16 +109,6 @@ async function main() {
     broken.slice(-4).join('\n'),
   );
 
-  // A chunk that will not stop. The fuel budget has to end it; if it does not,
-  // this page hangs and the run times out, which is the failure.
-  reload_mod('copper_chest', 'while true do end\n', '');
-  const runaway = await drainFor(6000);
-  check(
-    'an infinite loop in data.lua is stopped and reported',
-    runaway.some((line) => line.startsWith('[error/')),
-    runaway.slice(-4).join('\n'),
-  );
-
   // The mod list and the bundled text are untouched by either failure.
   const afterFailures = JSON.parse(list_mods());
   check(
@@ -155,11 +149,55 @@ async function main() {
   const alive = await drainUntil('reloaded', 8000);
   check('the game still reloads after all of that', alive.found, alive.seen.slice(-4).join('\n'));
 
+  // ---------------------------------------------------------------------
+  // Last, because it ends the module. On wasm a Lua error is a trap
+  // (ADR 0004), so a runaway chunk that exhausts the interrupt budget does
+  // not come back as an error line the way it did under piccolo: it takes
+  // the module with it. This page has no restart machinery — `index.html`
+  // does, and `tests/smoke.mjs` drives that — so the assertion here is
+  // simply that the abort happens and is visible to the page, which is what
+  // a host has to key its restart off.
+  //
+  // Everything is rendered before the trigger, because after it nothing in
+  // this module runs again.
+  // ---------------------------------------------------------------------
+  render('running the abort check…');
+
+  const aborted = await new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    window.addEventListener('error', (event) => {
+      const text = String(event.error ?? event.message);
+      if (/RuntimeError|unreachable|out of bounds|table index/i.test(text)) done(text);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const text = String(event.reason);
+      if (/RuntimeError|unreachable|out of bounds|table index/i.test(text)) done(text);
+    });
+    setTimeout(() => done(null), 15000);
+    reload_mod('copper_chest', 'while true do end\n', '');
+  });
+
+  check(
+    'a runaway chunk aborts the module, visibly, as ADR 0004 says it must',
+    aborted !== null,
+    aborted ? String(aborted).slice(0, 160) : 'no trap reached the page within 15s',
+  );
+
+  render();
+}
+
+/** Puts the results so far on the page and in the title. */
+function render(pending = null) {
   const passed = results.every((r) => r.ok);
-  document.title = passed ? 'smoke: pass' : 'smoke: fail';
+  document.title = pending ? 'smoke: pending' : passed ? 'smoke: pass' : 'smoke: fail';
   document.getElementById('out').textContent =
     results.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}\n      ${r.detail}`).join('\n') +
-    `\n\nRESULT ${passed ? 'PASS' : 'FAIL'}`;
+    (pending ? `\n\n${pending}` : `\n\nRESULT ${passed ? 'PASS' : 'FAIL'}`);
 }
 
 main().catch((error) => {

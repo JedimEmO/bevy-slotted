@@ -1,7 +1,19 @@
 # ADR 0001: Script runtime strategy
 
-Status: accepted (Phases 4 and 5 shipped both adapters)
-Date: 2026-09-05, status confirmed 2026-09-06
+Status: superseded by [ADR 0004](0004-web-runtime-luaur.md)
+Date: 2026-09-05, superseded 2026-09-06
+
+> **None of this decision holds any more.** ADR 0004 made luaur the only script
+> runtime on every target and removed `slotted-script-piccolo`, the vendored
+> piccolo and `slotted-script-mlua` from the tree. The owner weighed the abort
+> described below and accepted it in exchange for one faithful, fast Luau
+> everywhere; the page restarts the module instead. The toolchain warning below
+> is history too: nothing in the workspace compiles C or C++ now, so
+> `.cargo/config.toml` no longer pins `CC`/`CXX`.
+>
+> What survives is the reasoning, and one finding ADR 0004 builds on rather than
+> contradicts: luaur raises Lua errors by panicking, and `wasm32-unknown-unknown`
+> cannot unwind. Everything below is left as it was written.
 Spike: `spikes/script-runtimes/` (README there has commands, versions, raw numbers)
 
 ## Context

@@ -17,10 +17,8 @@
 
 pub mod plugins;
 
-#[cfg(feature = "script-mlua")]
-pub use plugins::MluaHostPlugin;
-#[cfg(feature = "script-piccolo")]
-pub use plugins::PiccoloHostPlugin;
+#[cfg(feature = "script-luaur")]
+pub use plugins::LuaurHostPlugin;
 pub use plugins::{HeadlessBevyPlugins, HeadlessRenderAssets, SlottedPlugins};
 
 pub use slotted_ecs as ecs;
@@ -35,8 +33,8 @@ pub use slotted_icons as icons;
 pub use slotted_packs as packs;
 #[cfg(feature = "packs")]
 pub use slotted_script as script;
-#[cfg(feature = "script-mlua")]
-pub use slotted_script_mlua as script_mlua;
+#[cfg(feature = "script-luaur")]
+pub use slotted_script_luaur as script_luaur;
 #[cfg(feature = "ui")]
 pub use slotted_theme as theme;
 #[cfg(feature = "ui")]

@@ -48,6 +48,19 @@ pub enum Request {
         /// The mod id.
         mod_id: String,
     },
+    /// Put the open menu's inventories back to what a [`Snapshot`] holds.
+    ///
+    /// The page sends this once, right after a restart. On `wasm32` a mod that
+    /// raises aborts the module (ADR 0004), so the page re-instantiates it and
+    /// hands back the last snapshot it took; without this the chest would come
+    /// back with the demo's starting contents and the visitor's arrangement
+    /// would be gone.
+    ///
+    /// [`Snapshot`]: crate::snapshot::Snapshot
+    Restore {
+        /// A [`Snapshot`](crate::snapshot::Snapshot) as RON.
+        state: String,
+    },
 }
 
 /// One line the console shows.
@@ -101,6 +114,12 @@ struct Inner {
     console: VecDeque<Line>,
     /// Lines the page has not collected yet, for `subscribe_console`.
     pending: VecDeque<Line>,
+    /// The last snapshot the world published, as RON, for `snapshot_state`.
+    ///
+    /// The page cannot reach into the `World`, and the exports are free
+    /// functions with no handle on the app, so the world pushes and the page
+    /// pulls. Empty until the first publish.
+    snapshot: String,
 }
 
 /// The shared queue, held by the page side and by the world alike.
@@ -163,6 +182,16 @@ impl Bus {
         }
     }
 
+    /// Publishes the world's current state, replacing whatever was there.
+    pub fn set_snapshot(&self, state: impl Into<String>) {
+        self.lock().snapshot = state.into();
+    }
+
+    /// The last published state, or an empty string before the first publish.
+    pub fn snapshot(&self) -> String {
+        self.lock().snapshot.clone()
+    }
+
     /// Takes the lines written since the last call.
     pub fn drain_console(&self) -> Vec<Line> {
         self.lock().pending.drain(..).collect()
@@ -203,7 +232,7 @@ mod tests {
             .into_iter()
             .map(|r| match r {
                 Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
-                Request::Write { path, .. } => path,
+                Request::Write { path, .. } | Request::Restore { state: path } => path,
                 Request::CanvasConsole(on) => on.to_string(),
             })
             .collect();
@@ -224,11 +253,20 @@ mod tests {
             .into_iter()
             .map(|r| match r {
                 Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
-                Request::Write { path, .. } => path,
+                Request::Write { path, .. } | Request::Restore { state: path } => path,
                 Request::CanvasConsole(on) => on.to_string(),
             })
             .collect();
         assert_eq!(ids, ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn the_snapshot_slot_holds_the_last_publish() {
+        let bus = Bus::new();
+        assert_eq!(bus.snapshot(), "");
+        bus.set_snapshot("(inventories:[])");
+        bus.set_snapshot("(inventories:[(len:9,slots:[])])");
+        assert_eq!(bus.snapshot(), "(inventories:[(len:9,slots:[])])");
     }
 
     #[test]

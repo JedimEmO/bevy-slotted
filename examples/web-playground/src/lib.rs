@@ -9,8 +9,9 @@
 //! The app is `examples/modded` with two things swapped. Mods come from an
 //! [`bundle::EditableSource`] compiled into the binary instead
 //! of from directories, because a browser tab has no filesystem; and the
-//! script runtime is piccolo ([`slotted_script_piccolo`]) rather than Luau,
-//! because Luau is C++ and cannot reach wasm at all (ADR 0001). Everything
+//! script runtime is inserted directly rather than by the facade's plugin, so
+//! the page can hold the handle it needs. It is the same
+//! [`slotted_script_luaur`] runtime a native build gets (ADR 0004). Everything
 //! between those two edges is the shipped code: the same `SlottedPlugins`, the same
 //! `SlottedPacksPlugin`, the same `ModLoader::reload_mod`, and therefore the
 //! same remap-by-name that keeps the chest's contents across a reload.
@@ -21,6 +22,7 @@
 pub mod bundle;
 pub mod bus;
 pub mod scene;
+pub mod snapshot;
 pub mod tests;
 
 #[cfg(target_arch = "wasm32")]
@@ -124,12 +126,16 @@ pub mod canvas_console {
 
 /// The script runtime behind the port.
 ///
-/// piccolo on every target, native runs included: it is the runtime ADR 0001
-/// chose for the browser, and running the same one natively is what makes the
-/// native tests say something about the page. mlua cannot reach wasm at all,
-/// so there is nothing to swap to here.
+/// The same runtime on every target (ADR 0004), so a native run of this crate
+/// exercises what the browser gets and the native tests say something about
+/// the page.
+///
+/// On wasm an uncaught Lua error aborts the module rather than returning
+/// `Err` (ADR 0004). The `bridge` module installs a reporter that puts the
+/// error on the browser console first, and `web/playground.js` re-instantiates
+/// the module and replays the [`snapshot`] it was holding.
 pub fn runtime() -> ScriptHost {
-    ScriptHost::new(slotted_script_piccolo::PiccoloRuntime::new(
+    ScriptHost::new(slotted_script_luaur::LuaurRuntime::new(
         slotted_script::Limits::default(),
     ))
 }
@@ -178,10 +184,182 @@ pub fn build_app(bus: Bus) -> App {
         .insert_resource(bus)
         .add_plugins(scene::ScenePlugin)
         .add_message::<StartTests>()
+        .add_message::<RestoreState>()
         .add_systems(PreUpdate, drain_requests)
+        .add_systems(PreUpdate, apply_restore.after(drain_requests))
         .add_systems(Update, (begin_tests, tests::run_live_tests).chain())
-        .add_systems(PostUpdate, pump_console);
+        .add_systems(PostUpdate, (pump_console, publish_snapshot));
     app
+}
+
+/// `publish_snapshot` under a name an integration test can add as a system.
+pub fn publish_snapshot_for_test(
+    bus: Res<Bus>,
+    registries: Option<Res<slotted::ecs::Registries>>,
+    menus: Query<&slotted::ecs::menu::OpenMenu>,
+    inventories: Query<Ref<slotted::ecs::menu::Inventory>>,
+) {
+    publish_snapshot(bus, registries, menus, inventories);
+}
+
+/// The `Request::Restore` half of `drain_requests`, for a test that has a
+/// world but no loader and no `EditableSource`.
+///
+/// Everything else on the queue is put back, so a caller that also drives the
+/// real `drain_requests` still sees its writes and reloads.
+pub fn drain_requests_into(bus: &Bus, world: &mut World) {
+    let mut left_over = Vec::new();
+    for request in bus.take_requests() {
+        match request {
+            Request::Restore { state } => {
+                if let Some(mut messages) = world.get_resource_mut::<Messages<RestoreState>>() {
+                    messages.write(RestoreState::new(state));
+                }
+            }
+            other => left_over.push(other),
+        }
+    }
+    bus.requeue(left_over);
+}
+
+/// `PostUpdate`: the open menu's inventories onto the bus, where
+/// `snapshot_state` can find them.
+///
+/// Only when one of them changed. Walking three inventories and writing RON is
+/// cheap, but doing it every frame for state nobody asked for still costs more
+/// than reading three change ticks, and a chest that nobody touched publishes
+/// the same bytes it published last frame.
+fn publish_snapshot(
+    bus: Res<Bus>,
+    registries: Option<Res<slotted::ecs::Registries>>,
+    menus: Query<&slotted::ecs::menu::OpenMenu>,
+    inventories: Query<Ref<slotted::ecs::menu::Inventory>>,
+) {
+    let Some(registries) = registries else { return };
+    let Some(menu) = menus.iter().next() else {
+        return;
+    };
+    let held: Vec<Ref<slotted::ecs::menu::Inventory>> = menu
+        .inventories
+        .iter()
+        .filter_map(|entity| inventories.get(*entity).ok())
+        .collect();
+    if held.len() != menu.inventories.len() {
+        return;
+    }
+    // `is_added` too: the very first frame is the one that gives the page
+    // something to hold before the visitor has touched anything.
+    if !held.iter().any(|held| held.is_changed() || held.is_added()) {
+        return;
+    }
+    let snapshot = snapshot::Snapshot::capture(&registries, held.iter().map(|held| &held.0));
+    match snapshot.to_ron() {
+        Ok(text) => bus.set_snapshot(text),
+        Err(error) => warn!("the snapshot did not serialise: {error}"),
+    }
+}
+
+/// The page handed back a snapshot after a restart.
+///
+/// A message rather than work done inside `drain_requests`, because the menu
+/// may not exist yet: `restore_state` is called as soon as the module is up
+/// and `open_chest` runs in `Startup`. An unapplied restore is held and
+/// retried for up to [`RestoreState::TRIES`] frames.
+#[derive(Message, Debug, Clone, PartialEq, Eq)]
+pub struct RestoreState {
+    /// A [`snapshot::Snapshot`] as RON.
+    pub state: String,
+    /// Frames left to wait for a menu to exist.
+    pub tries: u8,
+}
+
+impl RestoreState {
+    /// How many frames a restore waits for the menu to be spawned before it
+    /// gives up and says so. The chest opens in `Startup`, so one frame is
+    /// almost always enough; the rest is for a slow first asset load.
+    pub const TRIES: u8 = 120;
+
+    /// A restore of `state` with a full budget of retries.
+    pub fn new(state: impl Into<String>) -> Self {
+        Self {
+            state: state.into(),
+            tries: Self::TRIES,
+        }
+    }
+}
+
+/// `apply_restore` under a name an integration test can add as a system.
+pub fn apply_restore_for_test(
+    bus: Res<Bus>,
+    pending: MessageReader<RestoreState>,
+    held: Local<Option<RestoreState>>,
+    registries: Option<Res<slotted::ecs::Registries>>,
+    menus: Query<&slotted::ecs::menu::OpenMenu>,
+    inventories: Query<&mut slotted::ecs::menu::Inventory>,
+) {
+    apply_restore(bus, pending, held, registries, menus, inventories);
+}
+
+/// `PreUpdate`, after `drain_requests`: puts a snapshot back into the menu.
+fn apply_restore(
+    bus: Res<Bus>,
+    mut pending: MessageReader<RestoreState>,
+    mut held: Local<Option<RestoreState>>,
+    registries: Option<Res<slotted::ecs::Registries>>,
+    menus: Query<&slotted::ecs::menu::OpenMenu>,
+    mut inventories: Query<&mut slotted::ecs::menu::Inventory>,
+) {
+    // Only the newest matters: two restores in flight mean the page sent one
+    // twice, and the older is by definition the staler picture.
+    if let Some(latest) = pending.read().last().cloned() {
+        *held = Some(latest);
+    }
+    let Some(request) = held.clone() else {
+        return;
+    };
+    let ready = registries.as_ref().zip(menus.iter().next());
+    let Some((registries, menu)) = ready else {
+        if request.tries > 0 {
+            *held = Some(RestoreState {
+                tries: request.tries - 1,
+                ..request
+            });
+        } else {
+            *held = None;
+            bus.log(
+                "warn",
+                "playground",
+                "the restored state had nowhere to go: no menu was ever opened",
+            );
+        }
+        return;
+    };
+    *held = None;
+
+    let snapshot = match snapshot::Snapshot::from_ron(&request.state) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            bus.log(
+                "error",
+                "playground",
+                format!("the restored state was unreadable, keeping the demo's: {error}"),
+            );
+            return;
+        }
+    };
+
+    let mut dropped = 0;
+    for (index, entity) in menu.inventories.iter().enumerate() {
+        if let Ok(mut held) = inventories.get_mut(*entity) {
+            dropped += snapshot.apply_to(index, registries, &mut held.0);
+        }
+    }
+    let note = if dropped == 0 {
+        "restored the chest as it was".to_owned()
+    } else {
+        format!("restored the chest; {dropped} stack(s) no longer exist and were dropped")
+    };
+    bus.log("info", "playground", note);
 }
 
 /// `drain_requests` under a name the integration test can add as a system.
@@ -190,10 +368,11 @@ pub fn drain_requests_for_test(
     source: Res<EditableSource>,
     reload: MessageWriter<ReloadMod>,
     start_tests: MessageWriter<StartTests>,
+    restore: MessageWriter<RestoreState>,
     console: ResMut<scene::ConsoleErrors>,
     visible: ResMut<scene::ConsoleVisible>,
 ) {
-    drain_requests(bus, source, reload, start_tests, console, visible);
+    drain_requests(bus, source, reload, start_tests, restore, console, visible);
 }
 
 /// `begin_tests` under a name the integration test can add as a system.
@@ -249,6 +428,7 @@ fn drain_requests(
     source: Res<EditableSource>,
     mut reload: MessageWriter<ReloadMod>,
     mut start_tests: MessageWriter<StartTests>,
+    mut restore: MessageWriter<RestoreState>,
     mut console: ResMut<scene::ConsoleErrors>,
     mut visible: ResMut<scene::ConsoleVisible>,
 ) {
@@ -258,6 +438,9 @@ fn drain_requests(
             Request::CanvasConsole(on) => visible.0 = on,
             Request::RunTests { mod_id } => {
                 start_tests.write(StartTests { mod_id });
+            }
+            Request::Restore { state } => {
+                restore.write(RestoreState::new(state));
             }
             Request::Write { path, contents } => source.write(&path, &contents),
             Request::Reload { mod_id } => match ModId::new(&mod_id) {

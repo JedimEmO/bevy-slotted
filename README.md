@@ -130,14 +130,15 @@ Every crate is `0.1.0` and unpublished. `slotted` is the one a game depends on.
 | [`slotted-icons`](crates/slotted-icons) | The `IconSource` port, the lit-shape icon bake (CPU and offscreen GPU rig) and live viewport icons. | Phase 7 |
 | [`slotted-browser`](crates/slotted-browser) | Ingredient registry, categories, search index, browser panel, recipe transfer. | Phase 3 |
 | [`slotted-script`](crates/slotted-script) | The `ScriptRuntime` port, the `slotted.*` API surface, event and command types. | Phase 4 |
-| [`slotted-script-mlua`](crates/slotted-script-mlua) | Luau through mlua. Native only. | Phase 4 |
-| [`slotted-script-piccolo`](crates/slotted-script-piccolo) | Pure-Rust Lua. wasm and native, recoverable errors. | Phase 5 |
+| [`slotted-script-luaur`](crates/slotted-script-luaur) | The script runtime: Luau through luaur, a pure-Rust port. Native and wasm. | Phase 4 |
 | [`slotted-packs`](crates/slotted-packs) | Layered `AssetReader` for mods and resource packs, `mod.toml`, Fluent. | Phase 4 |
 | [`slotted-test`](crates/slotted-test) | Public UI test harness: headless app, locators, synthetic input, snapshots. | Phase 6 |
 | [`slotted-testutils`](crates/slotted-testutils) | Internal fakes, builders, the script conformance suite. Never published. | Phase 1 |
 
-`slotted-script-luaur`, a pure-Rust Luau adapter, is planned but not written. It
-waits on luaur's wasm error handling; see [ADR 0001](docs/adr/0001-script-runtime.md).
+There is one script runtime and it is the same one on every target, so a mod
+behaves identically in a browser and on a desktop and there is no C++ in the
+build. On `wasm32` an uncaught Lua error aborts the module and the host restarts
+it, which is the trade [ADR 0004](docs/adr/0004-web-runtime-luaur.md) makes.
 
 ## Examples
 

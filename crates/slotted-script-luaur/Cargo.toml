@@ -1,0 +1,30 @@
+[package]
+name = "slotted-script-luaur"
+description = "ScriptRuntime adapter for slotted: Luau through luaur, a pure-Rust line-for-line port that builds for wasm32 as well as native."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-script-luaur"
+homepage.workspace = true
+keywords = ["bevy", "luau", "luaur", "wasm", "modding"]
+categories = ["game-development", "wasm"]
+
+[dependencies]
+slotted-script = { workspace = true }
+slotted-model = { workspace = true }
+luaur-rt = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+slotted-testutils = { workspace = true, features = ["conformance"] }
+pretty_assertions = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true

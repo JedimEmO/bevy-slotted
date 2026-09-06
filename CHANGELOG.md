@@ -7,6 +7,54 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **There is one script runtime now, `slotted-script-luaur`, on every target**
+  ([ADR 0004](docs/adr/0004-web-runtime-luaur.md)). It wraps `luaur`, a
+  pure-Rust line-for-line port of Luau, and it replaces both adapters the
+  workspace used to carry: piccolo on the web and mlua natively. It passes all
+  32 conformance cases natively and its core cases in headless Chrome, and a
+  `SlotClick` round trip costs 4.6 us against the mlua adapter's 7.2 us.
+- The facade's `script-luaur` feature is **on by default** and `LuaurHostPlugin`
+  is in the default plugin group. There is no per-target feature to set: a wasm
+  build takes the same features a native one does. `slotted::script_luaur`
+  re-exports the adapter.
+- **Nothing in the workspace compiles C or C++ any more.** mlua's vendored Luau
+  was the only such build. `cargo tree -e build --workspace --all-features`
+  lists no build dependencies at all.
+- A mod now behaves identically in a browser and on a desktop, because it is the
+  same VM: `string.find` takes patterns and `table.sort` takes a comparator on
+  both. The guide's "the two runtimes differ" section is gone.
+- **On `wasm32` an uncaught Lua error now aborts the module**, and `pcall` in a
+  script does not contain it. This is the price ADR 0004 pays for a faithful,
+  fast Luau on both targets. `slotted_script_luaur::install_error_reporter`
+  hands the host the error text before the trap, and the host restarts;
+  `examples/web-playground` is the reference implementation.
+- The web playground survives that: `snapshot_state` and `restore_state`
+  exports, and a page that catches a `WebAssembly.RuntimeError`, says "the mod
+  crashed the Lua runtime; restarting" with the last Lua error, re-instantiates
+  the module and puts the chest back stack for stack.
+- The optimised playground module grew from 23.05 MiB to 26.46 MiB. luaur keeps
+  the Luau lexer, parser and bytecode compiler live where piccolo's adapter did
+  not; see `docs/FOLLOWUPS.md`.
+
+### Removed
+
+- **`slotted-script-mlua`**, the facade's `script-mlua` feature, `MluaHostPlugin`
+  and the `mlua` dependency. There is no fallback runtime; the conformance suite
+  is what makes a future one cheap, and it still takes a
+  `&mut dyn ScriptRuntime` rather than a concrete type for exactly that reason.
+- `slotted-script-piccolo`, `vendor/piccolo` and the `[patch.crates-io]` section
+  that pointed at it. With the patch gone nothing depends on a patched crate,
+  and `cargo publish --dry-run` is green for all twelve publishable crates as
+  one invocation, `slotted-script-luaur` among them.
+- The `CC`/`CXX`/`CFLAGS` pin in `.cargo/config.toml`. It existed only for
+  mlua's C++ Luau build, which the developer shell's Anaconda toolchain
+  miscompiled into a binary that died with `SIGFPE` inside `Lua::new()`. The
+  file records what would bring it back.
+- The `getrandom_backend="wasm_js"` rustflag in `.cargo/config.toml`, which
+  existed only for a transitive dependency of piccolo.
+
 ### Fixed
 
 Four things play testing found that the harness had not.
@@ -103,12 +151,10 @@ crates.io yet.
   `ScriptCommand` enums, the untagged `Value` form a Lua table maps onto, and
   the shared Lua prelude both adapters install, so `slotted.*` is the same
   surface everywhere.
-- `slotted-script-mlua`: Luau through mlua, one sandboxed state per script, with
-  interrupt budgets and a memory limit. Native only.
-- `slotted-script-piccolo`: pure-Rust Lua through piccolo, fuel-budgeted, with a
-  stdlib polyfill, a read-only-table sandbox and a manual value bridge. The only
-  runtime that reaches wasm, because it reports a Lua error as a `Result`
-  instead of aborting the module.
+- `slotted-script-luaur`: Luau through luaur, a pure-Rust line-for-line port of
+  Luau. One sandboxed state per script, an interrupt budget, a memory limit and
+  a serde bridge; the same runtime natively and on wasm. On `wasm32` an
+  uncaught Lua error aborts the module; see ADR 0004.
 - `slotted-packs`: mod discovery from `mod.toml`, a layered `AssetSource` and
   `pack://` asset reader over resource packs and mods, the data and control
   lifecycle that runs mod scripts and validates their commands, hot reload that
@@ -130,7 +176,7 @@ crates.io yet.
 - `slotted`: `SlottedPlugins` for a windowed game and `SlottedPlugins::headless()`
   for a server or a test, the plugin group ADR 0002 proved sufficient without a
   renderer, a prelude, and feature flags for `ui`, `browser`, `packs`,
-  `script-mlua`, `script-piccolo`, `blur`, `dev` and `viewport`.
+  `script-luaur`, `blur`, `dev` and `viewport`.
 
 ### Examples
 
@@ -150,7 +196,7 @@ crates.io yet.
   `playground`, `serve`, `smoke`, `test-mods`, and a `run-` and `shot-` recipe
   per example.
 - CI: native tests, clippy and rustfmt on Linux; a `wasm32` check of every crate
-  that has to reach a browser; the piccolo adapter's tests in headless Chrome;
+  that has to reach a browser; the luaur adapter's tests in headless Chrome;
   rustdoc with warnings fatal; and a Pages deploy of the playground, the guide
   and the API docs from `main`.
 
@@ -191,21 +237,24 @@ crates.io yet.
 
 ### Decisions
 
-- [ADR 0001](docs/adr/0001-script-runtime.md): mlua (Luau) natively, piccolo on
-  wasm, luaur kept as the intended endgame.
+- [ADR 0001](docs/adr/0001-script-runtime.md): two adapters, mlua natively and
+  piccolo on wasm. Superseded entirely by ADR 0004.
 - [ADR 0002](docs/adr/0002-headless-ui-testing.md): the harness drives screens
   through Bevy's real picking backend, not a hand-rolled hit test.
 - [ADR 0003](docs/adr/0003-glass-rendering.md): glass and backdrop blur are
   buildable on `bevy_ui` 0.19.1; blur stays an optional feature.
+- [ADR 0004](docs/adr/0004-web-runtime-luaur.md): one script runtime, luaur, on
+  every target; on wasm an uncaught Lua error aborts the module and the host
+  restarts it.
 
 ### Known gaps
 
 - Screen inheritance (`ScreenDef::inherits`) is parsed and not implemented.
 - There is no `ScreenLoader` asset loader, so a game reads a `.screen.ron` file
   with `std::fs` and does not get hot reload for it.
-- `slotted-script-piccolo` cannot be published while the workspace patches
-  `piccolo` to a vendored copy; see `vendor/piccolo/VENDOR.md`.
-- `slotted-script-luaur` is planned and not written.
+- On `wasm32`, a Lua error a mod raises aborts the module rather than coming
+  back as a `ScriptError`, and `pcall` in a script does not contain it. The host
+  restarts; `examples/web-playground` shows how. ADR 0004.
 - `slotted-test`'s `render` feature is declared and does nothing.
 - `IconDef::Model` parses and warns; there is no glTF loader yet.
 - No font files ship. Both new themes name their families in `tokens.fonts`

@@ -38,8 +38,9 @@ let command = ScriptCommand::Log {
 assert_eq!(command.name(), "log");
 ```
 
-Running a script needs an adapter: `slotted-script-mlua` natively,
-`slotted-script-piccolo` in a browser.
+Running a script needs an adapter. `slotted-script-luaur` is the one this
+workspace ships, and it is the same runtime natively and in a browser
+(ADR 0004).
 
 ## Feature flags
 
