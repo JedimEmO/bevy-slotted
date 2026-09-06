@@ -346,6 +346,7 @@ mod tests {
         fast: 100,
         normal: 200,
         slow: 400,
+        hover_delay: 120,
     };
 
     fn app() -> App {
@@ -380,7 +381,7 @@ mod tests {
             reduced: false,
         };
         assert_eq!(
-            half.duration(MotionPreset::FlyToSlot, &D),
+            half.duration(MotionPreset::Stagger, &D),
             Duration::from_millis(200)
         );
     }
@@ -404,9 +405,11 @@ mod tests {
             m.duration(MotionPreset::Fade, &D),
             Duration::from_millis(200)
         );
+        // The flight is a normal-tier motion, not a slow one: it decorates a
+        // model change that has already landed.
         assert_eq!(
             m.duration(MotionPreset::FlyToSlot, &D),
-            Duration::from_millis(400)
+            Duration::from_millis(200)
         );
         assert_eq!(
             m.duration(MotionPreset::Stagger, &D),

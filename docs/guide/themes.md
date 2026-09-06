@@ -23,7 +23,7 @@ any theme, and a theme that forgets a role is caught by
             "mid":  (y: 8.0,  blur: 24.0, spread: 1.0, color: "#0000008C"),
             "high": (y: 14.0, blur: 38.0, spread: 2.0, color: "#0000008C"),
         },
-        durations: (fast: 90, normal: 180, slow: 320),
+        durations: (fast: 90, normal: 180, slow: 320, hover_delay: 120),
         blur: (radius: 4.0, backdrop_divisor: 4),
         palette: {
             "base": "#0B0E14", "panel": "#141A24", "hairline": "#2A3446",
@@ -137,7 +137,7 @@ elevation colours and rarity colours.
 | `spacing` | `xs`, `sm`, `md`, `lg`, `xl` | Logical pixels. `xs` icon to count, `sm` slot gap, `md` panel padding, `lg` between sections, `xl` between panels. A screen's `gap` and `padding` are multiples of `sm`. |
 | `radii` | `sm`, `md`, `lg` | Slots and small buttons, buttons and tooltips, panels. |
 | `elevation` | a map of `(x, y, blur, spread, color)` | Named shadow levels, `low`, `mid` and `high` by convention. `x` defaults to 0; paper's ink shadows are `2px 2px 0`. |
-| `durations` | `fast`, `normal`, `slow` | Milliseconds before motion scaling. Hover and press, fades and squashes, fly-to-slot and stagger. |
+| `durations` | `fast`, `normal`, `slow`, `hover_delay` | Milliseconds. The first three are motion tiers before scaling: hover and press, fades, squashes and fly-to-slot, stagger. `hover_delay` is how long a slot is hovered before its compact tooltip appears; it defaults to 120 and is not scaled by `Motion`. |
 | `fonts` | a map of names to `(family, path, system)` | What a text role's `font` names. With `path` the file is loaded; with `system: true` the family goes to the OS font database; with neither, Bevy's default face is used and the family name documents which file completes the look. |
 | `motion` | `easing` and a map of `MotionPreset` to `(duration, easing)` | Per-preset overrides of the duration tiers and the curve. |
 | `blur` | `radius`, `backdrop_divisor` | Read only with the `blur` feature. |
@@ -147,9 +147,13 @@ elevation colours and rarity colours.
 ## Motion
 
 `Motion` is a resource with a `scale` and a `reduced` flag. `MotionPreset` picks
-a duration token: `Hover` and `Press` take `fast`, `DropSquash` and `Fade` take
-`normal`, `FlyToSlot` and `Stagger` take `slow`. A theme overrides either the
-duration or the curve per preset under `tokens.motion.presets`.
+a duration token: `Hover` and `Press` take `fast`, `DropSquash`, `Fade` and
+`FlyToSlot` take `normal`, and `Stagger` takes `slow`. A theme overrides either
+the duration or the curve per preset under `tokens.motion.presets`.
+
+The flight is a normal-tier motion on purpose. It decorates a model change that
+has already landed, so a long one reads as lag rather than as feedback; all
+three shipped themes pin it between 150 and 180 ms.
 
 Six curves, and the theme picks one per preset:
 

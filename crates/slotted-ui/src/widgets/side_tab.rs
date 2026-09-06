@@ -1,5 +1,19 @@
-//! `side_tab`: a tab in a `tab.rail` panel that grows to show its children.
+//! `side_tab`: a tab in a `tab.rail` panel that opens to show its children.
 //! Phase 6 contract section 1.3.
+//!
+//! # The panel does not move
+//!
+//! The tab's root is a flow child of the rail and it is always exactly one
+//! header wide and one header tall. What opens is a separate node anchored
+//! *outside* that root with `PositionType::Absolute`, so it takes no part in
+//! the rail's layout and the rail's width never changes.
+//!
+//! Phase 6 grew the root itself instead, which widened the rail, which
+//! widened the row the rail shares with the machine panel, which pushed the
+//! panel sideways every time a tab opened. Contract 1.3 deviation 2 called
+//! the tabs "flow children, not edge-absolute overlays"; the content is now
+//! the overlay and the header stays in flow, which keeps the rail a real
+//! column of buttons and leaves the panel where the player left it.
 
 use bevy::input_focus::tab_navigation::TabIndex;
 use bevy::picking::hover::Hovered;
@@ -22,7 +36,13 @@ pub struct SideTabState {
     /// Root width while closed (the header alone).
     pub closed_width: f32,
     /// Root width while open; measured from the content after first layout.
+    ///
+    /// The root itself no longer changes width. This stays the *total* width
+    /// a tab occupies while open, header plus content, which is what the
+    /// harness and the contract talk about.
     pub open_width: f32,
+    /// Height of the open box; measured from the content after first layout.
+    pub open_height: f32,
 }
 
 impl SideTabState {
@@ -47,6 +67,15 @@ pub struct SideTabHeader {
 /// carries `ExclusionZone` while open.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct SideTabContent {
+    /// The tab root.
+    pub tab: Entity,
+}
+
+/// The absolutely positioned box the content opens inside, anchored to the
+/// root's outer edge. This is the node the open/close tween resizes, and it
+/// is the reason opening a tab moves nothing else on screen.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct SideTabPanel {
     /// The tab root.
     pub tab: Entity,
 }
@@ -94,6 +123,9 @@ impl Default for SideTabParams {
 /// 1.3: `4 * SLOT_SIZE` of root width before the first measurement.
 pub const ASSUMED_CONTENT_WIDTH: f32 = 3.0 * SLOT_SIZE;
 
+/// Content height assumed until the content has been laid out once.
+pub const ASSUMED_CONTENT_HEIGHT: f32 = 3.0 * SLOT_SIZE;
+
 /// Height of a tab header, in logical px. A header is a pill the width of a
 /// slot and shorter than one, so a rail of tabs beside a panel reads as a
 /// stack of icon buttons rather than a stack of slots.
@@ -119,25 +151,20 @@ pub fn spawn_side_tab(
         side: params.side,
         closed_width: SLOT_SIZE,
         open_width: SLOT_SIZE + ASSUMED_CONTENT_WIDTH,
+        open_height: ASSUMED_CONTENT_HEIGHT,
     };
     let tokens = ctx.tokens();
     let root = ctx.spawn_node((
         Node {
-            // The tab positions nothing: it is a flex child of a `tab.rail`
-            // column that changes width. `Left` reverses the row so the
-            // content grows away from the rail on that side.
-            flex_direction: match params.side {
-                Side::Right => FlexDirection::Row,
-                Side::Left => FlexDirection::RowReverse,
-            },
-            width: px(state.width()),
-            // The root's height is pinned rather than left to the content:
-            // a closed tab's content still lays out (it is only hidden and
-            // clipped), so an auto height would make every closed tab as
-            // tall as the panel it hides. `measure_side_tabs` keeps it true.
+            // Fixed, in both axes and in both states. The header is the only
+            // flow child; the content hangs off the side absolutely, so
+            // nothing the tab does can change the rail's size. `overflow` is
+            // visible for exactly that reason.
+            width: px(state.closed_width),
             height: px(closed_height()),
+            flex_shrink: 0.0,
             align_items: AlignItems::FlexStart,
-            overflow: Overflow::clip(),
+            overflow: Overflow::visible(),
             border: UiRect::all(px(BORDER_WIDTH)),
             border_radius: BorderRadius::all(px(tokens.radii.md)),
             ..default()
@@ -187,15 +214,28 @@ pub fn spawn_side_tab(
     ));
     ctx.world.entity_mut(header).observe(on_header_activate);
 
+    let panel = ctx
+        .world
+        .spawn((
+            panel_node(params.side, panel_size(&state)),
+            ChildOf(root),
+            SideTabPanel { tab: root },
+            Pickable::IGNORE,
+        ))
+        .id();
+
     let content = ctx.world.spawn((
         Node {
             flex_direction: FlexDirection::Column,
             row_gap: px(tokens.spacing.sm),
             padding: UiRect::all(px(tokens.spacing.sm)),
+            // The content keeps its natural size inside a panel that may be
+            // clipped to nothing, which is what lets `measure_side_tabs`
+            // read a true width off a closed tab.
             flex_shrink: 0.0,
             ..default()
         },
-        ChildOf(root),
+        ChildOf(panel),
         Themed(roles::TAB_SIDE_CONTENT),
         SemanticRole::Panel,
         SideTabContent { tab: root },
@@ -213,6 +253,40 @@ pub fn spawn_side_tab(
     }
     ctx.spawn_children(content, children);
     root
+}
+
+/// The open box's node: absolute, anchored just outside the root on the
+/// tab's side, top-aligned with the header, and clipped to its own size so a
+/// half-open tab shows half its content.
+fn panel_node(side: Side, extent: Vec2) -> Node {
+    let mut node = Node {
+        position_type: PositionType::Absolute,
+        top: px(0.0),
+        width: px(extent.x),
+        height: px(extent.y),
+        flex_direction: FlexDirection::Column,
+        align_items: AlignItems::FlexStart,
+        overflow: Overflow::clip(),
+        ..default()
+    };
+    match side {
+        Side::Right => node.left = Val::Percent(100.0),
+        Side::Left => node.right = Val::Percent(100.0),
+    }
+    node
+}
+
+/// The open box's size for a state: the content's measured size while open,
+/// nothing at all while closed.
+fn panel_size(state: &SideTabState) -> Vec2 {
+    if state.open {
+        Vec2::new(
+            (state.open_width - state.closed_width).max(0.0),
+            state.open_height,
+        )
+    } else {
+        Vec2::ZERO
+    }
 }
 
 /// The root's role in a given state.
@@ -246,23 +320,26 @@ pub fn on_header_activate(
 }
 
 /// Observer: flips `open`, swaps the root role, starts a `TweenTarget::Size`
-/// tween with the `Motion` presets, toggles content visibility and the
-/// content's `ExclusionZone`.
+/// tween on the tab's absolute panel with the `Motion` presets, toggles
+/// content visibility and the content's `ExclusionZone`.
+///
+/// The tween is on the panel, never on the root: the root's size is what the
+/// rail lays out against, and nothing a tab does may change it.
 pub fn on_side_tab_toggle(
     event: On<SideTabToggle>,
-    mut tabs: Query<(&mut SideTabState, &mut Themed, &Node, &ComputedNode)>,
+    mut tabs: Query<(&mut SideTabState, &mut Themed)>,
     mut contents: Query<(Entity, &SideTabContent, &mut Visibility, &ComputedNode)>,
+    panels: Query<(Entity, &SideTabPanel, &Node)>,
     motion: Option<Res<Motion>>,
     tokens: crate::tooltip::ThemeTokens,
     mut commands: Commands,
 ) {
     let tab = event.entity;
-    let Ok((mut state, mut themed, node, computed)) = tabs.get_mut(tab) else {
+    let Ok((mut state, mut themed)) = tabs.get_mut(tab) else {
         tracing::warn!(?tab, "SideTabToggle on something that is not a side tab");
         return;
     };
     let opening = !state.open;
-    let mut content_height = 0.0f32;
     for (entity, content, mut visibility, computed) in &mut contents {
         if content.tab != tab {
             continue;
@@ -270,11 +347,13 @@ pub fn on_side_tab_toggle(
         // The content's laid-out size is only known after the first layout;
         // the spawn-time guess stands until then.
         let scale = computed.inverse_scale_factor();
-        let width = computed.size().x * scale;
+        let (width, height) = (computed.size().x * scale, computed.size().y * scale);
         if width > 0.0 {
             state.open_width = state.closed_width + width;
         }
-        content_height = content_height.max(computed.size().y * scale);
+        if height > 0.0 {
+            state.open_height = height;
+        }
         *visibility = if opening {
             Visibility::Inherited
         } else {
@@ -296,47 +375,47 @@ pub fn on_side_tab_toggle(
         themed.0 = role;
     }
 
-    let from = Vec2::new(
-        match node.width {
-            Val::Px(width) => width,
-            _ => state.closed_width,
-        },
-        match node.height {
-            Val::Px(height) => height,
-            _ => computed.size().y * computed.inverse_scale_factor(),
-        },
-    );
-    // Opening also grows the root down to fit the content; closing takes it
-    // back to the header pill.
-    let to_height = if state.open {
-        closed_height().max(content_height + 2.0 * BORDER_WIDTH)
-    } else {
-        closed_height()
-    };
-    let to = Vec2::new(state.width(), to_height);
+    let to = panel_size(&state);
     let motion = motion.map_or_else(Motion::default, |m| *m);
-    commands.entity(tab).insert(motion.preset_tween(
-        MotionPreset::Fade,
-        TweenTarget::Size { from, to },
-        &tokens.get(),
-    ));
+    for (entity, panel, node) in &panels {
+        if panel.tab != tab {
+            continue;
+        }
+        let from = Vec2::new(px_of(node.width), px_of(node.height));
+        commands.entity(entity).insert(motion.preset_tween(
+            MotionPreset::Fade,
+            TweenTarget::Size { from, to },
+            &tokens.get(),
+        ));
+    }
 }
 
-/// Keeps every side tab's root the size its state asks for, measured from the
-/// content rather than guessed.
+/// The pixels a `Val` names, or zero for anything else. A side tab only ever
+/// writes `Val::Px` on the nodes it owns.
+fn px_of(val: Val) -> f32 {
+    match val {
+        Val::Px(v) => v,
+        _ => 0.0,
+    }
+}
+
+/// Keeps every side tab's open box the size its state asks for, measured from
+/// the content rather than guessed.
 ///
 /// Three things need it. A tab authored `open: true` never runs the toggle
-/// observer, so nothing would ever replace `ASSUMED_CONTENT_WIDTH`. A closed
-/// tab's content still takes part in layout, so the root's height has to be
-/// written rather than inherited. And content that changes size after the
-/// tab opened (an icon button's label, a grid that grew) would otherwise be
-/// clipped forever. Tabs mid-tween are skipped so the tween owns the size.
+/// observer, so nothing would ever replace [`ASSUMED_CONTENT_WIDTH`]. A
+/// closed tab's content still takes part in layout, which is what makes the
+/// measurement available before the tab has ever opened. And content that
+/// changes size after the tab opened (an icon button's label, a grid that
+/// grew) would otherwise be clipped forever. Panels mid-tween are skipped so
+/// the tween owns the size.
 pub fn measure_side_tabs(
     contents: Query<(&SideTabContent, &ComputedNode)>,
-    mut tabs: Query<(&mut SideTabState, &mut Node), Without<slotted_theme::Tween>>,
+    mut tabs: Query<&mut SideTabState>,
+    mut panels: Query<(&SideTabPanel, &mut Node), Without<slotted_theme::Tween>>,
 ) {
     for (content, computed) in &contents {
-        let Ok((mut state, mut node)) = tabs.get_mut(content.tab) else {
+        let Ok(mut state) = tabs.get_mut(content.tab) else {
             continue;
         };
         let scale = computed.inverse_scale_factor();
@@ -347,17 +426,20 @@ pub fn measure_side_tabs(
                 state.open_width = open_width;
             }
         }
-        let want_height = if state.open {
-            closed_height().max(height + 2.0 * BORDER_WIDTH)
-        } else {
-            closed_height()
-        };
-        let want_width = state.width();
-        if node.width != px(want_width) {
-            node.width = px(want_width);
+        if height > 0.0 && (state.open_height - height).abs() > 0.5 {
+            state.open_height = height;
         }
-        if node.height != px(want_height) {
-            node.height = px(want_height);
+        let want = panel_size(&state);
+        for (panel, mut node) in &mut panels {
+            if panel.tab != content.tab {
+                continue;
+            }
+            if node.width != px(want.x) {
+                node.width = px(want.x);
+            }
+            if node.height != px(want.y) {
+                node.height = px(want.y);
+            }
         }
     }
 }
@@ -373,6 +455,7 @@ mod tests {
             side: Side::Right,
             closed_width: SLOT_SIZE,
             open_width: SLOT_SIZE + ASSUMED_CONTENT_WIDTH,
+            open_height: ASSUMED_CONTENT_HEIGHT,
         };
         assert!((state.width() - SLOT_SIZE).abs() < f32::EPSILON);
         let open = SideTabState {
@@ -380,6 +463,37 @@ mod tests {
             ..state
         };
         assert!((open.width() - (SLOT_SIZE + ASSUMED_CONTENT_WIDTH)).abs() < f32::EPSILON);
+    }
+
+    /// The open box carries the content and nothing else: a closed tab's box
+    /// is empty, so opening one cannot change the rail's width.
+    #[test]
+    fn the_open_box_holds_the_content_and_a_closed_one_holds_nothing() {
+        let closed = SideTabState {
+            open: false,
+            side: Side::Right,
+            closed_width: SLOT_SIZE,
+            open_width: SLOT_SIZE + ASSUMED_CONTENT_WIDTH,
+            open_height: 90.0,
+        };
+        assert_eq!(panel_size(&closed), Vec2::ZERO);
+        let open = SideTabState {
+            open: true,
+            ..closed
+        };
+        assert_eq!(panel_size(&open), Vec2::new(ASSUMED_CONTENT_WIDTH, 90.0));
+    }
+
+    /// The box hangs off the outer edge, which is the whole mechanism.
+    #[test]
+    fn the_open_box_is_anchored_outside_the_root() {
+        let right = panel_node(Side::Right, Vec2::new(10.0, 20.0));
+        assert_eq!(right.position_type, PositionType::Absolute);
+        assert_eq!(right.left, Val::Percent(100.0));
+        assert_eq!(right.right, Val::Auto);
+        let left = panel_node(Side::Left, Vec2::new(10.0, 20.0));
+        assert_eq!(left.right, Val::Percent(100.0));
+        assert_eq!(left.left, Val::Auto);
     }
 
     #[test]

@@ -55,10 +55,23 @@ pub struct Elevation {
 pub struct Durations {
     /// Hover, press.
     pub fast: u32,
-    /// Drop squash, fades.
+    /// Drop squash, fades, fly-to-slot.
     pub normal: u32,
-    /// Fly-to-slot, stagger total.
+    /// Stagger total.
     pub slow: u32,
+    /// How long a slot must be hovered before its compact tooltip is
+    /// composed. A token rather than a multiple of [`normal`](Self::normal):
+    /// a tooltip that waits for a whole fade tier reads as lag, and the two
+    /// numbers move for different reasons.
+    #[serde(default = "default_hover_delay")]
+    pub hover_delay: u32,
+}
+
+/// The hover delay a theme gets when it names none: long enough that a
+/// pointer crossing a grid does not trail tooltips, short enough that a
+/// deliberate hover feels answered.
+const fn default_hover_delay() -> u32 {
+    120
 }
 
 /// Where a text role's glyphs come from.
@@ -156,6 +169,7 @@ impl Default for Durations {
             fast: 90,
             normal: 180,
             slow: 320,
+            hover_delay: default_hover_delay(),
         }
     }
 }
@@ -198,20 +212,18 @@ pub struct Tokens {
     pub rarity: BTreeMap<String, ThemeColor>,
 }
 
-/// Hover delay before a tooltip appears, in milliseconds. Not a token in
-/// Phase 2; derived from [`Durations::normal`].
 impl Durations {
     /// How long a slot must be hovered before its tooltip is composed.
     pub const fn hover_delay_ms(&self) -> u32 {
-        self.normal * 2
+        self.hover_delay
     }
 
     /// The tier a preset falls into when the theme gives it no override.
     pub const fn tier_ms(&self, preset: MotionPreset) -> u32 {
         match preset {
             MotionPreset::Hover | MotionPreset::Press => self.fast,
-            MotionPreset::DropSquash | MotionPreset::Fade => self.normal,
-            MotionPreset::FlyToSlot | MotionPreset::Stagger => self.slow,
+            MotionPreset::DropSquash | MotionPreset::Fade | MotionPreset::FlyToSlot => self.normal,
+            MotionPreset::Stagger => self.slow,
         }
     }
 }

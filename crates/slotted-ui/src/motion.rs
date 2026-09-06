@@ -220,9 +220,15 @@ pub fn drop_squash(
 ///
 /// Skipped entirely under [`Motion::reduced`]: a flight that completes on its
 /// first frame is a node that appears and disappears for no reason.
+///
+/// One gesture can land in several slots (a shift-click that tops up three
+/// partial stacks). Every destination gets its own flight and they all start
+/// on the same frame: the source of the gesture stays in [`GestureTarget`]
+/// until [`clear_gesture_target`] drops it at the end of the frame, so a bulk
+/// move never serialises into a queue of animations.
 pub fn fly_to_slot(
     changed: On<SlotChanged>,
-    mut target: ResMut<GestureTarget>,
+    target: Res<GestureTarget>,
     motion: Res<Motion>,
     tokens: ThemeTokens,
     menus: Query<&SlotEntities>,
@@ -251,7 +257,6 @@ pub fn fly_to_slot(
     let (Some(from), Some(to)) = (rect_of(&rects, source), rect_of(&rects, changed.entity)) else {
         return;
     };
-    target.quick_move = None;
 
     let Some(layer) = layers.iter().next() else {
         return;

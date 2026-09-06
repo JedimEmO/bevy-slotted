@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use bevy::picking::events::{Over, Pointer};
 use bevy::picking::hover::Hovered;
+use bevy::picking::pointer::{PointerId, PointerLocation};
 use bevy::prelude::*;
 use bevy::ui::ui_transform::UiGlobalTransform;
 use bevy::window::PrimaryWindow;
@@ -59,6 +60,17 @@ pub struct TooltipContent {
 /// On the spawned tooltip root, pointing back at the hovered entity.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TooltipHost(pub Entity);
+
+/// On a tooltip that has been spawned but whose own size is not laid out yet.
+///
+/// A tooltip is placed from its size, and a node's size is only known after
+/// the frame that spawned it has laid out. Rather than let the first frame
+/// draw at whatever position the node happened to start at -- the top left of
+/// the tooltip layer -- the tooltip stays `Visibility::Hidden` while this is
+/// on it. [`place_tooltips`] takes it off and shows the tooltip on the first
+/// frame it can put it in the right place.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TooltipUnplaced;
 
 /// When the pointer entered a node, in `Time<Virtual>` elapsed. Inserted by
 /// the `Pointer<Over>` observer, removed when the pointer leaves.
@@ -252,7 +264,13 @@ pub fn tooltip_delay(
             }
             continue;
         }
-        let Some(start) = start else { continue };
+        let Some(start) = start else {
+            // Hovered with no `HoverStart`: the pointer was already inside
+            // the node when it appeared, so no `Pointer<Over>` was ever sent
+            // for it. Start the clock now rather than never.
+            commands.entity(entity).insert(HoverStart(time.elapsed()));
+            continue;
+        };
         if time.elapsed().saturating_sub(start.0) < delay {
             continue;
         }
@@ -418,38 +436,112 @@ pub fn show_tooltip(request: On<TooltipRequest>, mut commands: Commands) {
             parent: layer,
         };
         let tooltip = crate::widgets::spawn_tooltip(&mut ctx, &composed);
-        world.entity_mut(tooltip).insert(TooltipHost(entity));
+        // Place it on the frame it is born, from the host rect that layout
+        // already knows, and keep it hidden until `place_tooltips` has
+        // clamped it against its own measured size. A tooltip is never drawn
+        // at the layer's origin and never seen moving into position.
+        let anchor = spawn_anchor(world, entity);
+        let mut tooltip_entity = world.entity_mut(tooltip);
+        tooltip_entity.insert((TooltipHost(entity), TooltipUnplaced, Visibility::Hidden));
+        if let Some(anchor) = anchor
+            && let Some(mut node) = tooltip_entity.get_mut::<Node>()
+        {
+            node.left = Val::Px(anchor.x);
+            node.top = Val::Px(anchor.y);
+        }
     });
 }
 
-/// `SlottedUiSet::Layout`: parks each tooltip beside its host and clamps it
-/// to the window.
+/// Where a tooltip sits: just outside the host's right edge, level with its
+/// top, clamped so the whole box stays inside the window.
+///
+/// Shared by the spawn-time placement in [`show_tooltip`] and the per-frame
+/// [`place_tooltips`], so the position a tooltip is born at and the position
+/// it settles at are computed the same way and it never jumps between them.
+fn tooltip_position(host: Rect, size: Vec2, window: Vec2) -> Vec2 {
+    let mut pos = Vec2::new(host.max.x + TOOLTIP_GAP, host.min.y);
+    pos.x = pos.x.min((window.x - size.x).max(0.0));
+    pos.y = pos.y.min((window.y - size.y).max(0.0));
+    pos.max(Vec2::ZERO)
+}
+
+/// Gap between a host node and its tooltip, in logical px.
+const TOOLTIP_GAP: f32 = 8.0;
+
+/// The host's rect in logical px, or a slot-sized box around the pointer when
+/// the host has not been laid out.
+fn host_rect(
+    hosts: &Query<(&ComputedNode, &UiGlobalTransform)>,
+    pointers: &Query<(&PointerId, &PointerLocation)>,
+    host: Entity,
+) -> Option<Rect> {
+    if let Ok((node, tf)) = hosts.get(host) {
+        let scale = node.inverse_scale_factor();
+        let size = node.size() * scale;
+        if size.x > 0.0 && size.y > 0.0 {
+            return Some(Rect::from_center_size(tf.translation * scale, size));
+        }
+    }
+    // No layout for the host yet. The pointer is the next best anchor, and it
+    // is where the player is looking.
+    let p = pointers
+        .iter()
+        .find(|(id, _)| matches!(id, PointerId::Mouse))
+        .and_then(|(_, l)| l.location().map(|l| l.position))?;
+    Some(Rect::from_center_size(
+        p,
+        Vec2::splat(crate::widgets::SLOT_SIZE),
+    ))
+}
+
+/// `PostUpdate`, before `UiSystems::Layout`: parks each tooltip beside its
+/// host, clamps it to the window, and reveals it once it is in place.
+///
+/// This runs *before* the layout pass rather than after it. Writing `Node`
+/// after `UiSystems::Layout` leaves the change for the next frame's
+/// `UiGlobalTransform`, which is what made a tooltip flash at the corner of
+/// the screen and then snap across. Reading the previous frame's
+/// `ComputedNode` size and writing the position before layout means the
+/// frame a tooltip first becomes visible is already the frame it is in the
+/// right place.
 pub fn place_tooltips(
     windows: Query<&Window, With<PrimaryWindow>>,
-    mut tooltips: Query<(&TooltipHost, &ComputedNode, &mut Node), With<SemanticRole>>,
+    pointers: Query<(&PointerId, &PointerLocation)>,
+    mut tooltips: Query<
+        (
+            Entity,
+            &TooltipHost,
+            &ComputedNode,
+            &mut Node,
+            &mut Visibility,
+            Has<TooltipUnplaced>,
+        ),
+        With<SemanticRole>,
+    >,
     hosts: Query<(&ComputedNode, &UiGlobalTransform)>,
+    mut commands: Commands,
 ) {
     let Ok(window) = windows.single() else {
         return;
     };
     let window_size = Vec2::new(window.width(), window.height());
-    for (host, tooltip_node, mut node) in &mut tooltips {
-        let Ok((host_node, host_tf)) = hosts.get(host.0) else {
+    for (entity, host, tooltip_node, mut node, mut visibility, unplaced) in &mut tooltips {
+        let Some(host_rect) = host_rect(&hosts, &pointers, host.0) else {
             continue;
         };
-        let scale = host_node.inverse_scale_factor();
-        let host_rect =
-            Rect::from_center_size(host_tf.translation * scale, host_node.size() * scale);
         let size = tooltip_node.size() * tooltip_node.inverse_scale_factor();
-        let mut pos = Vec2::new(host_rect.max.x + 8.0, host_rect.min.y);
-        pos.x = pos.x.min((window_size.x - size.x).max(0.0));
-        pos.y = pos.y.min((window_size.y - size.y).max(0.0));
-        pos = pos.max(Vec2::ZERO);
+        let pos = tooltip_position(host_rect, size, window_size);
         if node.left != Val::Px(pos.x) {
             node.left = Val::Px(pos.x);
         }
         if node.top != Val::Px(pos.y) {
             node.top = Val::Px(pos.y);
+        }
+        // A zero size means the tooltip has not been laid out yet, so the
+        // clamp above is a guess. Wait one more frame before showing it.
+        if unplaced && size.x > 0.0 && size.y > 0.0 {
+            commands.entity(entity).remove::<TooltipUnplaced>();
+            *visibility = Visibility::Inherited;
         }
     }
 }
@@ -458,6 +550,29 @@ pub fn place_tooltips(
 /// big enough to read the shape, small enough that the tooltip stays a
 /// tooltip.
 pub const LIVE_PREVIEW_SIZE: f32 = 72.0;
+
+/// The position a tooltip for `host` starts at, before its own size is known:
+/// beside the host, clamped to the window as if the tooltip were empty.
+fn spawn_anchor(world: &mut World, host: Entity) -> Option<Vec2> {
+    let (node, tf) = world
+        .get::<ComputedNode>(host)
+        .zip(world.get::<UiGlobalTransform>(host))?;
+    let scale = node.inverse_scale_factor();
+    let size = node.size() * scale;
+    if size.x <= 0.0 || size.y <= 0.0 {
+        return None;
+    }
+    let rect = Rect::from_center_size(tf.translation * scale, size);
+    let window = world
+        .query_filtered::<&Window, With<PrimaryWindow>>()
+        .single(world)
+        .ok()
+        .map_or(Vec2::ZERO, |w| Vec2::new(w.width(), w.height()));
+    if window.x <= 0.0 {
+        return Some(Vec2::new(rect.max.x + TOOLTIP_GAP, rect.min.y));
+    }
+    Some(tooltip_position(rect, Vec2::ZERO, window))
+}
 
 /// The item a live [`Icons`](slotted_icons::Icons) source would rather show
 /// in a viewport than as a flat cell, if the hovered stack is one.

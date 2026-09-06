@@ -102,24 +102,35 @@ impl ClickInterpreter {
     }
 
     /// The full mapping, including the double-click window. `now` is
-    /// `Time<Virtual>::elapsed()`; `entity` is the clicked slot entity.
+    /// `Time<Virtual>::elapsed()`; `entity` is the clicked slot entity;
+    /// `carrying` is whether the menu holds a stack on the cursor.
     ///
     /// A second left click on the same slot entity within
     /// [`double_click_window`](Self::double_click_window) becomes
     /// `PickupAll`, exactly once: the stored click is consumed.
+    ///
+    /// `carrying` is the vanilla gate, and it is what stops the window from
+    /// eating ordinary clicks. Collect-all is a gesture of the cursor: it
+    /// gathers matching stacks onto what is *already* held. Without the gate
+    /// a player who puts a stack down and immediately picks it back up gets
+    /// a `PickupAll` with an empty cursor, which the model rejects as
+    /// `NothingToDo`, so the second click does nothing at all. That is the
+    /// "picking up items sometimes doesn't work" report.
     pub fn interpret_with_time(
         &mut self,
         entity: Entity,
         slot: SlotIx,
         click: &SlotClicked,
         now: std::time::Duration,
+        carrying: bool,
     ) -> ClickAction {
         use slotted_model::Button;
         let plain_left = click.button == Button::Left && !click.modifiers.shift;
         if plain_left {
-            let doubled = self.last_click.is_some_and(|(e, s, t)| {
-                e == entity && s == slot && now.saturating_sub(t) < self.double_click_window
-            });
+            let doubled = carrying
+                && self.last_click.is_some_and(|(e, s, t)| {
+                    e == entity && s == slot && now.saturating_sub(t) < self.double_click_window
+                });
             if doubled {
                 self.last_click = None;
                 return ClickAction::PickupAll {
@@ -175,6 +186,7 @@ impl ClickInterpreter {
 pub fn interpret_slot_click(
     click: On<SlotClicked>,
     slots: Query<&SlotRef>,
+    carried: Query<&crate::menu::Carried>,
     time: Res<Time<Virtual>>,
     mut interpreter: ResMut<ClickInterpreter>,
     mut commands: Commands,
@@ -187,8 +199,16 @@ pub fn interpret_slot_click(
         );
         return;
     };
-    let action =
-        interpreter.interpret_with_time(event.entity, slot_ref.slot, event, time.elapsed());
+    let carrying = carried
+        .get(slot_ref.menu)
+        .is_ok_and(|carried| carried.0.is_some());
+    let action = interpreter.interpret_with_time(
+        event.entity,
+        slot_ref.slot,
+        event,
+        time.elapsed(),
+        carrying,
+    );
     commands.trigger(MenuAction {
         entity: slot_ref.menu,
         action,

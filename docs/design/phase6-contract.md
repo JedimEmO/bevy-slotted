@@ -89,7 +89,8 @@ tag `side_tab=header`, `SemanticLabel(label or icon path)`, icon child, `Activat
 `Themed(tab.side.content)`, `Visibility::Hidden` while closed, the def's children inside).
 
 `on_side_tab_toggle`: flips `open`, swaps the root role, inserts `Tween { target: TweenTarget::Size {
-from, to } }` on the root (new variant, `advance_tweens` writes `Node` size; done), sets content
+from, to } }` on the tab's `SideTabPanel` (never on the root, whose size the rail lays out against;
+`advance_tweens` writes `Node` size), sets content
 visibility, inserts `ExclusionZone` on the **content** while open and removes it when closed.
 `open_width = SLOT_SIZE + content width` measured from the content's `ComputedNode` after first
 layout (`4 * SLOT_SIZE` before). `Enter`/`Space` on the focused header work through `bevy_ui_widgets`;
@@ -327,7 +328,10 @@ a side tab opens on click and publishes an exclusion zone the browser respects;
 - Tanks tint a tiled `ImageNode` or a solid fill; no `UiMaterial` in `slotted-ui`. `Material::Shader`
   stays unimplemented until Phase 7.
 - Side tabs are flow children in a `tab.rail` panel, not edge-absolute overlays; the exclusion zone,
-  not geometry, keeps the browser clear.
+  not geometry, keeps the browser clear. **Amended after play testing**: the tab *root* is a flow
+  child and is always one header wide and one header tall, but the content opens into a sibling node
+  with `PositionType::Absolute` anchored outside that root. Growing the root itself widened the rail
+  and pushed the machine panel sideways every time a tab opened.
 - `icon_button` is its own widget without `bevy_ui_widgets::Button`, so the state change precedes
   `Activate` deterministically.
 - The virtual grid respawns cells; the browser card grid keeps its pool this phase.

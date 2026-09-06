@@ -7,7 +7,43 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+Four things play testing found that the harness had not.
+
+- The quick-move flight came off the `slow` duration tier, so a shift-click
+  animated for 320 ms over a model change that had already landed. `FlyToSlot`
+  is a normal-tier motion now and every shipped theme pins it between 150 and
+  180 ms. One gesture that lands in several slots flies to all of them on the
+  same frame instead of only the first.
+- The tooltip hover delay was twice the `normal` tier (360 ms in glass). It is
+  its own token, `durations.hover_delay`, defaulting to 120 ms.
+- A tooltip was spawned at the origin of the tooltip layer and moved into place
+  a frame later, which read as a flash at the corner of the screen. It is now
+  placed on the frame it is born, stays hidden until it has been clamped
+  against its own measured size, and `place_tooltips` runs before the layout
+  pass so the position it writes lands in the same frame.
+- `bevy_picking` sends `Pointer<DragStart>` on the first pixel of movement, so
+  a click with a shaky hand became a drag paint and picked nothing up. A drag
+  now only becomes a paint once the pointer reaches a second slot; a gesture
+  that ends where it started is the click it always was.
+- The double-click window turned any second click on a slot into `PickupAll`,
+  even with an empty cursor, where the model rejects it and the click does
+  nothing. Collect-all is gated on the cursor already holding a stack, which is
+  the vanilla rule.
+- Opening a side tab widened the `tab.rail` column and pushed the machine panel
+  sideways. The tab root is a fixed-size flow child now and the content opens
+  into an absolutely positioned sibling anchored outside it, so nothing else on
+  screen moves. The exclusion zone still publishes and the browser still
+  re-docks around it.
+
+### Changed
+
+- `Durations` gains a `hover_delay` field (defaulted on deserialise, so
+  existing theme files keep loading).
+- `ClickInterpreter::interpret_with_time` takes a `carrying: bool`.
+- `SideTabState` gains `open_height`; the tab's open box is a new
+  `SideTabPanel` node.
 
 ## [0.1.0] - unreleased
 

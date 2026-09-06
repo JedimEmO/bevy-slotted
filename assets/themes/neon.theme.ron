@@ -23,7 +23,7 @@
             "mid":  (x: 0.0, y: 8.0,  blur: 20.0, spread: 0.0, color: "#000000A6"),
             "high": (x: 0.0, y: 14.0, blur: 34.0, spread: 2.0, color: "#000000B3"),
         },
-        durations: (fast: 90, normal: 140, slow: 240),
+        durations: (fast: 90, normal: 140, slow: 240, hover_delay: 100),
         motion: (
             easing: Snap,
             presets: {
@@ -31,6 +31,7 @@
                 // and settles.
                 DropSquash: (duration: 140, easing: Overshoot),
                 Stagger: (duration: 140, easing: Snap),
+                FlyToSlot: (duration: 150, easing: Snap),
                 Fade: (duration: 110, easing: Standard),
             },
         ),

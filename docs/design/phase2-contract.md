@@ -72,7 +72,10 @@ observer of it can never see press, move and release; `ui` triggers it on `Point
 `ClickAction::Drag` stages, and whoever owns the pointer stream triggers `MenuAction` with them
 directly. In Phase 2 that is `slotted-ui`'s `on_slot_drag_start` / `drag_enter` / `drag_end`, with a
 `DragPaint` resource suppressing the `Release` picking sends after a drag so a paint never also
-reads as a click. Number keys are the same story: `ClickInterpreter::swap(slot, hotbar)` builds the
+reads as a click. **Amended after play testing**: `bevy_picking` has no drag threshold, so
+`Pointer<DragStart>` only *arms* a paint in `DragPaint::pending`. The paint begins when the pointer
+reaches a *second* slot, and the origin is painted then; a gesture that never leaves its slot stays
+a click, however far the hand drifted. Number keys are the same story: `ClickInterpreter::swap(slot, hotbar)` builds the
 action and the crate that has the hover information triggers it. This is the reconciliation of
 `docs/design/phase2-notes-A.md` item 7 and `-B.md` item 8, which agreed.
 
@@ -245,7 +248,11 @@ descendants only, not merged).
 
 Tooltips (**amended in integration**). The `Pointer<Over>` observer on a slot does not request a
 tooltip; it inserts `HoverStart(Time<Virtual>::elapsed)`, and `tooltip_delay` (`Render`) triggers
-the request once `durations.hover_delay_ms` has passed. `tooltip_delay` raises the request exactly
+the request once `durations.hover_delay_ms` has passed (a token in its own right since play
+testing, 120 ms by default, rather than twice the `normal` tier). A spawned tooltip is
+`Visibility::Hidden` and carries `TooltipUnplaced` until `place_tooltips` has clamped it against
+its own measured size, and `place_tooltips` runs *before* `UiSystems::Layout` so the position it
+writes lands in the same frame it becomes visible. `tooltip_delay` raises the request exactly
 twice: once when a hovered slot past the delay has no `TooltipContent`, and again on the frame a
 shift key is pressed or released while one is shown. It must not re-assert the shift-derived tier
 every frame, because that would undo a `TooltipRequest` raised by anything else (a widget, a

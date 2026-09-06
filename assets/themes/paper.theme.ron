@@ -23,7 +23,7 @@
             "mid":  (x: 0.0, y: 6.0, blur: 14.0, spread: 0.0, color: "#1E1B1840"),
             "high": (x: 0.0, y: 8.0, blur: 22.0, spread: 1.0, color: "#1E1B184D"),
         },
-        durations: (fast: 120, normal: 160, slow: 200),
+        durations: (fast: 120, normal: 160, slow: 200, hover_delay: 140),
         motion: (
             easing: Standard,
             presets: {
@@ -31,6 +31,9 @@
                 DropSquash: (duration: 140, easing: Stamp),
                 Fade: (duration: 120, easing: EaseInOut),
                 Stagger: (duration: 160, easing: Standard),
+                // Paper allows no springs, so the flight keeps the
+                // direction's ease-out and only loses the extra length.
+                FlyToSlot: (duration: 180, easing: Standard),
             },
         ),
         fonts: {

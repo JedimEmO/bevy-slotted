@@ -417,15 +417,21 @@ fn a_side_tab_opens_on_a_click_and_closes_on_the_next() {
     let header = h.find(&by::tag("side_tab", "header"));
     assert_eq!(h.side_tab_open(tab), Some(false));
 
+    let closed_root_width = h.world().get::<Node>(tab).expect("node").width;
+
     h.click(header);
     h.settle();
     assert_eq!(h.side_tab_open(tab), Some(true), "a click opens it");
     let state = h.world().get::<SideTabState>(tab).copied().expect("state");
-    let width = h.world().get::<Node>(tab).expect("node").width;
     assert_eq!(
-        width,
-        px(state.open_width),
-        "the tween settled at the open width"
+        h.world().get::<Node>(tab).expect("node").width,
+        closed_root_width,
+        "the root keeps its width; only the absolute box grows"
+    );
+    let box_width = panel_width(&mut h, tab);
+    assert!(
+        (box_width - (state.open_width - state.closed_width)).abs() < 0.5,
+        "the tween settled at the content width: {box_width} vs {state:?}"
     );
 
     h.click(header);
@@ -457,6 +463,21 @@ fn an_open_side_tab_publishes_an_exclusion_zone() {
         content_excluded(&mut h, tab).is_none(),
         "closed again: no zone"
     );
+}
+
+/// Width of the absolute box a tab opens into.
+fn panel_width(h: &mut UiHarness, tab: Entity) -> f32 {
+    let world = h.world_mut();
+    let mut query = world.query::<(&slotted_ui::SideTabPanel, &Node)>();
+    for (panel, node) in query.iter(world) {
+        if panel.tab == tab {
+            return match node.width {
+                bevy::prelude::Val::Px(w) => w,
+                _ => 0.0,
+            };
+        }
+    }
+    panic!("no side tab panel for {tab:?}");
 }
 
 fn content_excluded(h: &mut UiHarness, tab: Entity) -> Option<Entity> {

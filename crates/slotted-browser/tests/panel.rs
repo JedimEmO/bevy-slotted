@@ -129,6 +129,101 @@ fn an_exclusion_zone_pushes_the_dock_to_the_other_side() {
     assert_eq!(h.browser().dock_side(), Some(Side::Left));
 }
 
+/// A side tab opening beside a machine panel must not move the panel, and
+/// the browser has to re-dock around the strip the open tab now occupies.
+/// Both halves of the "side tabs shift the main UI layout" report.
+#[test]
+fn an_opening_side_tab_leaves_the_panel_alone_and_the_browser_docks_around_it() {
+    let mut h = harness();
+    h.world_mut()
+        .resource_mut::<Screens>()
+        .register(tabbed_chest());
+    h.world_mut()
+        .resource_mut::<ScreenHandlers>()
+        .register(ScreenKind::new(TABBED), Arc::new(DefaultScreenHandler));
+    let opened = h.open_screen(ScreenKind::new(TABBED), ChestFixture::filled());
+    h.browser().wait_for_index();
+    h.settle();
+
+    let panel = h.find(&by::test_id("panel"));
+    let panel_before = h.rect_of(panel);
+    let dock_before = h.browser().layout(opened.screen).expect("docked");
+
+    let tab = h.find(&by::test_id("tab"));
+    h.toggle_side_tab(tab);
+    h.settle();
+
+    assert_eq!(
+        h.rect_of(panel),
+        panel_before,
+        "opening a tab moved the panel it sits beside"
+    );
+
+    let zones = h.exclusion_zones(opened.screen);
+    let dock_after = h.browser().layout(opened.screen).expect("still docked");
+    for zone in &zones {
+        assert!(
+            dock_after.rect.intersect(*zone).is_empty(),
+            "the browser overlaps the open tab: {:?} against {zone:?}",
+            dock_after.rect
+        );
+    }
+    assert_ne!(
+        dock_after.rect, dock_before.rect,
+        "the browser did not move out of the tab's way"
+    );
+}
+
+const TABBED: &str = "demo:tabbed";
+
+/// The machine shape: a panel and a tab rail side by side.
+fn tabbed_chest() -> ScreenDef {
+    ScreenDef {
+        kind: ScreenKind::new(TABBED),
+        inherits: None,
+        root: UiNodeDef::Panel {
+            role: slotted_theme::roles::PANEL,
+            layout: Layout {
+                direction: slotted_ui::def::LayoutDirection::Row,
+                ..Layout::default()
+            },
+            children: vec![
+                UiNodeDef::Panel {
+                    role: slotted_theme::roles::PANEL,
+                    layout: Layout::default(),
+                    children: vec![UiNodeDef::SlotGrid {
+                        inventory: MenuDef::CONTAINER,
+                        cols: 9,
+                        rows: 3,
+                        first: 0,
+                        tags: slotted_ui::Tags::default(),
+                    }],
+                    tags: slotted_ui::Tags::new().with("test_id", "panel"),
+                },
+                UiNodeDef::Panel {
+                    role: slotted_theme::roles::TAB_RAIL,
+                    layout: Layout::default(),
+                    children: vec![UiNodeDef::SideTab {
+                        icon: slotted_ui::IconDef::Image("icons/tab.png".to_owned()),
+                        side: Side::Right,
+                        label: Some(slotted_ui::LocKey("tab".to_owned())),
+                        open: false,
+                        children: vec![UiNodeDef::Text {
+                            key: slotted_ui::LocKey("a body wide enough to notice".to_owned()),
+                            style: slotted_ui::TextRole::Body,
+                            tags: slotted_ui::Tags::default(),
+                        }],
+                        tags: slotted_ui::Tags::new().with("test_id", "tab"),
+                    }],
+                    tags: slotted_ui::Tags::new().with("test_id", "rail"),
+                },
+            ],
+            tags: slotted_ui::Tags::default(),
+        },
+        listring: vec![],
+    }
+}
+
 #[test]
 fn a_screen_that_fills_the_window_hides_the_panel() {
     let mut h = harness();

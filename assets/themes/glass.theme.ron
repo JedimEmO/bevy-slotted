@@ -15,7 +15,17 @@
             "mid":  (y: 8.0,  blur: 24.0, spread: 1.0, color: "#0000008C"),
             "high": (y: 14.0, blur: 38.0, spread: 2.0, color: "#0000008C"),
         },
-        durations: (fast: 90, normal: 180, slow: 320),
+        durations: (fast: 90, normal: 180, slow: 320, hover_delay: 120),
+        motion: (
+            easing: Standard,
+            presets: {
+                // The quick-move flight is decoration over a model change
+                // that already happened: it reads as lag the moment it
+                // outlasts the gesture. Emphasised ease-out, most of the
+                // travel in the first third.
+                FlyToSlot: (duration: 180, easing: Snap),
+            },
+        ),
         blur: (radius: 4.0, backdrop_divisor: 4),
         palette: {
             "base":     "#0B0E14",

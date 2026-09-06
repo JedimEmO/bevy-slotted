@@ -674,7 +674,11 @@ fn a_second_click_inside_the_double_click_window_gathers_the_kind() {
         container.set(2, stack(items.stone, 20));
     }
 
+    // A frame between the two clicks, as a real double click has: collect-all
+    // is gated on the cursor already holding something, and the first click
+    // is what puts it there.
     fixture.click(0, Button::Left, Modifiers::NONE);
+    fixture.app.update();
     fixture.click(0, Button::Left, Modifiers::NONE);
     fixture.app.update();
 

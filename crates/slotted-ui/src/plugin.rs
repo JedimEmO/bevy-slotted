@@ -207,10 +207,12 @@ impl Plugin for SlottedUiPlugin {
                 sync_accessibility.in_set(SlottedUiSet::Semantics),
             ),
         )
-        .add_systems(
-            PostUpdate,
-            (emit_screen_layout, place_tooltips).in_set(SlottedUiSet::Layout),
-        );
+        .add_systems(PostUpdate, emit_screen_layout.in_set(SlottedUiSet::Layout))
+        // Placement writes `Node`, so it has to run *before* the layout pass
+        // that turns `Node` into a `UiGlobalTransform`. Running it after,
+        // with the rest of `SlottedUiSet::Layout`, left every move one frame
+        // late: that is the tooltip that appeared at the corner and snapped.
+        .add_systems(PostUpdate, place_tooltips.before(UiSystems::Layout));
     }
 }
 

@@ -42,7 +42,7 @@ pub use hud::{
     HudLayerPayload, HudLayerRoot, HudLayers, HudLayout, HudMenu, HudPlacement, HudUpdate,
     HudValue, NineAnchor,
 };
-pub use input::{DragPaint, on_slot_press, on_slot_release};
+pub use input::{DragPaint, PendingDrag, on_slot_press, on_slot_release};
 pub use item::{
     DurabilityBar, DurabilityFill, ItemCount, ItemIcon, ItemView, RarityRing, render_items,
 };
@@ -69,11 +69,13 @@ pub use semantic::{
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,
-    TooltipTier, clear_tooltip, despawn_orphan_tooltips,
+    TooltipTier, TooltipUnplaced, clear_tooltip, despawn_orphan_tooltips,
 };
 pub use widgets::bar::{BarState, BarStyle, BarText};
 pub use widgets::icon_button::{IconButtonCycle, IconButtonState};
-pub use widgets::side_tab::{SideTabContent, SideTabHeader, SideTabState, SideTabToggle};
+pub use widgets::side_tab::{
+    SideTabContent, SideTabHeader, SideTabPanel, SideTabState, SideTabToggle,
+};
 pub use widgets::tank::{
     FillNode, FillValue, PropertyBinding, TankFluid, TankFluidSource, TooltipSource,
     UnknownFluidWarned,
