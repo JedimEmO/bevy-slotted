@@ -130,3 +130,33 @@ pub struct SlotSync {
     /// New content.
     pub stack: Option<ItemStack>,
 }
+
+/// A host-side property write (Phase 6). Targets the **menu** entity. The
+/// observer [`crate::systems::apply_set_property`] updates `OpenMenu.state`,
+/// the matching [`MenuProperty`](crate::MenuProperty) child and triggers
+/// [`PropertyChanged`], exactly as a `AuthorityEvent::Property` would. This is
+/// how a machine simulation and the cycling icon button write properties.
+#[derive(EntityEvent, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetProperty {
+    /// The menu entity.
+    pub entity: Entity,
+    /// Which property.
+    pub id: PropertyId,
+    /// New value.
+    pub value: i32,
+}
+
+/// A host-side slot write (Phase 6). Targets the **menu** entity. The observer
+/// [`crate::systems::apply_set_slot`] writes the backing [`Inventory`](crate::Inventory),
+/// emits one [`SlotSync`] and triggers [`SlotChanged`] on the registered slot
+/// entity. Only the authority should use it: it bypasses prediction and the
+/// click model on purpose (a furnace moving its output is not a click).
+#[derive(EntityEvent, Debug, Clone, PartialEq)]
+pub struct SetSlot {
+    /// The menu entity.
+    pub entity: Entity,
+    /// Slot index within the menu.
+    pub slot: SlotIx,
+    /// New content.
+    pub stack: Option<ItemStack>,
+}

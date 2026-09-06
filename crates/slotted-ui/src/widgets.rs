@@ -7,6 +7,13 @@
 //! its `params` deserialised into the same arguments. That is what lets
 //! `slotted:hotbar` be written either way.
 
+pub mod bar;
+pub mod icon_button;
+pub mod side_tab;
+pub mod tank;
+pub mod viewport;
+pub mod virtual_grid;
+
 use bevy::input_focus::tab_navigation::TabIndex;
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
@@ -72,9 +79,37 @@ pub mod kinds {
     pub fn tooltip() -> WidgetKind {
         WidgetKind(ns("slotted:tooltip"))
     }
+    /// A fluid tank (Phase 6).
+    pub fn tank() -> WidgetKind {
+        WidgetKind(ns("slotted:tank"))
+    }
+    /// A bar (Phase 6).
+    pub fn bar() -> WidgetKind {
+        WidgetKind(ns("slotted:bar"))
+    }
+    /// A progress arrow (Phase 6).
+    pub fn progress() -> WidgetKind {
+        WidgetKind(ns("slotted:progress"))
+    }
+    /// A side tab (Phase 6).
+    pub fn side_tab() -> WidgetKind {
+        WidgetKind(ns("slotted:side_tab"))
+    }
+    /// A cycling icon button (Phase 6).
+    pub fn icon_button() -> WidgetKind {
+        WidgetKind(ns("slotted:icon_button"))
+    }
+    /// A virtual grid (Phase 6).
+    pub fn virtual_grid() -> WidgetKind {
+        WidgetKind(ns("slotted:virtual_grid"))
+    }
+    /// A 3D viewport (Phase 6).
+    pub fn viewport() -> WidgetKind {
+        WidgetKind(ns("slotted:viewport"))
+    }
 
-    /// Every built-in kind registered in Phase 2.
-    pub fn all() -> [WidgetKind; 8] {
+    /// Every built-in kind.
+    pub fn all() -> [WidgetKind; 15] {
         [
             panel(),
             text(),
@@ -84,6 +119,13 @@ pub mod kinds {
             action_rail(),
             hotbar(),
             tooltip(),
+            tank(),
+            bar(),
+            progress(),
+            side_tab(),
+            icon_button(),
+            virtual_grid(),
+            viewport(),
         ]
     }
 }
@@ -813,8 +855,108 @@ impl Widget for TooltipWidget {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 6 widgets through the registry
+// ---------------------------------------------------------------------------
+
+/// `slotted:tank` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TankWidget;
+
+impl Widget for TankWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let p: tank::TankParams = params_of!(params, "slotted:tank");
+        tank::spawn_tank(ctx, &p, &Tags::new())
+    }
+
+    fn tooltip(&self, _entity: Entity, _world: &World, _out: &mut Vec<UiNodeDef>) {
+        // PHASE6-IMPL: A. One `Text` line "<value> / <max> <unit>".
+    }
+}
+
+/// `slotted:bar` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct BarWidget;
+
+impl Widget for BarWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let p: bar::BarParams = params_of!(params, "slotted:bar");
+        bar::spawn_bar(ctx, &p, bar::BarStyle::Bar, &Tags::new())
+    }
+
+    fn tooltip(&self, _entity: Entity, _world: &World, _out: &mut Vec<UiNodeDef>) {
+        // PHASE6-IMPL: A.
+    }
+}
+
+/// `slotted:progress` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ProgressWidget;
+
+impl Widget for ProgressWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let p: bar::BarParams = params_of!(params, "slotted:progress");
+        bar::spawn_bar(ctx, &p, bar::BarStyle::Progress, &Tags::new())
+    }
+}
+
+/// `slotted:side_tab` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SideTabWidget;
+
+impl Widget for SideTabWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, children: &[UiNodeDef]) -> Entity {
+        let p: side_tab::SideTabParams = params_of!(params, "slotted:side_tab");
+        side_tab::spawn_side_tab(ctx, &p, children, &Tags::new())
+    }
+}
+
+/// `slotted:icon_button` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct IconButtonWidget;
+
+impl Widget for IconButtonWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let p: icon_button::IconButtonParams = params_of!(params, "slotted:icon_button");
+        icon_button::spawn_icon_button(ctx, &p, &Tags::new())
+    }
+
+    fn tooltip(&self, _entity: Entity, _world: &World, _out: &mut Vec<UiNodeDef>) {
+        // PHASE6-IMPL: A. The current state's label.
+    }
+}
+
+/// `slotted:virtual_grid` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct VirtualGridWidget;
+
+impl Widget for VirtualGridWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let p: virtual_grid::VirtualGridParams = params_of!(params, "slotted:virtual_grid");
+        virtual_grid::spawn_virtual_grid(ctx, &p, &Tags::new())
+    }
+}
+
+/// `slotted:viewport` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ViewportWidget;
+
+impl Widget for ViewportWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let p: viewport::ViewportParams = params_of!(params, "slotted:viewport");
+        viewport::spawn_viewport(ctx, &p, &Tags::new())
+    }
+}
+
 /// Registers every built-in under its kind.
 pub fn register_builtins(registry: &mut WidgetRegistry) {
+    registry.register(kinds::tank(), TankWidget);
+    registry.register(kinds::bar(), BarWidget);
+    registry.register(kinds::progress(), ProgressWidget);
+    registry.register(kinds::side_tab(), SideTabWidget);
+    registry.register(kinds::icon_button(), IconButtonWidget);
+    registry.register(kinds::virtual_grid(), VirtualGridWidget);
+    registry.register(kinds::viewport(), ViewportWidget);
     registry.register(kinds::panel(), PanelWidget);
     registry.register(kinds::text(), TextWidget);
     registry.register(kinds::slot(), SlotWidget);

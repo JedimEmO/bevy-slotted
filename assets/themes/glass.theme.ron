@@ -149,6 +149,40 @@
 
         "browser.button.disabled": Solid(fill: "#FFFFFF08", border: "#FFFFFF14", radius: 8.0),
 
+        // Machine widgets (Phase 6). A tank is a dark well whose fill takes
+        // the fluid's colour; the well's own fill role is what shows when no
+        // fluid is resolved.
+        "tank": Solid(fill: "#0B0E14B8", border: "$hairline", radius: 8.0),
+        "tank.fill": Solid(fill: "#3B7DD8B0", radius: 6.0),
+        "bar": Solid(fill: "#0B0E14B8", border: "$hairline", radius: 6.0),
+        "bar.fill": Solid(fill: "$warm", radius: 5.0),
+        "bar.text": Text(color: "$text", size: 10.0),
+        "progress": Solid(fill: "#FFFFFF14", radius: 4.0),
+        "progress.fill": Gradient(angle: 90.0, stops: [(0.0, "#5AAEE0"), (1.0, "$accent")], radius: 4.0),
+
+        // Side tabs hang in a rail beside the panel; open, the tab brightens
+        // and its content is one more sheet of glass.
+        "tab.rail": Solid(fill: "#00000000"),
+        "tab.side": Solid(fill: "#141A24B8", border: "$hairline", radius: 10.0),
+        "tab.side.open": Solid(fill: "#1B2330F2", border: "$accent", radius: 10.0),
+        "tab.side.header": Solid(fill: "#00000000", radius: 8.0),
+        "tab.side.content": Solid(fill: "#0B0E1466", radius: 8.0),
+
+        "icon_button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),
+        "icon_button.hover": Solid(fill: "#243447E6", border: "$accent", radius: 8.0),
+
+        "virtual_grid": Solid(fill: "#00000000"),
+        "virtual_grid.scrollbar": Solid(fill: "#FFFFFF0F", radius: 4.0),
+        "virtual_grid.thumb": Solid(fill: "#FFFFFF4D", radius: 4.0),
+
+        "viewport": Solid(fill: "#0B0E14B8", border: "$hairline", radius: 12.0),
+
+        // HUD layers sit over the world with no panel behind them unless a
+        // layer asks for one.
+        "hud.panel": Solid(fill: "#0B0E1480", border: "#FFFFFF14", radius: 8.0),
+        "hud.crosshair": Solid(fill: "#E6EDF3CC", radius: 999.0),
+        "hud.edit.frame": Solid(fill: "#00000000", border: "$warm", radius: 4.0),
+
         // Anchors and layer roots are laid out but never painted.
         "invisible": Solid(fill: "#00000000"),
     },

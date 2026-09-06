@@ -597,8 +597,15 @@ impl ModLoader {
 
         let owned = world.resource::<PacksOwned>().clone();
 
-        // Screens come straight from the frozen registry payloads.
+        // Screens come straight from the frozen registry payloads. Phase 6
+        // adds fluids and HUD layers the same way (contract 1.1, 2.1).
         world.resource_mut::<Screens>().load_from_registry(frozen);
+        if let Some(mut fluids) = world.get_resource_mut::<slotted_ui::Fluids>() {
+            fluids.load_from_registry(frozen);
+        }
+        if let Some(mut hud) = world.get_resource_mut::<slotted_ui::HudLayers>() {
+            hud.load_from_registry(frozen);
+        }
 
         // Widget templates: one `TemplateWidget` per registry entry.
         let mut widgets = Vec::new();
@@ -885,6 +892,18 @@ impl ModLoader {
                     .widgets
                     .replace(name.clone(), WidgetDef { name, payload });
             }
+            ScriptCommand::RegisterFluid { id, def } => {
+                // PHASE6-IMPL: B. Type-check as `slotted_ui::FluidDef` (fill
+                // `name` from `id`), store the payload in `registries.fluids`.
+                let _ = (id, def);
+                tracing::debug!(mod_id = %mod_id, "register_fluid is not implemented yet");
+            }
+            ScriptCommand::RegisterHudLayer { id, def } => {
+                // PHASE6-IMPL: B. Type-check as `slotted_ui::HudLayerPayload`,
+                // store the payload in `registries.hud_layers`.
+                let _ = (id, def);
+                tracing::debug!(mod_id = %mod_id, "register_hud_layer is not implemented yet");
+            }
             ScriptCommand::Inject { .. } => {
                 collected.injections.push((mod_id.clone(), command.clone()));
             }
@@ -1007,7 +1026,9 @@ fn namespace_warnings(
     | ScriptCommand::RegisterRecipeType { id, .. }
     | ScriptCommand::RegisterRecipe { id, .. }
     | ScriptCommand::RegisterScreen { id, .. }
-    | ScriptCommand::RegisterWidget { id, .. }) = command
+    | ScriptCommand::RegisterWidget { id, .. }
+    | ScriptCommand::RegisterFluid { id, .. }
+    | ScriptCommand::RegisterHudLayer { id, .. }) = command
     else {
         return Vec::new();
     };

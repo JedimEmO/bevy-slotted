@@ -95,8 +95,51 @@ pub mod roles {
     /// falls back to nothing, and the carried node is drawn by its item view.
     pub const CARRIED: Role = Role::new_static("carried");
 
+    /// A fluid tank body (Phase 6).
+    pub const TANK: Role = Role::new_static("tank");
+    /// The tank's fill child; used when no fluid is resolved.
+    pub const TANK_FILL: Role = Role::new_static("tank.fill");
+    /// A bar body.
+    pub const BAR: Role = Role::new_static("bar");
+    /// The bar's fill child.
+    pub const BAR_FILL: Role = Role::new_static("bar.fill");
+    /// The optional `value / max` text on a bar.
+    pub const BAR_TEXT: Role = Role::new_static("bar.text");
+    /// A progress arrow body.
+    pub const PROGRESS: Role = Role::new_static("progress");
+    /// A progress arrow's fill; a `Gradient` here is the optional gradient.
+    pub const PROGRESS_FILL: Role = Role::new_static("progress.fill");
+    /// A closed side tab.
+    pub const TAB_SIDE: Role = Role::new_static("tab.side");
+    /// An open side tab.
+    pub const TAB_SIDE_OPEN: Role = Role::new_static("tab.side.open");
+    /// The side tab's header button.
+    pub const TAB_SIDE_HEADER: Role = Role::new_static("tab.side.header");
+    /// The side tab's content panel.
+    pub const TAB_SIDE_CONTENT: Role = Role::new_static("tab.side.content");
+    /// The column of side tabs beside a panel.
+    pub const TAB_RAIL: Role = Role::new_static("tab.rail");
+    /// A cycling icon button at rest.
+    pub const ICON_BUTTON: Role = Role::new_static("icon_button");
+    /// A hovered icon button.
+    pub const ICON_BUTTON_HOVER: Role = Role::new_static("icon_button.hover");
+    /// A virtual grid body.
+    pub const VIRTUAL_GRID: Role = Role::new_static("virtual_grid");
+    /// The virtual grid's scrollbar track.
+    pub const VIRTUAL_GRID_SCROLLBAR: Role = Role::new_static("virtual_grid.scrollbar");
+    /// The virtual grid's scrollbar thumb.
+    pub const VIRTUAL_GRID_THUMB: Role = Role::new_static("virtual_grid.thumb");
+    /// A 3D viewport frame.
+    pub const VIEWPORT: Role = Role::new_static("viewport");
+    /// A HUD layer's panel.
+    pub const HUD_PANEL: Role = Role::new_static("hud.panel");
+    /// The built-in crosshair.
+    pub const HUD_CROSSHAIR: Role = Role::new_static("hud.crosshair");
+    /// The outline drawn around a HUD layer in edit mode.
+    pub const HUD_EDIT_FRAME: Role = Role::new_static("hud.edit.frame");
+
     /// Every well-known role, for completeness checks.
-    pub const ALL: [Role; 15] = [
+    pub const ALL: [Role; 36] = [
         PANEL,
         PANEL_TITLE,
         SLOT,
@@ -112,6 +155,27 @@ pub mod roles {
         TEXT_MUTED,
         COUNT,
         RAIL,
+        TANK,
+        TANK_FILL,
+        BAR,
+        BAR_FILL,
+        BAR_TEXT,
+        PROGRESS,
+        PROGRESS_FILL,
+        TAB_SIDE,
+        TAB_SIDE_OPEN,
+        TAB_SIDE_HEADER,
+        TAB_SIDE_CONTENT,
+        TAB_RAIL,
+        ICON_BUTTON,
+        ICON_BUTTON_HOVER,
+        VIRTUAL_GRID,
+        VIRTUAL_GRID_SCROLLBAR,
+        VIRTUAL_GRID_THUMB,
+        VIEWPORT,
+        HUD_PANEL,
+        HUD_CROSSHAIR,
+        HUD_EDIT_FRAME,
     ];
 }
 

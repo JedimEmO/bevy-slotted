@@ -47,6 +47,18 @@ shot-modded:
     cargo run -p modded -- --shot examples/modded/shots/modded-console.png
     cargo run -p modded -- --reload copper_chest --shot examples/modded/shots/modded-reload.png
 
+# The machine example in a window: tanks, bars, side tabs, a sorter mod.
+run-machine:
+    cargo run -p machine
+
+# Recapture the machine example's reference screenshot.
+shot-machine:
+    cargo run -p machine -- --shot examples/machine/shots/machine.png
+
+# Run every mod's tests/*.lua through the headless harness (Phase 6).
+test-mods dir="examples/machine/mods":
+    cargo run -p xtask -- test-mods {{dir}}
+
 # Every crate that has to reach a browser, on wasm32, with the feature set a
 # wasm build actually uses. `slotted` drops `script-mlua`: Luau is C++ and
 # cannot target wasm at all (ADR 0001).
@@ -58,6 +70,7 @@ wasm-check:
     cargo check --target wasm32-unknown-unknown -p slotted-ecs
     cargo check --target wasm32-unknown-unknown -p slotted-theme
     cargo check --target wasm32-unknown-unknown -p slotted-icons
+    cargo check --target wasm32-unknown-unknown -p slotted-test --no-default-features --features script
     cargo check --target wasm32-unknown-unknown -p slotted-ui
     cargo check --target wasm32-unknown-unknown -p slotted-browser
     cargo check --target wasm32-unknown-unknown -p slotted-packs

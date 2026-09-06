@@ -425,7 +425,14 @@ pub mod by {
         }
     }
 
-    /// By widget kind.
+    /// A HUD layer root by id (Phase 6).
+    pub fn hud_layer(id: &str) -> Locator {
+        // PHASE6-IMPL: B. Match `HudLayerRoot { id }`.
+        let _ = id;
+        role(SemanticRole::HudLayer)
+    }
+
+    /// A node by its widget kind.
     pub fn widget_kind(kind: WidgetKind) -> Locator {
         Locator {
             widget: Some(kind),

@@ -4,6 +4,7 @@
 //! cargo xtask wasm-build web-playground   release wasm + wasm-bindgen into dist/<example>/
 //! cargo xtask playground                  wasm-build, then the page and the assets
 //! cargo xtask serve [--dir dist] [--port 8080]
+//! cargo xtask test-mods <mods dir>        run every mod's tests/*.lua headless
 //! ```
 //!
 //! Nothing here depends on a crate outside `std`: `just playground` is often
@@ -11,6 +12,7 @@
 //! a bad trade.
 
 mod serve;
+mod test_mods;
 mod wasm;
 
 use std::process::ExitCode;
@@ -26,6 +28,7 @@ fn main() -> ExitCode {
         "wasm-build" => wasm::wasm_build(rest),
         "playground" => wasm::playground(rest),
         "serve" => serve::serve(rest),
+        "test-mods" => test_mods::test_mods(rest),
         "help" | "--help" | "-h" => {
             usage();
             Ok(())
@@ -53,6 +56,9 @@ cargo xtask <command>
   serve [--dir <path>] [--port <n>]
                                    serve a directory over HTTP with the wasm
                                    MIME type set (default dist, port 8080)
+  test-mods <mods dir> [--filter <mod>]
+                                   run every mod's tests/*.lua through the
+                                   headless harness and print a report
 "
     );
 }

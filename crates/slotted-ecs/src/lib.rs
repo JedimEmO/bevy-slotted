@@ -22,8 +22,8 @@ pub mod systems;
 
 pub use authority::{Authority, LocalAuthority, PendingRoundTrips};
 pub use events::{
-    MenuAction, MenuClosed, MenuOpened, Modifiers, PropertyChanged, SlotChanged, SlotClicked,
-    SlotSync,
+    MenuAction, MenuClosed, MenuOpened, Modifiers, PropertyChanged, SetProperty, SetSlot,
+    SlotChanged, SlotClicked, SlotSync,
 };
 pub use lookup::{Registries, RegistryLookup};
 pub use menu::{
@@ -31,15 +31,18 @@ pub use menu::{
     OpenMenu, PlayerInventories, SlotEntities, SlotRef, close_menu, open_container_menu, open_menu,
 };
 pub use plugin::{SlottedEcsPlugin, SlottedEcsSet};
-pub use systems::{ActionQueue, ClickInterpreter, EmptyLookup, PendingSubmissions, Submission};
+pub use systems::{
+    ActionQueue, ClickInterpreter, EmptyLookup, PendingSubmissions, Submission, apply_set_property,
+    apply_set_slot,
+};
 
 /// Everything a game needs to open menus and react to them.
 pub mod prelude {
     pub use crate::{
         Authority, Carried, Dropped, Inventory, LocalAuthority, MenuAction, MenuClosed, MenuOpened,
-        Modifiers, OpenMenu, PlayerInventories, PropertyChanged, Registries, SlotChanged,
-        SlotClicked, SlotRef, SlottedEcsPlugin, SlottedEcsSet, close_menu, open_container_menu,
-        open_menu,
+        Modifiers, OpenMenu, PlayerInventories, PropertyChanged, Registries, SetProperty, SetSlot,
+        SlotChanged, SlotClicked, SlotRef, SlottedEcsPlugin, SlottedEcsSet, close_menu,
+        open_container_menu, open_menu,
     };
     pub use slotted_model::{
         Actor, Button, ClickAction, ItemStack, MenuDef, SlotIx, ToolbarAction,

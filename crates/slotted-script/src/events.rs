@@ -151,6 +151,33 @@ pub enum ScriptEvent {
         /// The new text.
         text: String,
     },
+    /// A synced menu property changed (Phase 6).
+    PropertyChanged {
+        /// The menu.
+        menu: MenuId,
+        /// Screen kind.
+        screen: String,
+        /// Property id.
+        property: u16,
+        /// New value.
+        value: i32,
+    },
+    /// Test stage: list the registered tests (Phase 6, contract 3.1).
+    TestList,
+    /// Test stage: start `name`; the reply is its first step or its result.
+    TestRun {
+        /// Test name.
+        name: String,
+    },
+    /// Test stage: the host's answer to the last `TestStep`.
+    TestResume {
+        /// The op's value (`Value::Unit` when it has none).
+        #[serde(with = "crate::value::untagged")]
+        value: Value,
+        /// Set when the op failed; the body's `error` is raised with it.
+        #[serde(default)]
+        error: Option<String>,
+    },
 }
 
 impl ScriptEvent {
@@ -167,6 +194,10 @@ impl ScriptEvent {
             Self::ScreenClosed { .. } => "screen_closed",
             Self::HudTick { .. } => "hud_tick",
             Self::SearchChanged { .. } => "search_changed",
+            Self::PropertyChanged { .. } => "property_changed",
+            Self::TestList => "test_list",
+            Self::TestRun { .. } => "test_run",
+            Self::TestResume { .. } => "test_resume",
         }
     }
 }

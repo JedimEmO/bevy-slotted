@@ -168,13 +168,62 @@ pub enum ScriptCommand {
         /// The action.
         action: ClickAction,
     },
-    /// Placeholder for Phase 6 HUD layers; logged and ignored.
+    /// Register a fluid (Phase 6). `def` is a `slotted_ui::FluidDef` payload.
+    RegisterFluid {
+        /// `namespace:path`.
+        id: String,
+        /// The def.
+        #[serde(with = "crate::value::untagged")]
+        def: Value,
+    },
+    /// Register a HUD layer (Phase 6). `def` is a `slotted_ui::HudLayerPayload`.
+    RegisterHudLayer {
+        /// Layer id, `mymod:mana`.
+        id: String,
+        /// The def.
+        #[serde(with = "crate::value::untagged")]
+        def: Value,
+    },
+    /// Replace parts of a HUD layer (Phase 6 contract 2.1): `value` is a map
+    /// with optional `tree`, `anchor`, `offset`, `scale`, `visible`. An
+    /// unknown layer is created on top.
     SetHud {
         /// Layer id.
         layer: String,
         /// Payload.
         #[serde(with = "crate::value::untagged")]
         value: Value,
+    },
+    /// Write one value into a node of a HUD layer by `test_id` (Phase 6).
+    /// `Str` sets text, `Bool` visibility, a number or `{value, max}` a fill.
+    HudUpdate {
+        /// Layer id.
+        layer: String,
+        /// The node's `test_id`.
+        path: String,
+        /// What to write.
+        #[serde(with = "crate::value::untagged")]
+        value: Value,
+    },
+    /// Test stage reply to `TestList`.
+    TestList {
+        /// Registered test names, in order.
+        names: Vec<String>,
+    },
+    /// Test stage: the body yielded an action for the harness.
+    TestStep {
+        /// The action.
+        op: crate::testing::TestOp,
+    },
+    /// Test stage: the body finished.
+    TestDone {
+        /// Test name.
+        name: String,
+        /// Whether every expectation held.
+        passed: bool,
+        /// The failure message.
+        #[serde(default)]
+        message: Option<String>,
     },
     /// A console line.
     Log {
@@ -222,7 +271,13 @@ impl ScriptCommand {
             Self::Move { .. } => "move",
             Self::ToggleFavorite { .. } => "toggle_favorite",
             Self::Click { .. } => "click",
+            Self::RegisterFluid { .. } => "register_fluid",
+            Self::RegisterHudLayer { .. } => "register_hud_layer",
             Self::SetHud { .. } => "set_hud",
+            Self::HudUpdate { .. } => "hud_update",
+            Self::TestList { .. } => "test_list",
+            Self::TestStep { .. } => "test_step",
+            Self::TestDone { .. } => "test_done",
             Self::Log { .. } => "log",
             Self::Deprecated { .. } => "deprecated",
             Self::Subscribe { .. } => "subscribe",
@@ -238,6 +293,8 @@ impl ScriptCommand {
             | Self::RegisterRecipe { .. }
             | Self::RegisterScreen { .. }
             | Self::RegisterWidget { .. }
+            | Self::RegisterFluid { .. }
+            | Self::RegisterHudLayer { .. }
             | Self::Inject { .. } => Some(Stage::Data),
             Self::Sort { .. }
             | Self::QuickStack { .. }
@@ -245,7 +302,11 @@ impl ScriptCommand {
             | Self::ToggleFavorite { .. }
             | Self::Click { .. }
             | Self::SetHud { .. }
+            | Self::HudUpdate { .. }
             | Self::Subscribe { .. } => Some(Stage::Control),
+            Self::TestList { .. } | Self::TestStep { .. } | Self::TestDone { .. } => {
+                Some(Stage::Test)
+            }
             Self::AddTooltipPart { .. } | Self::Log { .. } | Self::Deprecated { .. } => None,
         }
     }

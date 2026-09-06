@@ -92,7 +92,7 @@ pub mod ron_value;
 pub type Value = ron::Value;
 
 pub use defs::{
-    HudLayerDef, Ingredient, IngredientTypeDef, ItemDef, ItemResult, Rarity, RecipeDef,
+    FluidDef, HudLayerDef, Ingredient, IngredientTypeDef, ItemDef, ItemResult, Rarity, RecipeDef,
     RecipeTypeDef, ScreenDef, TagDef, TagEntry, TooltipComponentDef, WidgetDef,
 };
 pub use index::{RecipeIndex, TagIndex};

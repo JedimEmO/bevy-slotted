@@ -403,8 +403,19 @@ pub fn apply_control_command(
             }
             Ok(Vec::new())
         }
-        ScriptCommand::SetHud { layer, .. } => {
-            tracing::debug!(mod_id = %mod_id, layer, "set_hud is Phase 6; ignored");
+        ScriptCommand::SetHud { layer, value } => {
+            // PHASE6-IMPL: B. Contract 2.1: `value` is a map with optional
+            // `tree`, `anchor`, `offset`, `scale`, `visible`; an unknown layer
+            // is created on top of `slotted_ui::HudLayers`.
+            let _ = value;
+            tracing::debug!(mod_id = %mod_id, layer, "set_hud is not implemented yet");
+            Ok(Vec::new())
+        }
+        ScriptCommand::HudUpdate { layer, path, value } => {
+            // PHASE6-IMPL: B. Map `Str -> Text`, `Bool -> Visible`, number or
+            // `{value, max}` -> `Fill`, then write a `slotted_ui::HudUpdate`.
+            let _ = (path, value);
+            tracing::debug!(mod_id = %mod_id, layer, "hud_update is not implemented yet");
             Ok(Vec::new())
         }
         // A control script's reply to `TooltipBuild` is read where the tooltip

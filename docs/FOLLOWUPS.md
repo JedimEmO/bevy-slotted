@@ -185,3 +185,15 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   as small as the cheap knobs make it (`opt-level = "z"`, fat LTO, one codegen unit, `panic =
   "abort"`, debuginfo stripped) and the module is still a whole Bevy renderer. The next real cut is
   Bevy's own feature surface, not the profile. **Phase 6**.
+
+## From the Phase 6 design
+
+- **`slotted_icons::LiveIcons` stays `IconRef::Missing` through Phase 6.** The `viewport` widget
+  renders placeholder geometry because no item models exist to bake; a live icon source needs the
+  same models. **Phase 7**, with the first item model format.
+- **The browser's card grid and `slotted_ui::VirtualGridSource` are two implementations.** The
+  card grid pools and rebinds cards; the virtual grid respawns cells from a `UiNodeDef` per index.
+  Moving the browser onto the trait needs a cell-recycling hook on the trait. **Phase 7**.
+- **`Injections` has one wildcard (`slotted:any`) and no per-screen-type filter.** A mod that
+  wants "every container screen but not settings pages" has no way to say so. Add an
+  `InjectionTarget` enum when the second filter shape appears. **Phase 7**.

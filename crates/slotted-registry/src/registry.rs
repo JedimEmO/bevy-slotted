@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use slotted_model::{ComponentId, ItemId, Namespaced};
 
 use crate::defs::{
-    HudLayerDef, IngredientTypeDef, ItemDef, RecipeDef, RecipeTypeDef, ScreenDef, TagDef,
+    FluidDef, HudLayerDef, IngredientTypeDef, ItemDef, RecipeDef, RecipeTypeDef, ScreenDef, TagDef,
     TooltipComponentDef, WidgetDef,
 };
 use crate::index::{RecipeIndex, TagIndex};
@@ -126,13 +126,15 @@ pub enum RegistryKind {
     HudLayers,
     /// [`IngredientTypeDef`].
     IngredientTypes,
+    /// [`FluidDef`] (Phase 6).
+    Fluids,
 }
 
 impl RegistryKind {
     /// Every kind, in the order the data stage loads them. Entries a later
     /// kind refers to are loaded first, so a recipe can be validated against
     /// its recipe type in one pass.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Items,
         Self::Tags,
         Self::RecipeTypes,
@@ -142,6 +144,7 @@ impl RegistryKind {
         Self::TooltipComponents,
         Self::HudLayers,
         Self::IngredientTypes,
+        Self::Fluids,
     ];
 
     /// The directory name under `data/<modid>/`.
@@ -156,6 +159,7 @@ impl RegistryKind {
             Self::TooltipComponents => "tooltip_components",
             Self::HudLayers => "hud_layers",
             Self::IngredientTypes => "ingredient_types",
+            Self::Fluids => "fluids",
         }
     }
 
@@ -439,6 +443,8 @@ pub struct Registries {
     pub hud_layers: RegistryBuilder<HudLayerDef>,
     /// Ingredient kinds the browser can display.
     pub ingredient_types: RegistryBuilder<IngredientTypeDef>,
+    /// Fluids a tank can hold (Phase 6). Payload typed by the ui crate.
+    pub fluids: RegistryBuilder<FluidDef>,
 }
 
 impl Default for Registries {
@@ -453,6 +459,7 @@ impl Default for Registries {
             tooltip_components: RegistryBuilder::with_kind(RegistryKind::TooltipComponents),
             hud_layers: RegistryBuilder::with_kind(RegistryKind::HudLayers),
             ingredient_types: RegistryBuilder::with_kind(RegistryKind::IngredientTypes),
+            fluids: RegistryBuilder::with_kind(RegistryKind::Fluids),
         }
     }
 }
@@ -556,6 +563,7 @@ impl Registries {
                 tooltip_components: self.tooltip_components.freeze(),
                 hud_layers: self.hud_layers.freeze(),
                 ingredient_types: self.ingredient_types.freeze(),
+                fluids: self.fluids.freeze(),
                 components,
                 tag_index,
                 recipe_index,
@@ -603,6 +611,8 @@ pub struct FrozenRegistries {
     pub hud_layers: Registry<HudLayerDef>,
     /// Ingredient kinds.
     pub ingredient_types: Registry<IngredientTypeDef>,
+    /// Fluids. `FluidId(n)` is the `n`-th fluid registered.
+    pub fluids: Registry<FluidDef>,
     /// Every component key any item declared, interned to [`ComponentId`].
     pub components: Interner<ComponentId>,
     /// Tag membership with inheritance already resolved.

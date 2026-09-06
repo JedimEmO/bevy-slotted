@@ -189,13 +189,69 @@ impl UiHarness {
             .union(screen)
     }
 
-    /// The HUD layer roots, in band order.
-    ///
-    /// Phase 2 has no HUD layers, so this is always empty. It exists now so
-    /// that tests written against it compile unchanged when Phase 3 spawns
-    /// them; assert on emptiness only if that is what you mean.
+    /// The HUD layer roots, bottom to top (Phase 6 contract 2.4).
     pub fn hud_layers(&self) -> Vec<Entity> {
-        Vec::new()
+        let world = self.world();
+        let Some(layers) = world.get_resource::<slotted_ui::HudLayers>() else {
+            return Vec::new();
+        };
+        layers
+            .order()
+            .iter()
+            .filter_map(|id| layers.root(id))
+            .collect()
+    }
+
+    /// One HUD layer's root, if spawned.
+    pub fn hud_layer(&self, id: &str) -> Option<Entity> {
+        self.world()
+            .get_resource::<slotted_ui::HudLayers>()
+            .and_then(|l| l.root(&slotted_ui::HudLayerId::new(id)))
+    }
+
+    /// The semantic tree of every HUD layer root, same elision as
+    /// [`screen_tree`](Self::screen_tree).
+    pub fn hud_tree(&self) -> ScreenTree {
+        // PHASE6-IMPL: B. `build` over `hud_layers()`.
+        ScreenTree { roots: Vec::new() }
+    }
+
+    /// Binds HUD slot widgets to `menu` (`slotted_ui::HudMenu`).
+    pub fn set_hud_menu(&mut self, menu: Option<Entity>) {
+        self.world_mut().insert_resource(slotted_ui::HudMenu(menu));
+        self.step(1);
+    }
+
+    /// A tank's or bar's `FillValue` (Phase 6 contract 1.7).
+    pub fn fill_of(&self, entity: Entity) -> Option<slotted_ui::FillValue> {
+        self.world().get::<slotted_ui::FillValue>(entity).copied()
+    }
+
+    /// `value / max` of a tank or bar, `0.0` when unbound.
+    pub fn tank_fill(&self, entity: Entity) -> f32 {
+        self.fill_of(entity).map_or(0.0, |f| f.fraction())
+    }
+
+    /// The bound value property and its current value, from the node's
+    /// `PropertyBinding` and the menu's `MenuProperty` child.
+    pub fn property_of(&self, entity: Entity) -> Option<(slotted_model::PropertyId, i32)> {
+        // PHASE6-IMPL: A.
+        let _ = entity;
+        None
+    }
+
+    /// Whether a side tab is open.
+    pub fn side_tab_open(&self, entity: Entity) -> Option<bool> {
+        self.world()
+            .get::<slotted_ui::SideTabState>(entity)
+            .map(|s| s.open)
+    }
+
+    /// A viewport's runtime subject.
+    pub fn viewport_subject(&self, entity: Entity) -> Option<slotted_ui::ViewportSubject> {
+        self.world()
+            .get::<slotted_ui::ViewportSubject>(entity)
+            .cloned()
     }
 
     /// The semantic tree of every open screen.

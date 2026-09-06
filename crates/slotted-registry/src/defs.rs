@@ -524,6 +524,10 @@ opaque_def!(
     "A HUD layer, the entry of the `hud_layers` registry."
 );
 opaque_def!(
+    FluidDef,
+    "A fluid a tank can hold, the entry of the `fluids` registry (Phase 6). Typed by `slotted_ui::FluidDef`."
+);
+opaque_def!(
     IngredientTypeDef,
     "An ingredient kind the browser can display, the entry of the `ingredient_types` registry."
 );

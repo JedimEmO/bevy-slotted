@@ -293,6 +293,8 @@ pub enum ViewSubject {
     Player,
     /// An item model.
     Item(Namespaced),
+    /// A block model (Phase 6). Placeholder geometry until models exist.
+    Block(Namespaced),
 }
 
 map_variant_serialize! {
@@ -300,7 +302,31 @@ map_variant_serialize! {
     ViewSubject {
         Player = "player",
         Item(v) = "item",
+        Block(v) = "block",
     }
+}
+
+/// One state of an [`UiNodeDef::IconButton`] (Phase 6).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct IconButtonState {
+    /// Stable id, published as the `state` tag and in `WidgetActivate.tags`.
+    pub id: String,
+    /// Icon shown while this state is current.
+    pub icon: IconDef,
+    /// Label (tooltip, semantic label).
+    pub label: LocKey,
+}
+
+fn default_unit() -> String {
+    "mB".to_owned()
+}
+
+fn three() -> u16 {
+    3
+}
+
+fn viewport_size() -> f32 {
+    96.0
 }
 
 /// One node of a screen tree. `docs/PLAN.md` 4.5, plus a `tags` field on
@@ -343,12 +369,16 @@ pub enum UiNodeDef {
         #[serde(default)]
         tags: Tags,
     },
-    /// A scrolling grid over a data source (Phase 3).
+    /// A scrolling grid over a [`VirtualGridSource`](crate::VirtualGridSource)
+    /// (Phase 6). Only `rows` rows of cells exist at a time.
     VirtualGrid {
         /// Data source.
         source: DataSourceId,
         /// Columns.
         cols: u16,
+        /// Visible rows.
+        #[serde(default = "three")]
+        rows: u16,
         /// Locator tags.
         #[serde(default)]
         tags: Tags,
@@ -379,7 +409,7 @@ pub enum UiNodeDef {
         #[serde(default)]
         tags: Tags,
     },
-    /// A fluid tank bound to two properties (Phase 6).
+    /// A fluid tank bound to two properties (Phase 6, contract 1.2).
     Tank {
         /// Amount.
         property: PropertyId,
@@ -387,12 +417,36 @@ pub enum UiNodeDef {
         capacity: PropertyId,
         /// Fill direction.
         orientation: Orientation,
+        /// Static fluid, by registry name.
+        #[serde(default)]
+        fluid: Option<Namespaced>,
+        /// A property whose value is the frozen fluid id; wins over `fluid`.
+        #[serde(default)]
+        fluid_property: Option<PropertyId>,
+        /// Unit shown in the label and tooltip.
+        #[serde(default = "default_unit")]
+        unit: String,
         /// Locator tags.
         #[serde(default)]
         tags: Tags,
     },
-    /// A progress bar bound to two properties (Phase 6).
+    /// A bar bound to two properties (Phase 6, contract 1.2).
     Bar {
+        /// Value.
+        property: PropertyId,
+        /// Maximum.
+        max: PropertyId,
+        /// Fill direction.
+        direction: Direction,
+        /// Show `value / max` as text on the bar.
+        #[serde(default)]
+        text: bool,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A progress arrow: a [`Bar`](Self::Bar) with the `progress` roles.
+    Progress {
         /// Value.
         property: PropertyId,
         /// Maximum.
@@ -403,12 +457,19 @@ pub enum UiNodeDef {
         #[serde(default)]
         tags: Tags,
     },
-    /// A tab on the panel's edge (Phase 6).
+    /// A tab in a `tab.rail` panel that grows to show its children (Phase 6,
+    /// contract 1.3).
     SideTab {
         /// Tab icon.
         icon: IconDef,
-        /// Which edge.
+        /// Which way the content opens.
         side: Side,
+        /// Header label; the icon path when absent.
+        #[serde(default)]
+        label: Option<LocKey>,
+        /// Start open.
+        #[serde(default)]
+        open: bool,
         /// Contents.
         #[serde(default)]
         children: Vec<UiNodeDef>,
@@ -416,10 +477,24 @@ pub enum UiNodeDef {
         #[serde(default)]
         tags: Tags,
     },
-    /// A live 3D view (Phase 6).
+    /// A button cycling through states on click (Phase 6, contract 1.4).
+    IconButton {
+        /// At least one state.
+        states: Vec<IconButtonState>,
+        /// Property that mirrors the state index, when the screen has a menu.
+        #[serde(default)]
+        property: Option<PropertyId>,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A live 3D view (Phase 6, contract 1.6).
     Viewport {
         /// What to show.
         subject: ViewSubject,
+        /// Edge length in px.
+        #[serde(default = "viewport_size")]
+        size: f32,
         /// Locator tags.
         #[serde(default)]
         tags: Tags,
@@ -461,7 +536,9 @@ impl UiNodeDef {
             | Self::Button { tags, .. }
             | Self::Tank { tags, .. }
             | Self::Bar { tags, .. }
+            | Self::Progress { tags, .. }
             | Self::SideTab { tags, .. }
+            | Self::IconButton { tags, .. }
             | Self::Viewport { tags, .. }
             | Self::Custom { tags, .. } => Some(tags),
             Self::Anchor { .. } => None,

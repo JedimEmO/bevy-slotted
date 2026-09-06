@@ -9,15 +9,30 @@ repository.workspace = true
 authors.workspace = true
 
 [features]
-default = []
-# `UiHarness::load_mods` and friends (Phase 4 contract section 3). The
-# runtime comes from the facade's `script-mlua` feature, never named here.
+default = ["snapshots"]
+# `UiHarness::load_mods` and friends (Phase 4 contract section 3), plus the
+# Lua `slotted.test` runner and the `test-mods` binary (Phase 6 section 3.2).
+# The runtime comes from the facade's `script-mlua` or `script-piccolo`
+# feature, never named here: a native consumer's own `slotted` dependency
+# unifies it in.
 script = ["dep:slotted-packs", "dep:slotted-script", "slotted/packs"]
+# `assert_tree_snapshot!` through `insta`. Off for a wasm build of the crate
+# (the playground shares the op implementations, not the snapshots).
+snapshots = ["dep:insta"]
 # Run the real renderer with a software adapter and compare pixels. Phase 7.
 render = []
 
+[[bin]]
+name = "test-mods"
+path = "src/bin/test_mods.rs"
+required-features = ["script"]
+
 [dependencies]
-slotted = { workspace = true }
+# A path dependency with the facade's defaults off, so this crate builds for
+# wasm32 (Phase 6 contract 3.2). `script-mlua` is a C++ build that cannot
+# reach wasm; native consumers depend on `slotted` with defaults and Cargo
+# unifies the runtime back in. The crate's own tests re-enable it below.
+slotted = { path = "../slotted", version = "0.1.0", default-features = false, features = ["ui", "browser"] }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
 slotted-ecs = { workspace = true }
@@ -44,13 +59,18 @@ bevy = { workspace = true, features = [
     "ui_picking",
     "debug",
 ] }
-insta = { workspace = true }
+insta = { workspace = true, optional = true }
 serde = { workspace = true }
+ron = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+
 [dev-dependencies]
+slotted = { path = "../slotted", version = "0.1.0", features = ["script-mlua"] }
 slotted-testutils = { workspace = true }
 pretty_assertions = { workspace = true }
 

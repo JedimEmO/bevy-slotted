@@ -80,6 +80,16 @@ slotted.register_item = register("register_item", "register_item")
 slotted.register_tag = register("register_tag", "register_tag")
 slotted.register_recipe_type = register("register_recipe_type", "register_recipe_type")
 slotted.register_recipe = register("register_recipe", "register_recipe")
+-- Phase 6: fluids for tanks and HUD layers (contract 1.1, 2.1).
+slotted.register_fluid = register("register_fluid", "register_fluid")
+
+function slotted.register_hud_layer(id, def)
+    data_only("register_hud_layer")
+    if type(def) ~= "table" or type(def.tree) ~= "table" then
+        error("slotted.register_hud_layer: def must be a table with a tree", 2)
+    end
+    emit({ type = "register_hud_layer", id = namespaced(id), def = def })
+end
 
 function slotted.register_screen(id, tree)
     data_only("register_screen")
@@ -178,6 +188,11 @@ function cmd.set_hud(layer, value)
     return { type = "set_hud", layer = layer, value = value }
 end
 
+-- Phase 6: write one value into a HUD node by its test_id.
+function cmd.hud_update(layer, path, value)
+    return { type = "hud_update", layer = layer, path = path, value = value }
+end
+
 function cmd.tooltip(nodes)
     return tooltip_part({ nodes = nodes })
 end
@@ -263,6 +278,17 @@ end
 function __slotted_dispatch(event)
     local out = {}
     local name = event.type
+    -- Phase 6: the test stage answers its three events itself (slotted_test.lua).
+    local test = rawget(slotted, "test")
+    if test ~= nil then
+        if name == "test_list" then
+            return { test.__list() }
+        elseif name == "test_run" then
+            return { test.__run(event.name) }
+        elseif name == "test_resume" then
+            return { test.__resume(event.value, event.error) }
+        end
+    end
     if name == "control_start" then
         out[#out + 1] = { type = "subscribe", events = subscriptions() }
     end

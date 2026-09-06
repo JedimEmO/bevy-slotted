@@ -30,7 +30,7 @@ use slotted_model::Namespaced;
 
 use crate::Value;
 use crate::defs::{
-    HudLayerDef, IngredientTypeDef, ItemDef, RecipeDef, RecipeTypeDef, ScreenDef, TagDef,
+    FluidDef, HudLayerDef, IngredientTypeDef, ItemDef, RecipeDef, RecipeTypeDef, ScreenDef, TagDef,
     TooltipComponentDef, WidgetDef,
 };
 use crate::manifest::ModId;
@@ -630,6 +630,13 @@ fn install(
             let def: IngredientTypeDef = typed_entry(value, &path)?;
             registries
                 .ingredient_types
+                .insert(name.clone(), def)
+                .map_err(|source| LoadError::Registry { path, source })?;
+        }
+        RegistryKind::Fluids => {
+            let def: FluidDef = typed_entry(value, &path)?;
+            registries
+                .fluids
                 .insert(name.clone(), def)
                 .map_err(|source| LoadError::Registry { path, source })?;
         }

@@ -25,8 +25,11 @@ ui = ["dep:slotted-ui", "dep:slotted-theme", "dep:slotted-icons"]
 browser = ["ui", "dep:slotted-browser"]
 # Backdrop blur for glass panels (ADR 0003).
 blur = ["ui", "slotted-theme/blur"]
-# Exclusion-zone highlighter, id tooltips.
+# Exclusion-zone highlighter, id tooltips, the HUD position editor and the
+# input recorder (Phase 6).
 dev = ["ui", "slotted-ui/dev", "slotted-browser?/dev"]
+# Real cameras behind `viewport` nodes (Phase 6 contract 1.6).
+viewport = ["ui", "slotted-ui/viewport"]
 
 [dependencies]
 slotted-model = { workspace = true }

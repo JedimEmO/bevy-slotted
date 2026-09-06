@@ -78,16 +78,26 @@ pub struct Injection {
 #[derive(Resource, Default, Debug, Clone)]
 pub struct Injections(pub Vec<Injection>);
 
+impl ScreenKind {
+    /// The wildcard injection target: an `Injection` aimed at it lands on
+    /// every screen that has the anchor (Phase 6). `slotted.inject("slotted:any", ..)`.
+    pub fn any() -> Self {
+        Self::new("slotted:any")
+    }
+}
+
 impl Injections {
-    /// Injections for one screen and anchor, in registration order.
+    /// Injections for one screen and anchor, in registration order. An
+    /// injection targeting [`ScreenKind::any`] matches every screen.
     pub fn at<'a>(
         &'a self,
         target: &'a ScreenKind,
         anchor: &'a AnchorId,
     ) -> impl Iterator<Item = &'a Injection> + 'a {
+        let any = ScreenKind::any();
         self.0
             .iter()
-            .filter(move |i| &i.target == target && &i.anchor == anchor)
+            .filter(move |i| (&i.target == target || i.target == any) && &i.anchor == anchor)
     }
 }
 
@@ -142,6 +152,7 @@ impl SpawnCtx<'_> {
     /// Spawns `def` under `self.parent` and returns its root entity. The one
     /// dispatch point: typed variants go to their built-in widget, `Custom`
     /// goes through the [`WidgetRegistry`].
+    #[allow(clippy::too_many_lines)]
     pub fn spawn_child(&mut self, def: &UiNodeDef) -> Entity {
         let entity = match def {
             UiNodeDef::Panel {
@@ -175,7 +186,115 @@ impl SpawnCtx<'_> {
                 children,
                 ..
             } => self.spawn_custom(kind, params, children),
-            other => self.spawn_placeholder(other),
+            UiNodeDef::Tank {
+                property,
+                capacity,
+                orientation,
+                fluid,
+                fluid_property,
+                unit,
+                tags,
+            } => widgets::tank::spawn_tank(
+                self,
+                &widgets::tank::TankParams {
+                    property: *property,
+                    capacity: *capacity,
+                    orientation: *orientation,
+                    fluid: fluid.clone(),
+                    fluid_property: *fluid_property,
+                    unit: unit.clone(),
+                },
+                tags,
+            ),
+            UiNodeDef::Bar {
+                property,
+                max,
+                direction,
+                text,
+                tags,
+            } => widgets::bar::spawn_bar(
+                self,
+                &widgets::bar::BarParams {
+                    property: *property,
+                    max: *max,
+                    direction: *direction,
+                    text: *text,
+                },
+                widgets::bar::BarStyle::Bar,
+                tags,
+            ),
+            UiNodeDef::Progress {
+                property,
+                max,
+                direction,
+                tags,
+            } => widgets::bar::spawn_bar(
+                self,
+                &widgets::bar::BarParams {
+                    property: *property,
+                    max: *max,
+                    direction: *direction,
+                    text: false,
+                },
+                widgets::bar::BarStyle::Progress,
+                tags,
+            ),
+            UiNodeDef::SideTab {
+                icon,
+                side,
+                label,
+                open,
+                children,
+                tags,
+            } => widgets::side_tab::spawn_side_tab(
+                self,
+                &widgets::side_tab::SideTabParams {
+                    icon: icon.clone(),
+                    side: *side,
+                    label: label.clone(),
+                    open: *open,
+                },
+                children,
+                tags,
+            ),
+            UiNodeDef::IconButton {
+                states,
+                property,
+                tags,
+            } => widgets::icon_button::spawn_icon_button(
+                self,
+                &widgets::icon_button::IconButtonParams {
+                    states: states.clone(),
+                    property: *property,
+                },
+                tags,
+            ),
+            UiNodeDef::VirtualGrid {
+                source,
+                cols,
+                rows,
+                tags,
+            } => widgets::virtual_grid::spawn_virtual_grid(
+                self,
+                &widgets::virtual_grid::VirtualGridParams {
+                    source: source.clone(),
+                    cols: *cols,
+                    rows: *rows,
+                },
+                tags,
+            ),
+            UiNodeDef::Viewport {
+                subject,
+                size,
+                tags,
+            } => widgets::viewport::spawn_viewport(
+                self,
+                &widgets::viewport::ViewportParams {
+                    subject: subject.clone(),
+                    size: *size,
+                },
+                tags,
+            ),
         };
         if let Some(tags) = def.tags() {
             if !tags.0.is_empty() {
@@ -212,26 +331,6 @@ impl SpawnCtx<'_> {
                 WidgetNode(kind.clone()),
             ))
         }
-    }
-
-    /// A node for a `UiNodeDef` variant Phase 2 does not implement yet
-    /// (`Tank`, `Bar`, `SideTab`, `Viewport`, `VirtualGrid`). It lays out,
-    /// carries a `Custom` semantic role and spawns its children, so a screen
-    /// that uses one still opens.
-    fn spawn_placeholder(&mut self, def: &UiNodeDef) -> Entity {
-        let name = match def {
-            UiNodeDef::VirtualGrid { .. } => "virtual_grid",
-            UiNodeDef::Tank { .. } => "tank",
-            UiNodeDef::Bar { .. } => "bar",
-            UiNodeDef::SideTab { .. } => "side_tab",
-            UiNodeDef::Viewport { .. } => "viewport",
-            _ => "unknown",
-        };
-        tracing::debug!(node = name, "node kind is not implemented in Phase 2");
-        let entity = self.spawn_node((Node::default(), SemanticRole::Custom(name.to_owned())));
-        let children = def.children().to_vec();
-        self.spawn_children(entity, &children);
-        entity
     }
 }
 
@@ -351,7 +450,7 @@ fn report_unmatched_injections(world: &mut World, root: Entity, kind: &ScreenKin
         .get_resource::<Injections>()
         .map(|i| {
             i.0.iter()
-                .filter(|inj| &inj.target == kind)
+                .filter(|inj| &inj.target == kind || inj.target == ScreenKind::any())
                 .map(|inj| inj.anchor.clone())
                 .collect()
         })

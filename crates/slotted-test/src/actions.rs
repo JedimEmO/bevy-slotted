@@ -65,6 +65,21 @@ impl UiHarness {
         self.step(1);
     }
 
+    /// Cycle an icon button (`slotted_ui::IconButtonCycle`), the semantic
+    /// path; `forward: false` is the shift-click direction. Phase 6.
+    pub fn cycle(&mut self, entity: Entity, forward: bool) {
+        self.world_mut()
+            .trigger(slotted_ui::IconButtonCycle { entity, forward });
+        self.step(1);
+    }
+
+    /// Toggle a side tab (`slotted_ui::SideTabToggle`), the semantic path.
+    pub fn toggle_side_tab(&mut self, entity: Entity) {
+        self.world_mut()
+            .trigger(slotted_ui::SideTabToggle { entity });
+        self.step(1);
+    }
+
     // ---- pointer ------------------------------------------------------------
 
     fn location(&self, pos: Vec2) -> Location {

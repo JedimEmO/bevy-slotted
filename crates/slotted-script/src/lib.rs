@@ -19,11 +19,18 @@
 pub mod api;
 pub mod commands;
 pub mod events;
+pub mod testing;
 pub mod value;
 
 pub use api::{Limits, ModId, ScriptError, ScriptId, ScriptRuntime, Stage};
 pub use commands::{LogLevel, ScriptCommand, TierFilter, TooltipFilter};
 pub use events::{Button, LookupMode, Modifiers, ScriptEvent, StackInfo, Tier};
+pub use testing::{TestLocator, TestOp};
+
+/// The `slotted.test` module, installed after [`PRELUDE`] for
+/// [`Stage::Test`] scripts only. Phase 6 contract section 3.1 describes the
+/// coroutine-driven `test_run` / `test_step` / `test_resume` protocol.
+pub const TEST_PRELUDE: &str = include_str!("../prelude/slotted_test.lua");
 
 /// The `slotted.*` Lua prelude, installed into every script state before the
 /// mod's chunk runs. Contract section 1.4 describes what it exposes and the

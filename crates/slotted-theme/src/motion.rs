@@ -98,6 +98,13 @@ pub enum TweenTarget {
         /// End.
         to: f32,
     },
+    /// `Node::width` and `Node::height` in logical px (Phase 6, side tabs).
+    Size {
+        /// Start.
+        from: Vec2,
+        /// End.
+        to: Vec2,
+    },
 }
 
 /// A running animation on a node. Removed when it completes. Ease-out cubic.
@@ -120,6 +127,8 @@ pub enum TweenValue {
     Translate(Vec2),
     /// `BackgroundColor` alpha.
     Alpha(f32),
+    /// `Node` width and height in logical px.
+    Size(Vec2),
 }
 
 impl Tween {
@@ -153,6 +162,7 @@ impl Tween {
             TweenTarget::Scale { from, to } => TweenValue::Scale(from.lerp(to, t)),
             TweenTarget::Translate { from, to } => TweenValue::Translate(from.lerp(to, t)),
             TweenTarget::Alpha { from, to } => TweenValue::Alpha(from.lerp(to, t)),
+            TweenTarget::Size { from, to } => TweenValue::Size(from.lerp(to, t)),
         }
     }
 }
@@ -178,12 +188,13 @@ pub fn advance_tweens(
         &mut Tween,
         Option<&mut UiTransform>,
         Option<&mut BackgroundColor>,
+        Option<&mut Node>,
     )>,
     mut active: ResMut<ActiveMotions>,
 ) {
     let delta = time.delta();
     let mut alive = 0u32;
-    for (entity, mut tween, transform, background) in &mut tweens {
+    for (entity, mut tween, transform, background, node) in &mut tweens {
         if motion.reduced {
             tween.elapsed = tween.duration;
         } else {
@@ -215,6 +226,17 @@ pub fn advance_tweens(
                 Some(mut bg) => bg.0 = bg.0.with_alpha(a),
                 None => {
                     tracing::trace!(?entity, "alpha tween on a node with no BackgroundColor");
+                }
+            },
+            // PHASE6-IMPL: A. Writes the size onto the node; the side tab
+            // relies on this to grow and shrink.
+            TweenValue::Size(size) => match node {
+                Some(mut node) => {
+                    node.width = Val::Px(size.x);
+                    node.height = Val::Px(size.y);
+                }
+                None => {
+                    tracing::trace!(?entity, "size tween on an entity with no Node");
                 }
             },
         }

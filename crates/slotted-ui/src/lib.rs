@@ -14,6 +14,10 @@
 //! See `docs/design/phase2-contract.md`.
 
 pub mod def;
+pub mod fluids;
+pub mod hud;
+#[cfg(feature = "dev")]
+pub mod hud_editor;
 pub mod input;
 pub mod item;
 pub mod layers;
@@ -21,14 +25,22 @@ pub mod loc;
 pub mod motion;
 pub mod nav;
 pub mod plugin;
+pub mod recording;
 pub mod screen;
 pub mod semantic;
 pub mod tooltip;
 pub mod widgets;
 
 pub use def::{
-    AnchorId, DataSourceId, Direction, IconDef, Layout, LayoutDirection, LocKey, Orientation,
-    ScreenDef, ScreenKind, Side, Tags, TextRole, UiNodeDef, ViewSubject, WidgetKind,
+    AnchorId, DataSourceId, Direction, IconButtonState as IconButtonStateDef, IconDef, Layout,
+    LayoutDirection, LocKey, Orientation, ScreenDef, ScreenKind, Side, Tags, TextRole, UiNodeDef,
+    ViewSubject, WidgetKind,
+};
+pub use fluids::{FluidDef, FluidId, Fluids};
+pub use hud::{
+    HudAnchor, HudAnchored, HudConfig, HudError, HudHotbar, HudLayerDef, HudLayerId,
+    HudLayerPayload, HudLayerRoot, HudLayers, HudLayout, HudMenu, HudPlacement, HudUpdate,
+    HudValue, NineAnchor,
 };
 pub use input::{DragPaint, on_slot_press, on_slot_release};
 pub use item::{
@@ -45,6 +57,7 @@ pub use motion::{
 };
 pub use nav::{NavKeys, directional_nav_keys};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
+pub use recording::{RECORDING_VERSION, RecordedButton, RecordedFrame, RecordedInput, Recording};
 pub use screen::{
     Injection, Injections, ScreenClosed, ScreenLaidOut, ScreenLayout, ScreenSpawned, Screens,
     SpawnCtx, SpawnScreen, UnmatchedInjections, Widget, WidgetRegistry, close_screen,
@@ -57,6 +70,16 @@ pub use semantic::{
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,
     TooltipTier, clear_tooltip, despawn_orphan_tooltips,
+};
+pub use widgets::bar::{BarState, BarStyle, BarText};
+pub use widgets::icon_button::{IconButtonCycle, IconButtonState};
+pub use widgets::side_tab::{SideTabContent, SideTabHeader, SideTabState, SideTabToggle};
+pub use widgets::tank::{
+    FillNode, FillValue, PropertyBinding, TankFluid, TankFluidSource, TooltipSource,
+};
+pub use widgets::viewport::{VIEWPORT_LAYER_BASE, ViewportSubject};
+pub use widgets::virtual_grid::{
+    VirtualCell, VirtualGridSource, VirtualGridSources, VirtualGridState,
 };
 pub use widgets::{RailAction, SLOT_SIZE, slot_state_roles};
 

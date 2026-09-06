@@ -241,6 +241,8 @@ fn default_event(stage: Stage) -> ScriptEvent {
             api_version: slotted_script::API_VERSION,
             mods: vec![CASE_MOD_ID.to_owned()],
         },
+        // PHASE6-IMPL: C. A test-stage case lists its tests.
+        Stage::Test => ScriptEvent::TestList,
     }
 }
 

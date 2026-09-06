@@ -732,3 +732,34 @@ pub fn register_slot_refs(
 }
 
 use crate::SlotRef;
+
+/// Observer for [`SetProperty`](crate::events::SetProperty): a host-side
+/// property write. Phase 6 contract section 0.
+pub fn apply_set_property(
+    event: On<crate::events::SetProperty>,
+    mut menus: Query<&mut OpenMenu>,
+    mut properties: Query<(Entity, &mut MenuProperty, &ChildOf)>,
+    mut commands: Commands,
+) {
+    // PHASE6-IMPL: A. Mirror the `AuthorityEvent::Property` arm of `reconcile`:
+    // write `OpenMenu.state.properties`, the child's `value`, then trigger
+    // `PropertyChanged` on the child.
+    let _ = (&event, &mut menus, &mut properties, &mut commands);
+    tracing::debug!(?event, "SetProperty is not implemented yet");
+}
+
+/// Observer for [`SetSlot`](crate::events::SetSlot): a host-side slot write.
+/// Phase 6 contract section 0.
+pub fn apply_set_slot(
+    event: On<crate::events::SetSlot>,
+    menus: Query<(&OpenMenu, &SlotEntities)>,
+    mut inventories: Query<&mut Inventory>,
+    mut sync: MessageWriter<SlotSync>,
+    mut commands: Commands,
+) {
+    // PHASE6-IMPL: C. Resolve `def.slots[slot]` to `(inventory, index)`, write
+    // the `Inventory` component, write one `SlotSync` and trigger
+    // `SlotChanged` on `SlotEntities[slot]` when registered.
+    let _ = (&event, &menus, &mut inventories, &mut sync, &mut commands);
+    tracing::debug!(?event, "SetSlot is not implemented yet");
+}

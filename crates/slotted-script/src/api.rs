@@ -19,6 +19,9 @@ pub enum Stage {
     Data,
     /// Registries are frozen; the script may only react.
     Control,
+    /// A mod's `tests/*.lua` under `slotted-test` (Phase 6). The prelude and
+    /// [`crate::TEST_PRELUDE`] are installed; registration raises.
+    Test,
 }
 
 impl Stage {
@@ -27,6 +30,7 @@ impl Stage {
         match self {
             Self::Data => "data",
             Self::Control => "control",
+            Self::Test => "test",
         }
     }
 }

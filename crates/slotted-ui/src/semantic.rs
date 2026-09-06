@@ -50,6 +50,16 @@ pub enum SemanticRole {
     Tab,
     /// One bookmark in the browser's bookmark strip.
     Bookmark,
+    /// A fluid tank (Phase 6).
+    Tank,
+    /// A bar or progress arrow (Phase 6).
+    Bar,
+    /// A side tab root (Phase 6); its header is a `Button`.
+    SideTab,
+    /// A 3D viewport (Phase 6).
+    Viewport,
+    /// A HUD layer root (Phase 6).
+    HudLayer,
     /// A widget with no better role.
     Custom(String),
 }
@@ -67,12 +77,14 @@ impl SemanticRole {
             Self::Text => Role::Label,
             Self::Tooltip => Role::Tooltip,
             Self::Rail => Role::Toolbar,
-            Self::Browser => Role::Pane,
+            Self::Browser | Self::HudLayer => Role::Pane,
             Self::TextField => Role::TextInput,
             Self::Chip => Role::CheckBox,
             Self::Card | Self::Bookmark => Role::ListItem,
             Self::RecipeView => Role::Group,
-            Self::Tab => Role::Tab,
+            Self::Tab | Self::SideTab => Role::Tab,
+            Self::Tank | Self::Bar => Role::ProgressIndicator,
+            Self::Viewport => Role::Image,
         }
     }
 }

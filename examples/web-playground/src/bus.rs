@@ -42,6 +42,12 @@ pub enum Request {
     /// hidden; this is how a page with no pane asks for it back after the
     /// module has already started.
     CanvasConsole(bool),
+    /// Run this mod's `tests/*.lua` against the live app, one op per frame,
+    /// reporting `ok` / `FAIL` lines to the console (Phase 6 contract 3.2).
+    RunTests {
+        /// The mod id.
+        mod_id: String,
+    },
 }
 
 /// One line the console shows.
@@ -196,7 +202,7 @@ mod tests {
             .take_requests()
             .into_iter()
             .map(|r| match r {
-                Request::Reload { mod_id } => mod_id,
+                Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
                 Request::Write { path, .. } => path,
                 Request::CanvasConsole(on) => on.to_string(),
             })
@@ -217,7 +223,7 @@ mod tests {
             .take_requests()
             .into_iter()
             .map(|r| match r {
-                Request::Reload { mod_id } => mod_id,
+                Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
                 Request::Write { path, .. } => path,
                 Request::CanvasConsole(on) => on.to_string(),
             })

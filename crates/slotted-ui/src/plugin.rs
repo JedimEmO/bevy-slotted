@@ -49,6 +49,8 @@ pub struct SlottedUiConfig {
     pub headless: bool,
     /// Spawn the carried and tooltip layer roots at startup.
     pub spawn_layers: bool,
+    /// HUD layer options (Phase 6).
+    pub hud: crate::hud::HudConfig,
 }
 
 impl Default for SlottedUiConfig {
@@ -56,6 +58,7 @@ impl Default for SlottedUiConfig {
         Self {
             headless: false,
             spawn_layers: true,
+            hud: crate::hud::HudConfig::default(),
         }
     }
 }
@@ -72,13 +75,30 @@ pub struct SlottedUiPlugin {
 }
 
 impl Plugin for SlottedUiPlugin {
+    #[allow(clippy::too_many_lines)]
     fn build(&self, app: &mut App) {
         let mut widgets = WidgetRegistry::default();
         register_builtins(&mut widgets);
         let mut parts = TooltipParts::default();
         register_builtin_parts(&mut parts);
+        let hotbar = crate::hud::HudHotbar::default();
+        let mut hud = crate::hud::HudLayers::default();
+        if self.config.hud.builtins {
+            crate::hud::register_builtin_layers(&mut hud, &hotbar);
+        }
         app.insert_resource(widgets)
             .insert_resource(parts)
+            .insert_resource(hud)
+            .insert_resource(hotbar)
+            .init_resource::<crate::hud::HudMenu>()
+            .init_resource::<crate::hud::HudLayout>()
+            .init_resource::<crate::fluids::Fluids>()
+            .init_resource::<crate::widgets::virtual_grid::VirtualGridSources>()
+            .add_message::<crate::hud::HudUpdate>()
+            .add_observer(crate::widgets::tank::on_property_changed)
+            .add_observer(crate::widgets::side_tab::on_side_tab_toggle)
+            .add_observer(crate::widgets::icon_button::on_icon_button_cycle)
+            .add_observer(crate::widgets::icon_button::on_icon_button_property)
             .init_resource::<Screens>()
             .init_resource::<crate::loc::Localization>()
             .init_resource::<Injections>()
@@ -108,44 +128,89 @@ impl Plugin for SlottedUiPlugin {
                     .chain(),
             )
             .configure_sets(PostUpdate, SlottedUiSet::Layout.after(UiSystems::Layout))
-            .add_systems(Startup, (load_registry_screens, spawn_layers))
+            .add_systems(Startup, (load_registry_screens, spawn_layers));
+        #[cfg(feature = "viewport")]
+        app.add_systems(
+            Update,
+            (
+                crate::widgets::viewport::spawn_viewport_cameras,
+                crate::widgets::viewport::despawn_viewport_cameras,
+            )
+                .in_set(SlottedUiSet::Render),
+        )
+        .init_resource::<crate::widgets::viewport::ViewportLayers>();
+        #[cfg(feature = "dev")]
+        app.init_resource::<crate::hud_editor::HudEditMode>()
+            .init_resource::<crate::hud_editor::HudEditKey>()
+            .add_systems(Startup, crate::hud_editor::load_hud_layout)
+            .add_systems(First, crate::recording::record_inputs)
             .add_systems(
                 Update,
                 (
-                    (
-                        directional_nav_keys,
-                        hotbar_swap_keys,
-                        clear_drag_suppression,
-                    )
-                        .in_set(SlottedUiSet::Input),
-                    (
-                        slot_state_roles,
-                        update_carried_layer,
-                        render_items,
-                        slot_motion,
-                        despawn_finished_flights,
-                        tooltip_delay,
-                        despawn_orphan_tooltips,
-                        clear_gesture_target,
-                    )
-                        .chain()
-                        .in_set(SlottedUiSet::Render),
-                    sync_accessibility.in_set(SlottedUiSet::Semantics),
+                    crate::hud_editor::toggle_hud_edit.in_set(SlottedUiSet::Input),
+                    crate::hud_editor::apply_hud_edit_mode.in_set(SlottedUiSet::Render),
                 ),
             )
             .add_systems(
-                PostUpdate,
-                (emit_screen_layout, place_tooltips).in_set(SlottedUiSet::Layout),
+                Last,
+                (
+                    crate::hud_editor::save_hud_layout,
+                    crate::recording::flush_recording,
+                ),
             );
+        app.add_systems(
+            Update,
+            (
+                (
+                    directional_nav_keys,
+                    hotbar_swap_keys,
+                    clear_drag_suppression,
+                )
+                    .in_set(SlottedUiSet::Input),
+                (
+                    slot_state_roles,
+                    update_carried_layer,
+                    render_items,
+                    slot_motion,
+                    despawn_finished_flights,
+                    tooltip_delay,
+                    despawn_orphan_tooltips,
+                    clear_gesture_target,
+                )
+                    .chain()
+                    .in_set(SlottedUiSet::Render),
+                // Phase 6: property-driven fills, virtual grids, HUD.
+                (
+                    crate::widgets::tank::bind_properties,
+                    crate::widgets::tank::render_fills,
+                    crate::widgets::virtual_grid::refresh_virtual_grids,
+                    crate::hud::sync_hud_layers,
+                    crate::hud::hud_screen_visibility,
+                    crate::hud::apply_hud_updates,
+                )
+                    .chain()
+                    .in_set(SlottedUiSet::Render)
+                    .after(clear_gesture_target),
+                sync_accessibility.in_set(SlottedUiSet::Semantics),
+            ),
+        )
+        .add_systems(
+            PostUpdate,
+            (emit_screen_layout, place_tooltips).in_set(SlottedUiSet::Layout),
+        );
     }
 }
 
 fn load_registry_screens(
     registries: Option<Res<slotted_ecs::Registries>>,
     mut screens: ResMut<Screens>,
+    mut fluids: ResMut<crate::fluids::Fluids>,
+    mut hud: ResMut<crate::hud::HudLayers>,
 ) {
     if let Some(r) = registries {
         screens.load_from_registry(&r);
+        fluids.load_from_registry(&r);
+        hud.load_from_registry(&r);
     }
 }
 

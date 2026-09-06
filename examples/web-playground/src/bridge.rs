@@ -69,6 +69,15 @@ pub fn reload_mod(mod_id: &str, data_src: &str, control_src: &str) {
     });
 }
 
+/// Runs the mod's `tests/*.lua` against the live app (Phase 6 contract 3.2).
+/// Results arrive on the console as `test` lines.
+#[wasm_bindgen]
+pub fn run_tests(mod_id: &str) {
+    Bus::global().request(Request::RunTests {
+        mod_id: mod_id.to_owned(),
+    });
+}
+
 /// Shows or hides the in-canvas console overlay.
 ///
 /// In a browser the overlay starts hidden, because the page has its own

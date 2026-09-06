@@ -212,6 +212,16 @@ fn drain_requests(
     for request in queued.by_ref() {
         match request {
             Request::CanvasConsole(on) => visible.0 = on,
+            Request::RunTests { mod_id } => {
+                // PHASE6-IMPL: C. Start a `LiveTestRunner` over
+                // `slotted_test::live::LiveDriver` for the mod's bundled
+                // `tests/*.lua`; it performs one op per frame and logs results.
+                bus.log(
+                    "warn",
+                    "test",
+                    format!("tests for {mod_id} are not wired yet"),
+                );
+            }
             Request::Write { path, contents } => source.write(&path, &contents),
             Request::Reload { mod_id } => match ModId::new(&mod_id) {
                 Ok(mod_id) => {

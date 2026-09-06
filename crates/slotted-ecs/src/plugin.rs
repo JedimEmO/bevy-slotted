@@ -44,6 +44,8 @@ impl Plugin for SlottedEcsPlugin {
             .add_message::<SlotSync>()
             .add_observer(interpret_slot_click)
             .add_observer(enqueue_menu_action)
+            .add_observer(crate::systems::apply_set_property)
+            .add_observer(crate::systems::apply_set_slot)
             .configure_sets(
                 Update,
                 (

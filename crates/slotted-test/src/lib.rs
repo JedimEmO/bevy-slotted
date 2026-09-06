@@ -23,10 +23,15 @@ pub mod browser;
 pub mod fixture;
 pub mod fixtures;
 pub mod harness;
+#[cfg(feature = "script")]
+pub mod live;
 pub mod locator;
+#[cfg(feature = "script")]
+pub mod lua_tests;
 #[cfg(feature = "script")]
 pub mod mods;
 pub mod queries;
+pub mod replay;
 pub mod tree;
 
 pub use browser::Browser;
@@ -34,6 +39,9 @@ pub use fixture::{MenuFixture, Opened, ScreenSource};
 pub use fixtures::{ChestFixture, PlayerFixture, TestRegistries};
 pub use harness::{SettleTimeout, UiHarness, UiHarnessBuilder};
 pub use locator::{Locator, by, describe};
+#[cfg(feature = "script")]
+pub use lua_tests::{LuaFixture, LuaTestReport, LuaTestResult, StepOutcome, TestDriver};
+pub use replay::{ReplayError, ReplayReport};
 pub use tree::{ItemSummary, ScreenTree, TreeNode};
 
 /// `insta` RON snapshot of a [`ScreenTree`]. Stable across themes and layout
@@ -45,6 +53,7 @@ pub use tree::{ItemSummary, ScreenTree, TreeNode};
 /// assert_tree_snapshot!(h.screen_tree());
 /// # }
 /// ```
+#[cfg(feature = "snapshots")]
 #[macro_export]
 macro_rules! assert_tree_snapshot {
     ($tree:expr) => {
@@ -67,6 +76,7 @@ macro_rules! assert_tree_snapshot {
 /// assert_tree_text_snapshot!(h.screen_tree());
 /// # }
 /// ```
+#[cfg(feature = "snapshots")]
 #[macro_export]
 macro_rules! assert_tree_text_snapshot {
     ($tree:expr) => {
@@ -77,6 +87,7 @@ macro_rules! assert_tree_text_snapshot {
     };
 }
 
+#[cfg(feature = "snapshots")]
 #[doc(hidden)]
 pub use insta;
 
@@ -84,9 +95,10 @@ pub use insta;
 pub mod prelude {
     pub use crate::{
         Browser, ChestFixture, Locator, MenuFixture, Opened, PlayerFixture, ScreenTree,
-        TestRegistries, TreeNode, UiHarness, UiHarnessBuilder, assert_tree_snapshot,
-        assert_tree_text_snapshot, by,
+        TestRegistries, TreeNode, UiHarness, UiHarnessBuilder, by,
     };
+    #[cfg(feature = "snapshots")]
+    pub use crate::{assert_tree_snapshot, assert_tree_text_snapshot};
     pub use slotted::prelude::*;
     pub use slotted_ecs::Modifiers;
     pub use slotted_model::{Actor, Button, ClickAction, ItemId, ItemStack, MenuDef, SlotIx};

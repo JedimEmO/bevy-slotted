@@ -4,3 +4,6 @@
 **/*.rs.bk
 .DS_Store
 /dist
+
+# Phase 6: the dev-mode HUD position editor writes here (contract 2.2).
+examples/*/hud_layout.ron

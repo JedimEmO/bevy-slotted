@@ -10,8 +10,12 @@ authors.workspace = true
 
 [features]
 default = []
-# Exclusion-zone highlighter, id tooltips. No extra dependencies.
+# Exclusion-zone highlighter, id tooltips, the HUD position editor and the
+# input recorder (Phase 6 contract 2.2, 2.3). No extra dependencies.
 dev = []
+# Real cameras behind `viewport` nodes (Phase 6 contract 1.6). Pulls the
+# renderer; off for headless tests and dedicated servers.
+viewport = ["bevy/bevy_core_pipeline", "bevy/bevy_pbr", "bevy/bevy_render"]
 
 [dependencies]
 slotted-model = { workspace = true }
@@ -34,6 +38,9 @@ bevy = { workspace = true, features = [
     "bevy_ui_widgets",
     "bevy_window",
     "ui_picking",
+    # serde on `KeyCode`, `PointerButton` and the gamepad enums, for
+    # `recording::Recording` (Phase 6 contract 2.3).
+    "serialize",
 ] }
 accesskit = { workspace = true }
 serde = { workspace = true }

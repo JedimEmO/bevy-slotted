@@ -1,0 +1,49 @@
+// The machine screen: docs/design/phase6-contract.md section 3.3.
+//
+// Slot ids follow `machine::menu_def`: 0 input, 1 fuel, 2 output, 3..30
+// player main, 30..39 hotbar. Property ids: 0 burn, 1 burn_max, 2 cook,
+// 3 cook_max, 4 energy, 5 energy_max, 6 tank, 7 tank_cap, 8 tank_fluid,
+// 9 redstone_mode, 10..16 faces.
+#![enable(implicit_some)]
+(
+    kind: "machine:furnace",
+    root: (
+        type: "panel",
+        role: "invisible",
+        layout: (direction: "row", gap: 1.0),
+        children: [
+            (type: "panel", role: "panel", layout: (direction: "column", gap: 2.0, padding: 2.0), children: [
+                (type: "panel", role: "invisible", layout: (direction: "row", gap: 2.0), children: [
+                    (type: "text", key: "machine.title", style: "title"),
+                    (type: "anchor", id: "title_end"),
+                ]),
+                (type: "panel", role: "invisible", layout: (direction: "row", gap: 2.0, center: true), children: [
+                    (type: "tank", property: 6, capacity: 7, orientation: "vertical", fluid_property: 8, tags: {"test_id": "tank"}),
+                    (type: "slot", slot: 0, tags: {"test_id": "input", "region": "machine"}),
+                    (type: "progress", property: 2, max: 3, direction: "right", tags: {"test_id": "cook"}),
+                    (type: "slot", slot: 2, tags: {"test_id": "output", "region": "machine"}),
+                    (type: "bar", property: 4, max: 5, direction: "up", text: true, tags: {"test_id": "energy"}),
+                ]),
+                (type: "panel", role: "invisible", layout: (direction: "row", gap: 2.0, center: true), children: [
+                    (type: "slot", slot: 1, tags: {"test_id": "fuel", "region": "machine"}),
+                    (type: "progress", property: 0, max: 1, direction: "up", tags: {"test_id": "burn"}),
+                ]),
+                (type: "slot_grid", inventory: 1, cols: 9, rows: 3, first: 3, tags: {"region": "player"}),
+                (type: "custom", kind: "slotted:hotbar", params: (first: 30), tags: {"region": "hotbar", "test_id": "hotbar"}),
+            ]),
+            (type: "panel", role: "tab.rail", layout: (direction: "column", gap: 1.0), children: [
+                (type: "side_tab", icon: (image: "icons/redstone.png"), side: "right", label: "machine.tab.redstone", tags: {"test_id": "tab_redstone"}, children: [
+                    (type: "icon_button", property: 9, tags: {"test_id": "redstone_mode"}, states: [
+                        (id: "ignore", icon: (image: "icons/redstone_ignore.png"), label: "machine.redstone.ignore"),
+                        (id: "low", icon: (image: "icons/redstone_low.png"), label: "machine.redstone.low"),
+                        (id: "high", icon: (image: "icons/redstone_high.png"), label: "machine.redstone.high"),
+                    ]),
+                ]),
+                (type: "side_tab", icon: (image: "icons/sides.png"), side: "right", label: "machine.tab.sides", tags: {"test_id": "tab_sides"}, children: [
+                    (type: "custom", kind: "machine:face_config", params: (first_property: 10), tags: {"test_id": "faces"}),
+                ]),
+            ]),
+        ],
+    ),
+    listring: [0, 1, 2],
+)
