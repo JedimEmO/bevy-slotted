@@ -5,7 +5,7 @@
 -- script sees the stack, not the tag index, so the table is explicit.
 
 local restores = {
-    ["demo:apple"] = "appleskin_like.food.apple",
+    ["appleskin_like:apple"] = "appleskin_like.food.apple",
 }
 
 slotted.on("tooltip_build", function(ev)

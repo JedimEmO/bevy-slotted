@@ -112,12 +112,12 @@ const CONTENTS: &[Row] = &[
     row(CONTAINER, 0, "copper_chest:copper_chest", 4),
     row(CONTAINER, 1, "copper_chest:copper_ingot", 64),
     row(CONTAINER, 2, "copper_chest:copper_ingot", 31),
-    row(CONTAINER, 5, "demo:apple", 12),
+    row(CONTAINER, 5, "appleskin_like:apple", 12),
     row(CONTAINER, 11, "copper_chest:copper_chest", 1),
     row(MAIN, 0, "copper_chest:copper_ingot", 8),
-    row(MAIN, 7, "demo:apple", 3),
+    row(MAIN, 7, "appleskin_like:apple", 3),
     row(HOTBAR, 0, "copper_chest:copper_chest", 2),
-    row(HOTBAR, 2, "demo:apple", 16),
+    row(HOTBAR, 2, "appleskin_like:apple", 16),
 ];
 
 /// The demo's inventories, built against the registries the mods produced.

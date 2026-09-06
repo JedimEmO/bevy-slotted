@@ -107,7 +107,7 @@ fn the_bundled_mods_register_what_the_scene_needs() {
     for item in [
         "copper_chest:copper_chest",
         "copper_chest:copper_ingot",
-        "demo:apple",
+        "appleskin_like:apple",
     ] {
         assert!(
             registries.item_id(&id(item)).is_some(),

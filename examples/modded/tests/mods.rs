@@ -18,7 +18,7 @@ use slotted_test::prelude::*;
 /// The chest item `copper_chest/data.lua` registers.
 const CHEST_ITEM: &str = "copper_chest:copper_chest";
 /// The food item `appleskin_like/data.lua` registers.
-const APPLE: &str = "demo:apple";
+const APPLE: &str = "appleskin_like:apple";
 /// The tooltip key the static part adds for anything tagged `c:foods`.
 const FOOD_KEY: &str = "appleskin_like.food";
 /// The `test_id` of the button the `sorter` mod injects.
@@ -185,7 +185,7 @@ fn a_card_shows_the_name_from_the_mods_ftl() {
 
 #[test]
 fn the_shared_namespace_is_not_warned_about() {
-    let h = loaded();
+    let mut h = loaded();
 
     // `c` is the Fabric-style common-tag namespace: `copper_chest` adds to
     // `c:ingots` and `appleskin_like` declares `c:foods`, which is what the
@@ -202,10 +202,16 @@ fn the_shared_namespace_is_not_warned_about() {
     );
 
     // Reaching into a namespace that is neither shared nor a dependency still
-    // is: `appleskin_like` registers `demo:apple` to give its tooltip part a
-    // target, which is exactly the case the warning exists for.
+    // warns. The shipped mods are clean, so provoke it in a temp copy.
+    h.edit_mod_file(
+        "appleskin_like",
+        "data.lua",
+        "slotted.register_item(\"demo:pear\", { max_stack_size = 64 })\n",
+    );
+    h.reload_mod("appleskin_like")
+        .expect("the edited data script still loads");
     assert!(
-        h.script_logs_containing("`demo:apple` is outside")
+        h.script_logs_containing("`demo:pear` is outside")
             .iter()
             .any(|entry| entry.message.contains("not a declared dependency")),
         "reaching into another mod's namespace stopped warning"

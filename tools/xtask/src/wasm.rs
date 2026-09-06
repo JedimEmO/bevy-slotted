@@ -76,6 +76,7 @@ fn build(example: &str, release: bool) -> Result<Sizes, String> {
 
     // `wasm-opt` is optional: without it the page still works, it is just
     // bigger, and requiring a binstall to see the playground is a bad trade.
+    eprintln!("xtask: running wasm-opt -Oz; this takes a few minutes with no output");
     let optimised = if which("wasm-opt") {
         let mut opt = Command::new("wasm-opt");
         opt.current_dir(&root).args([
@@ -115,7 +116,9 @@ pub fn playground(args: &[String]) -> Result<(), String> {
     // Bevy's web asset reader fetches `assets/<path>` relative to the page, so
     // the shared demo assets have to sit beside index.html.
     copy_dir(&root.join("assets"), &out.join("assets"))?;
-    eprintln!("xtask: dist/{PLAYGROUND}/ is ready; `cargo xtask serve`");
+    eprintln!(
+        "xtask: dist/{PLAYGROUND}/ is ready. Run `just serve` and open http://127.0.0.1:8080/{PLAYGROUND}/"
+    );
     Ok(())
 }
 

@@ -4,14 +4,14 @@
 -- The static part is all data: no script runs while a tooltip is built. See
 -- control.lua for the line that does need one.
 
-slotted.register_item("demo:apple", {
+slotted.register_item("appleskin_like:apple", {
     display_name = "appleskin_like.item.apple",
     max_stack_size = 64,
     tags = { "c:foods" },
     icon = { shape = "sphere", color = "#d2382f", accent = "#5fbf4a", roughness = 0.45 },
 })
 
-slotted.register_tag("c:foods", { values = { "demo:apple" } })
+slotted.register_tag("c:foods", { values = { "appleskin_like:apple" } })
 
 slotted.add_tooltip_part({
     id = "appleskin_like:food",
