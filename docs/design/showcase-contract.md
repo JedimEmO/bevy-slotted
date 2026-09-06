@@ -231,8 +231,9 @@ assert no `error` line reached the console, screenshot.
 One app; scenes are entities toggled. Both multiplayer clients and the server
 run in the one world, no workers. The backdrop is shared; the Multiplayer
 scene's two screens are two `ScreenRoot`s under one camera. Budget: the
-optimised module grows by at most 2 MiB over today's (measure with the size
-report `just playground` prints, before and after, in the notes). The ordered
+optimised module grows by at most 2 MiB over today's 37.92 MiB (`just
+playground`, `wasm-opt -O1`, measured 2026-09-06 with the skeleton in); the
+size report `just playground` prints goes in the notes, before and after. The ordered
 drop list if the budget is missed: `gltf` never; `viewport` (the hover 3D
 tooltip becomes the icon tier) first; the recording second. No other feature
 is negotiable.
