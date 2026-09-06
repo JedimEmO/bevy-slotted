@@ -103,7 +103,8 @@ pub struct Inventory { slots: Box<[Option<ItemStack>]>, changed: DirtyMask }
 pub enum SlotBehaviour { Normal, Output, Ghost, Filter, Locked, Disabled }
 pub struct SlotDef { source: InventoryRef, index: u16, behaviour: SlotBehaviour, max: Option<u32>, accepts: Option<Predicate> }
 pub struct MenuDef { slots: Vec<SlotDef>, quick_move: RoutingTable, properties: Vec<PropertyDef> }
-pub struct MenuState { carried: Option<ItemStack>, state_id: u32, drag: Option<DragState> }
+pub struct MenuState { carried: Option<ItemStack>, state_id: u32, drag: Option<DragState>,
+                       properties: Vec<i32>, hints: BTreeMap<SlotIx, ItemStack> }
 
 pub enum ClickAction {
     Pickup { slot: SlotIx, button: Button },
@@ -120,18 +121,34 @@ pub fn apply_click(def: &MenuDef, inv: &mut Inventories, state: &mut MenuState, 
     -> Result<Delta, ClickError>;
 ```
 
-`apply_click` is a pure function over the menu, the inventories it references and the carried stack. `Delta` lists changed slots and the new carried stack. Every path runs a conservation check in debug builds. The `Actor` carries permissions (creative, op) for `Clone` and cheat gives.
+`apply_click` is a pure function over the menu, the inventories it references and the carried stack. `Delta` lists changed slots and the new carried stack. The `Actor` carries permissions (creative, op) for `Clone` and cheat gives.
+
+A `Ghost` or `Filter` slot shows an item it does not hold. Those hints live in `MenuState::hints`, keyed by menu slot, not in the backing inventory, so `count_of`, the conservation tally and inventory sync never see a phantom stack. `slot_view(def, inv, state, ix)` is the accessor that answers "what does this slot show" for both kinds of slot.
+
+Item conservation is a runtime choice rather than a compile-time one, because the same function runs as client prediction and as server validation:
+
+```rust
+pub enum ValidationLevel { Off, Debug, Always }
+pub fn apply_click_validated(.., validation: ValidationLevel) -> Result<Delta, ClickError>;
+```
+
+`Debug` is the default and is what `apply_click` uses: check in debug builds, panic on a violation, cost nothing in release. `Always` checks in every build and returns `ClickError::Conservation`, which is what an authoritative server wants. The check runs after the action, so a caller at `Always` applies to a scratch copy and commits only on `Ok`.
 
 Ports defined here:
 
 ```rust
 pub trait Authority: Send + Sync {
-    fn submit(&self, menu: MenuId, action: ClickAction, predicted: Delta) -> Result<(), AuthorityError>;
-    fn poll(&self) -> Vec<AuthorityEvent>;      // Ack{state_id} | Resync{menu, snapshot} | Property{id, value}
+    fn submit(&self, menu: MenuId, action: ClickAction, predicted: &Delta) -> Result<(), AuthorityError>;
+    fn poll(&self) -> Vec<AuthorityEvent>;
+    // Ack{state_id} | Resync{menu, snapshot} | Slot{menu, slot, stack} | Property{id, value}
+    fn request_resync(&self, menu: MenuId) -> Result<ResyncRequest, AuthorityError>;  // defaulted
+    fn validation(&self) -> ValidationLevel;                                          // defaulted
 }
 ```
 
 The local adapter applies immediately and always acks. A networked adapter serialises the action with the predicted delta, exactly like vanilla's click packet, and resyncs on mismatch.
+
+A client that can no longer trust its copy asks for a snapshot rather than guessing: `request_resync` answers `Pending` when an `AuthorityEvent::Resync` is on its way and `Unsupported` when the authority *is* the client's state, which is the local adapter's case. `AuthorityEvent::Slot` is the cheap half of a resync, for an authority that knows exactly which slot changed. See 4.13 and `docs/design/gaps-notes-A.md`.
 
 Tests: unit tests per click mode, a property test that random action sequences conserve item counts, golden tests reproducing vanilla slot layouts (chest 0–26, 27–53, 54–62), quick-move routing tables for the standard windows.
 
@@ -148,7 +165,8 @@ Tests: unit tests per click mode, a property test that random action sequences c
 - Components: `Inventory`, `OpenMenu { def, state }`, `Carried`, `MenuProperty`, `Favorite`.
 - Entity events: `SlotClicked`, `MenuOpened`, `MenuClosed`, `SlotChanged`, `PropertyChanged`. Messages for high-volume sync.
 - Systems: gather input into `ClickAction`, run `apply_click` for prediction, submit to the `Authority` resource (`Arc<dyn Authority>`), reconcile acks and resyncs, mark dirty slots for the ui crate.
-- `LocalAuthority` adapter lives here. `slotted-testutils` provides `RecordingAuthority` and `RejectingAuthority` for tests.
+- `LocalAuthority` adapter lives here; `LocalAuthority::with_validation` picks the `ValidationLevel` `predict` runs at, which every authority reports through `Authority::validation`. `slotted-testutils` provides `RecordingAuthority` and `RejectingAuthority` for tests.
+- A submission the authority refuses asks it for a snapshot (`request_resync`) and only falls back to re-emitting the menu from local state when the answer is `Unsupported`. `PendingRoundTrips` counts the request and the `Resync` that settles it one for one.
 - No rendering, no `bevy_ui`. Runs under `MinimalPlugins` in tests.
 
 ### 4.4 slotted-theme
@@ -249,9 +267,21 @@ The conformance suite in `slotted-testutils` is therefore load-bearing: it runs 
 - `mod.toml`: id, version, api_version, dependencies with `optional`, `incompatible` and ordering hints, entry points `data.lua`, `control.lua`, asset root.
 - Fluent localisation through `bevy_fluent`, keys namespaced per mod, layered by load order.
 
+### 4.13 slotted-net (transport-agnostic networked authority)
+
+The other side of the `Authority` port, and the one crate in the workspace that speaks a protocol.
+
+- Messages mirror vanilla's container packets: `ClickContainer { menu, state_id, seq, action, predicted }` and `RequestResync` client to server; `Ack`, `SetSlot`, `SetContent`, `SetProperty` server to client. The predicted `Delta` rides along so an agreeing server answers with an ack rather than a container, and `seq` identifies a click, which `state_id` cannot do because the drag stages leave it unchanged.
+- `RemoteAuthority<T>` is the client: it implements `slotted_model::Authority`, retransmits an unanswered click after a set number of polls, and turns server messages into `AuthorityEvent`s.
+- `MenuServer` is the server: it applies every click to a scratch copy with `apply_click_validated` at `ValidationLevel::Always`, commits on `Ok`, acks a matching prediction, sends the container otherwise, and broadcasts `SetSlot` to the menu's other viewers off the inventories' dirty masks.
+- `Transport` is the port: `send`, `poll`, `peers`. `Loopback` is the in-process adapter with a tick clock, latency, reordering jitter and a deterministic drop rate, which is what the tests run against.
+- A `bevy_replicon` adapter is designed but not built; the shape is in `docs/design/gaps-notes-A.md` section 6.
+
 ### 4.11 slotted facade
 
 `SlottedPlugins` plugin group wiring the defaults: `LocalAuthority`, `AtlasIcons`, the glass theme, the luaur runtime, `LayeredReader`. Everything is a resource holding an `Arc<dyn Port>` so an app can replace any adapter before `add_plugins`.
+
+The `net` feature adds `SlottedNetPlugin`, which swaps `LocalAuthority` for a `slotted_net::RemoteAuthority` when the app has inserted a `ClientTransport` resource, and leaves the default alone when it has not. The same binary therefore plays single-player by simply not connecting.
 
 `SlottedPlugins::headless()` is the same group without rendering, icon baking, blur and motion side effects. It is what `slotted-test` builds on, and it is also the right group for a dedicated server.
 
@@ -417,37 +447,52 @@ Two audiences. Our own crates are tested with the usual unit and integration tes
 
 ## 11. Outcome
 
-Phases 0 to 7 are done. What shipped, crate by crate:
+Phases 0 to 7 are done, and so is the gap-closing round that followed them
+(2026-09-06, `docs/design/gaps-notes-{A,B,C}.md`). What shipped, crate by
+crate:
 
 | Crate | What landed |
 |---|---|
-| `slotted-model`, `slotted-registry` | The domain and the registries. No Bevy, no IO. |
-| `slotted-ecs` | The model as components and events, prediction, the `Authority` port. |
-| `slotted-theme` | Ten materials, 36 roles, fonts and per-preset motion, and three shipped skins: glass, paper, neon. |
-| `slotted-ui` | Screens as data, 14 node types, tooltips, anchors and injection, HUD layers, recording and replay. |
-| `slotted-icons` | Lit-shape item icons: a deterministic CPU bake, an offscreen GPU rig that renders into the atlas, and live viewport icons. |
-| `slotted-browser` | Item and recipe browser over any screen, with search, categories, bookmarks and transfer. |
-| `slotted-script` and its two adapters | One `slotted.*` surface, Luau natively and pure-Rust Lua on wasm. |
+| `slotted-model`, `slotted-registry` | The domain and the registries. No Bevy, no IO. Ghost and filter hints live on `MenuState`, and conservation is a runtime `ValidationLevel` rather than a debug assertion. |
+| `slotted-ecs` | The model as components and events, prediction, the `Authority` port, and the resync a refused submission can ask for. |
+| `slotted-net` | The networked adapter the plan's section 4.1 described: a predicting `RemoteAuthority`, an authoritative `MenuServer` running at `ValidationLevel::Always`, and a `Transport` port whose in-process `Loopback` can add latency, reorder and drop. |
+| `slotted-theme` | Ten materials, 36 roles, size and type tokens, per-preset motion, and three shipped skins with their OFL font files: glass, paper, neon. |
+| `slotted-ui` | Screens as data and as `.screen.ron` assets, with inheritance, 14 node types, tooltips, anchors and injection, HUD layers, localisation, recording and replay. |
+| `slotted-icons` | Lit-shape item icons: a deterministic CPU bake, an offscreen GPU rig that renders into the atlas, glTF item models behind the `gltf` feature, and live viewport icons. |
+| `slotted-browser` | Item and recipe browser over any screen, with search, categories, bookmarks and transfer, laid out from theme tokens and re-docked on a scale change. |
+| `slotted-script` and its adapter | One `slotted.*` surface on one runtime, Luau through luaur, on every target (ADR 0004). |
 | `slotted-packs` | Mod discovery, layered assets, the two-stage lifecycle, hot reload, Fluent. |
 | `slotted-test`, `slotted-testutils` | The public headless harness and the internal fakes. |
 | `slotted` | The facade: `SlottedPlugins`, the prelude, the feature flags. |
 
-**821 tests pass** with every feature on, three more behind a GPU gate. The
-three native examples and the web playground all run, each covered by its own
-harness tests and its mods' `tests/*.lua`.
+**912 tests pass** with every feature on, three more behind a GPU gate that
+cannot currently be lifted (see the limitations below). The three native
+examples and the web playground all run, each covered by its own harness tests
+and its mods' `tests/*.lua`.
 
 Known limitations, in the order they would block someone:
 
 - On `wasm32` a Lua error a mod raises aborts the module and the host has to
   restart; `pcall` in a script does not contain it (ADR 0004).
-- No font files ship, so both new themes render in Bevy's default face.
-- `LiveIcons` and the viewport draw shapes only; `IconDef::Model` warns.
+- There is no `bevy_replicon` adapter. `slotted-net` is transport-agnostic and
+  the adapter is designed in gaps notes A section 6, but it is not written, so
+  a game shipping multiplayer today writes its own `Transport`.
+- The CPU and GPU icon bakes still author their geometry twice, so a seventh
+  `ShapeKind` has to be added to both.
+- A `Model` icon's stand-in cannot be derived from the glTF: it is declared in
+  the data file or it is a box in a colour hashed from the path.
 - The GPU icon bake is confirmed on a WebGL2 context, but only a software one
   (ANGLE over SwiftShader). Its cost on hardware is unmeasured.
-- `cargo deny check advisories` fails on `ttf-parser`, through Bevy's text
-  stack, and is left unignored on purpose.
+- The GPU render tests cannot run even on a machine with a GPU, because libtest
+  gives each test its own thread and winit will not build an event loop off the
+  main one. The evidence for that path is `just shot-chest` plus the pixel
+  check in `just shot-check`.
+- `cargo deny check` passes with one dated, single-id ignore for
+  RUSTSEC-2026-0192 (`ttf-parser`, reached through winit's Wayland
+  decorations), to be reviewed 2027-03-06.
 
-Recommended next steps: add the glTF loader behind `IconDef::Model`; ship or fetch the
-OFL font files so paper and neon are complete; measure the GPU bake on a
-hardware WebGL2 context; and implement `ScreenDef::inherits`.
-`docs/FOLLOWUPS.md` carries the rest.
+Recommended next steps: write the `bevy_replicon` adapter against the
+`Transport` port; project the bake meshes so the two bakes share their
+geometry as well as their description; build a headless render harness so the
+icon rig can be tested without a screenshot; and measure the GPU bake on a
+hardware WebGL2 context. `docs/FOLLOWUPS.md` carries the rest.

@@ -211,7 +211,10 @@ impl Plugin for SlottedPacksPlugin {
                     (watch_for_changes, apply_reloads)
                         .chain()
                         .after(SlottedPacksSet::Dispatch),
-                    crate::locale::resolve_loc_text.in_set(slotted_ui::SlottedUiSet::Render),
+                    // `resolve_loc_text` is not registered here. It belongs to
+                    // `slotted-ui`, beside the `LocText` component and the
+                    // `Localization` port, and `SlottedUiPlugin` runs it; this
+                    // crate only replaces the resource it reads.
                 ),
             );
     }

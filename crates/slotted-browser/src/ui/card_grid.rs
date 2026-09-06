@@ -1,29 +1,33 @@
 //! `slotted:card_grid`: the virtualised entry grid. Package B.
 //!
-//! A pool of `cols * rows` card entities is rebound to
-//! `BrowserRuntime::visible[page * per_page ..]` whenever the runtime, the
-//! page or the dock changes; cards past the end are hidden rather than
-//! despawned, so entities stay stable and screen-tree snapshots do too. The
-//! pool is resized only when the dock gives the panel a different grid.
+//! The grid is a [`slotted_ui::VirtualGridSource`] in
+//! [pooled](slotted_ui::VirtualGridSource::pooled) mode: `slotted-ui` keeps
+//! `cols * rows` card entities alive with stable entity ids and hands each one
+//! to [`CardSource::rebind`], which paints it from
+//! `BrowserRuntime::visible[first_row * cols ..]`. Cards past the end of the
+//! result set are hidden rather than despawned, so screen-tree snapshots list
+//! the whole pool. A browser page is `rows` rows of that window, so turning a
+//! page is a window move.
 
 use bevy::input_focus::tab_navigation::TabIndex;
 use bevy::picking::events::{Click, Pointer, Scroll};
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use slotted_ecs::OpenMenu;
-use slotted_model::GiveTarget;
+use slotted_model::{GiveTarget, Namespaced};
 use slotted_registry::Value;
 use slotted_theme::Themed;
 use slotted_ui::{
-    ItemView, ScreenRoot, SemanticLabel, SpawnCtx, TooltipRequest, TooltipTier, UiNodeDef, Widget,
+    DataSourceId, ItemView, LocKey, ScreenRoot, SemanticLabel, SpawnCtx, TextRole, TooltipRequest,
+    TooltipTier, UiNodeDef, VirtualGridSource, VirtualGridState, Widget,
 };
 use slotted_ui::{SemanticRole, Tags};
 
-use super::dock::{BrowserLayout, CARD_GAP, CARD_HEIGHT, CARD_WIDTH};
+use super::dock::{BrowserLayout, CARD_GAP, DockMetrics};
 use super::panel::{BrowserPanel, panel_ancestor};
 use super::{ShowsEntry, ShowsIngredient, ingredient_key, ingredient_stack, roles};
 use crate::events::{GiveRequested, OpenRecipes, OpenUses};
-use crate::index::IndexState;
+use crate::index::{EntryId, IndexState};
 use crate::ingredient::IngredientTypes;
 use crate::runtime::BrowserRuntime;
 
@@ -51,6 +55,7 @@ pub struct CardGridWidget;
 
 impl Widget for CardGridWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, _params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let metrics = DockMetrics::from(&ctx.tokens());
         let grid = ctx.spawn_node((
             Node {
                 display: Display::Grid,
@@ -69,12 +74,23 @@ impl Widget for CardGridWidget {
                 justify_content: JustifyContent::Start,
                 row_gap: px(CARD_GAP),
                 column_gap: px(CARD_GAP),
-                grid_template_columns: RepeatedGridTrack::px(1, CARD_WIDTH),
-                grid_auto_rows: vec![GridTrack::px(CARD_HEIGHT)],
+                grid_template_columns: RepeatedGridTrack::px(1, metrics.card_width),
+                grid_auto_rows: vec![GridTrack::px(metrics.card_height)],
                 ..default()
             },
             SemanticRole::Grid,
             CardGrid::default(),
+            // The shared pooling machinery: `size_card_pool` gives it the
+            // docked shape and the open page, `refresh_virtual_grids` keeps
+            // that many cards alive and rebinds them through `CardSource`.
+            VirtualGridState {
+                source: card_source_id(),
+                cols: 1,
+                rows: 0,
+                first_row: 0,
+                total: 0,
+                version: 0,
+            },
         ));
         ctx.world
             .entity_mut(grid)
@@ -102,45 +118,44 @@ pub fn size_card_pool(world: &mut World) {
             })
             .collect()
     };
+    let metrics = DockMetrics::from(&slotted_ui::active_tokens(world));
     for (grid, cols, rows) in shapes {
-        resize_pool(world, grid, cols, rows);
+        resize_pool(world, grid, cols, rows, metrics);
     }
 }
 
-fn resize_pool(world: &mut World, grid: Entity, cols: u16, rows: u16) {
+/// Hands the docked shape and the open page to the grid's
+/// [`VirtualGridState`]. The cards themselves are spawned, kept and rebound by
+/// `slotted-ui`, on the next `refresh_virtual_grids`.
+fn resize_pool(world: &mut World, grid: Entity, cols: u16, rows: u16, metrics: DockMetrics) {
+    set_columns(world, grid, cols, metrics);
     let want = usize::from(cols) * usize::from(rows);
-    let kids: Vec<Entity> = world
-        .get::<Children>(grid)
-        .map(|children| children.iter().collect())
-        .unwrap_or_default();
-    let existing: Vec<(Entity, u16)> = kids
-        .into_iter()
-        .filter_map(|c| world.get::<Card>(c).map(|card| (c, card.0)))
-        .collect();
-    if existing.len() == want {
-        set_columns(world, grid, cols);
-        return;
-    }
-    for (entity, index) in &existing {
-        if usize::from(*index) >= want {
-            world.entity_mut(*entity).despawn();
-        }
-    }
-    #[allow(clippy::cast_possible_truncation)]
-    for index in existing.len()..want {
-        spawn_card(world, grid, index as u16);
-    }
-    set_columns(world, grid, cols);
     if let Some(mut card_grid) = world.get_mut::<CardGrid>(grid)
         && card_grid.per_page != want
     {
         card_grid.per_page = want;
         card_grid.page = 0;
     }
+    let page = world.get::<CardGrid>(grid).map_or(0, |g| g.page);
+    let Some(mut state) = world.get_mut::<VirtualGridState>(grid) else {
+        return;
+    };
+    if state.cols != cols {
+        state.cols = cols;
+    }
+    if state.rows != rows {
+        state.rows = rows;
+    }
+    // One page is `rows` rows of the window, so the open page *is* the
+    // window's first row.
+    let first_row = page * usize::from(rows.max(1));
+    if state.first_row != first_row {
+        state.first_row = first_row;
+    }
 }
 
-fn set_columns(world: &mut World, grid: Entity, cols: u16) {
-    let want = RepeatedGridTrack::px(u16::max(cols, 1), CARD_WIDTH);
+fn set_columns(world: &mut World, grid: Entity, cols: u16, metrics: DockMetrics) {
+    let want = RepeatedGridTrack::px(u16::max(cols, 1), metrics.card_width);
     if let Some(mut node) = world.get_mut::<Node>(grid)
         && node.grid_template_columns != want
     {
@@ -148,12 +163,12 @@ fn set_columns(world: &mut World, grid: Entity, cols: u16) {
     }
 }
 
-fn spawn_card(world: &mut World, grid: Entity, index: u16) {
+fn spawn_card(world: &mut World, grid: Entity, index: u16, metrics: DockMetrics) -> Entity {
     let card = world
         .spawn((
             Node {
-                width: px(CARD_WIDTH),
-                height: px(CARD_HEIGHT),
+                width: px(metrics.card_width),
+                height: px(metrics.card_height),
                 // A long display name ("#minecraft:planks") must stay inside
                 // its own tile rather than run over the card beside it.
                 overflow: Overflow::clip(),
@@ -174,7 +189,7 @@ fn spawn_card(world: &mut World, grid: Entity, index: u16) {
         ))
         .id();
     slotted_ui::item::spawn_item_view_children(world, card);
-    reshape_item_view(world, card);
+    reshape_item_view(world, card, metrics);
     // The rarity strip: the moodboard's `.rb`, a 2 px bar tucked under the
     // card's top edge rather than the ring a slot draws.
     world.spawn((
@@ -249,6 +264,7 @@ fn spawn_card(world: &mut World, grid: Entity, index: u16) {
         .observe(super::ghost_drag::on_card_drag_start)
         .observe(super::ghost_drag::on_card_drag_end)
         .observe(on_card_hover);
+    card
 }
 
 /// The icon box on a card, px.
@@ -261,7 +277,7 @@ const ICON_BOX: f32 = 34.0;
 /// icon in a box above the name, so the icon child is moved and the rarity
 /// ring, which would draw around the whole card, is dropped in favour of the
 /// strip.
-fn reshape_item_view(world: &mut World, card: Entity) {
+fn reshape_item_view(world: &mut World, card: Entity, metrics: DockMetrics) {
     let children: Vec<Entity> = world
         .get::<Children>(card)
         .map(|c| c.iter().collect())
@@ -272,7 +288,7 @@ fn reshape_item_view(world: &mut World, card: Entity) {
         {
             node.width = px(ICON_BOX);
             node.height = px(ICON_BOX);
-            node.left = px((CARD_WIDTH - ICON_BOX) / 2.0);
+            node.left = px((metrics.card_width - ICON_BOX) / 2.0);
             node.top = px(8);
         }
         if world.get::<slotted_ui::item::RarityRing>(child).is_some() {
@@ -286,8 +302,8 @@ fn reshape_item_view(world: &mut World, card: Entity) {
 pub struct RarityStrip;
 
 /// Which of a card's three text children a node is. One component rather than
-/// three markers, so [`rebind_cards`] needs one query instead of three
-/// mutually-`Without` ones.
+/// three markers, so the rebind reads one component instead of three
+/// mutually-exclusive ones.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardLabel {
     /// The display name.
@@ -298,99 +314,185 @@ pub enum CardLabel {
     Glyph,
 }
 
-/// `BrowserSet::Render`: rebind the card pool to the visible page.
+/// The id the card grid's [`CardSource`] is registered under.
+pub fn card_source_id() -> DataSourceId {
+    DataSourceId(Namespaced::parse("slotted:browser_cards").expect("well formed"))
+}
+
+/// The card pool as a pooled [`VirtualGridSource`]: `slotted-ui` owns the
+/// windowing and the pool, this owns what one card shows.
+///
+/// The list is `BrowserRuntime::visible`, which lives in the world rather than
+/// in the source, so the length comes from
+/// [`len_in`](VirtualGridSource::len_in); `len` is the empty answer for a
+/// world-less caller.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct CardSource;
+
+impl VirtualGridSource for CardSource {
+    fn len(&self) -> usize {
+        0
+    }
+
+    fn len_in(&self, world: &World) -> usize {
+        world
+            .get_resource::<BrowserRuntime>()
+            .map_or(0, |runtime| runtime.visible.len())
+    }
+
+    fn version(&self) -> u64 {
+        0
+    }
+
+    /// Never called: [`spawn_cell`](VirtualGridSource::spawn_cell) spawns
+    /// every card, because a card is a hand-built node with observers rather
+    /// than a tree the widget path can make.
+    fn cell(&self, _index: usize) -> UiNodeDef {
+        UiNodeDef::Text {
+            key: LocKey(String::new()),
+            style: TextRole::Body,
+            tags: Tags::new(),
+        }
+    }
+
+    fn pooled(&self) -> bool {
+        true
+    }
+
+    fn spawn_cell(&self, world: &mut World, grid: Entity, slot: usize) -> Option<Entity> {
+        let metrics = DockMetrics::from(&slotted_ui::active_tokens(world));
+        let slot = u16::try_from(slot).unwrap_or(u16::MAX);
+        Some(spawn_card(world, grid, slot, metrics))
+    }
+
+    fn rebind(&self, world: &mut World, cell: Entity, index: Option<usize>) -> bool {
+        rebind_card(world, cell, index);
+        true
+    }
+}
+
+/// What one card shows, lifted out of the world's resources so the card can be
+/// written without holding a borrow on them.
+struct CardBinding {
+    ingredient: crate::ingredient::Ingredient,
+    display: String,
+    mod_ns: String,
+    rarity: slotted_registry::Rarity,
+    stack: Option<slotted_model::ItemStack>,
+    key: String,
+}
+
+/// Paints one card from the entry at `index`, or empties it when the pool runs
+/// past the end of the result set.
 ///
 /// A bound card carries four things the moodboard asks for: the icon, the
-/// display name, the `@mod` badge and a rarity strip. Nothing is despawned;
-/// a card past the end of the page keeps its cell and goes
+/// display name, the `@mod` badge and a rarity strip. Nothing is despawned; a
+/// card past the end of the page keeps its cell and goes
 /// [`Visibility::Hidden`], so the panel does not reflow as the player types.
-#[allow(clippy::too_many_arguments)]
-pub fn rebind_cards(
-    runtime: Res<BrowserRuntime>,
-    index: Res<IndexState>,
-    types: Res<IngredientTypes>,
-    registries: Option<Res<slotted_ecs::Registries>>,
-    grids: Query<(&CardGrid, &Children)>,
-    mut cards: Query<(
-        &Card,
-        &mut ShowsEntry,
-        &mut ItemView,
-        &mut Visibility,
-        &mut Tags,
-        &mut SemanticLabel,
-        &Children,
-    )>,
-    mut labels: Query<(&CardLabel, &mut Text, &mut Visibility), Without<Card>>,
-    mut strips: Query<
-        (&mut Themed, &mut Visibility),
-        (With<RarityStrip>, Without<Card>, Without<CardLabel>),
-    >,
-    mut commands: Commands,
-) {
-    let Some(index) = index.ready() else {
+fn rebind_card(world: &mut World, card: Entity, index: Option<usize>) {
+    // Nothing is bound while the index is still building: an unbound card
+    // stays unbound rather than claiming an entry that does not exist yet.
+    if world
+        .get_resource::<IndexState>()
+        .and_then(IndexState::ready)
+        .is_none()
+    {
+        return;
+    }
+    let wanted = index.and_then(|index| {
+        world
+            .get_resource::<BrowserRuntime>()
+            .and_then(|runtime| runtime.visible.get(index).copied())
+    });
+    let bound = wanted.and_then(|id| read_entry(world, id));
+
+    if let Some(mut shows) = world.get_mut::<ShowsEntry>(card)
+        && shows.0 != wanted
+    {
+        shows.0 = wanted;
+    }
+
+    let children: Vec<Entity> = world
+        .get::<Children>(card)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
+
+    let Some(bound) = bound else {
+        if let Some(mut view) = world.get_mut::<ItemView>(card)
+            && view.stack.is_some()
+        {
+            view.stack = None;
+        }
+        if let Some(mut tags) = world.get_mut::<Tags>(card)
+            && tags.get("entry").is_some()
+        {
+            tags.0.remove("entry");
+        }
+        if let Some(mut label) = world.get_mut::<SemanticLabel>(card)
+            && !label.0.is_empty()
+        {
+            label.0.clear();
+        }
+        world.entity_mut(card).remove::<ShowsIngredient>();
+        set_visibility(world, card, Visibility::Hidden);
+        write_labels(world, &children, "", "", "");
+        write_strip(world, &children, None);
         return;
     };
-    for (grid, children) in &grids {
-        let start = grid.page * grid.per_page.max(1);
-        for child in children.iter() {
-            let Ok((card, mut shows, mut view, mut visibility, mut tags, mut label, card_children)) =
-                cards.get_mut(child)
-            else {
-                continue;
-            };
-            let wanted = runtime.visible.get(start + usize::from(card.0)).copied();
-            if shows.0 != wanted {
-                shows.0 = wanted;
-            }
-            if let Some(entry) = wanted.and_then(|id| index.get(id)) {
-                let stack = ingredient_stack(&types, &entry.ingredient, 1);
-                if view.stack != stack {
-                    view.stack = stack;
-                }
-                let key = ingredient_key(registries.as_deref(), &entry.ingredient);
-                if tags.get("entry") != Some(key.as_str()) {
-                    tags.0.insert("entry".to_owned(), key);
-                }
-                if label.0 != entry.display {
-                    label.0.clone_from(&entry.display);
-                }
-                commands
-                    .entity(child)
-                    .insert(ShowsIngredient(entry.ingredient.clone()));
-                if *visibility != Visibility::Inherited {
-                    *visibility = Visibility::Inherited;
-                }
-                let glyph = if view.stack.is_some() {
-                    ""
-                } else {
-                    glyph_for(&entry.display)
-                };
-                write_labels(
-                    &mut labels,
-                    card_children,
-                    &entry.display,
-                    &entry.mod_ns,
-                    glyph,
-                );
-                write_strip(&mut strips, card_children, Some(entry.rarity));
-            } else {
-                if view.stack.is_some() {
-                    view.stack = None;
-                }
-                if tags.get("entry").is_some() {
-                    tags.0.remove("entry");
-                }
-                if !label.0.is_empty() {
-                    label.0.clear();
-                }
-                commands.entity(child).try_remove::<ShowsIngredient>();
-                if *visibility != Visibility::Hidden {
-                    *visibility = Visibility::Hidden;
-                }
-                write_labels(&mut labels, card_children, "", "", "");
-                write_strip(&mut strips, card_children, None);
-            }
+
+    let mut has_stack = false;
+    if let Some(mut view) = world.get_mut::<ItemView>(card) {
+        if view.stack != bound.stack {
+            view.stack = bound.stack;
         }
+        has_stack = view.stack.is_some();
+    }
+    if let Some(mut tags) = world.get_mut::<Tags>(card)
+        && tags.get("entry") != Some(bound.key.as_str())
+    {
+        tags.0.insert("entry".to_owned(), bound.key);
+    }
+    if let Some(mut label) = world.get_mut::<SemanticLabel>(card)
+        && label.0 != bound.display
+    {
+        label.0.clone_from(&bound.display);
+    }
+    world
+        .entity_mut(card)
+        .insert(ShowsIngredient(bound.ingredient));
+    set_visibility(world, card, Visibility::Inherited);
+    let glyph = if has_stack {
+        ""
+    } else {
+        glyph_for(&bound.display)
+    };
+    write_labels(world, &children, &bound.display, &bound.mod_ns, glyph);
+    write_strip(world, &children, Some(bound.rarity));
+}
+
+/// The built index's entry for `id`, copied out of the resources.
+fn read_entry(world: &World, id: EntryId) -> Option<CardBinding> {
+    let index = world.get_resource::<IndexState>()?.ready()?;
+    let entry = index.get(id)?;
+    let types = world.get_resource::<IngredientTypes>()?;
+    Some(CardBinding {
+        stack: ingredient_stack(types, &entry.ingredient, 1),
+        key: ingredient_key(
+            world.get_resource::<slotted_ecs::Registries>(),
+            &entry.ingredient,
+        ),
+        ingredient: entry.ingredient.clone(),
+        display: entry.display.clone(),
+        mod_ns: entry.mod_ns.clone(),
+        rarity: entry.rarity,
+    })
+}
+
+fn set_visibility(world: &mut World, entity: Entity, want: Visibility) {
+    if let Some(mut visibility) = world.get_mut::<Visibility>(entity)
+        && *visibility != want
+    {
+        *visibility = want;
     }
 }
 
@@ -401,15 +503,9 @@ fn glyph_for(display: &str) -> &str {
 }
 
 /// Writes a card's three text children, hiding the empty ones.
-fn write_labels(
-    labels: &mut Query<(&CardLabel, &mut Text, &mut Visibility), Without<Card>>,
-    children: &Children,
-    name: &str,
-    namespace: &str,
-    glyph: &str,
-) {
-    for child in children.iter() {
-        let Ok((kind, mut text, mut visibility)) = labels.get_mut(child) else {
+fn write_labels(world: &mut World, children: &[Entity], name: &str, namespace: &str, glyph: &str) {
+    for child in children {
+        let Some(kind) = world.get::<CardLabel>(*child).copied() else {
             continue;
         };
         let want = match kind {
@@ -417,7 +513,9 @@ fn write_labels(
             CardLabel::Badge => namespace,
             CardLabel::Glyph => glyph,
         };
-        if text.0 != want {
+        if let Some(mut text) = world.get_mut::<Text>(*child)
+            && text.0 != want
+        {
             want.clone_into(&mut text.0);
         }
         let visible = if want.is_empty() {
@@ -425,42 +523,29 @@ fn write_labels(
         } else {
             Visibility::Inherited
         };
-        if *visibility != visible {
-            *visibility = visible;
-        }
+        set_visibility(world, *child, visible);
     }
 }
 
 /// Paints a card's rarity strip, hidden for `Common` and for an empty card.
-fn write_strip(
-    strips: &mut Query<
-        (&mut Themed, &mut Visibility),
-        (With<RarityStrip>, Without<Card>, Without<CardLabel>),
-    >,
-    children: &Children,
-    rarity: Option<slotted_registry::Rarity>,
-) {
+fn write_strip(world: &mut World, children: &[Entity], rarity: Option<slotted_registry::Rarity>) {
     let role = rarity
         .filter(|r| *r != slotted_registry::Rarity::Common)
         .map(super::rarity_strip_role);
-    for child in children.iter() {
-        let Ok((mut themed, mut visibility)) = strips.get_mut(child) else {
+    for child in children {
+        if world.get::<RarityStrip>(*child).is_none() {
             continue;
-        };
+        }
         match &role {
             Some(role) => {
-                if themed.0 != *role {
+                if let Some(mut themed) = world.get_mut::<Themed>(*child)
+                    && themed.0 != *role
+                {
                     themed.0.clone_from(role);
                 }
-                if *visibility != Visibility::Inherited {
-                    *visibility = Visibility::Inherited;
-                }
+                set_visibility(world, *child, Visibility::Inherited);
             }
-            None => {
-                if *visibility != Visibility::Hidden {
-                    *visibility = Visibility::Hidden;
-                }
-            }
+            None => set_visibility(world, *child, Visibility::Hidden),
         }
     }
 }

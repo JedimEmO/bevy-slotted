@@ -71,6 +71,11 @@ struct Fixture {
 impl Fixture {
     /// A menu whose container holds 64 stone and 10 eggs, ready to click.
     fn new(authority: Arc<RecordingAuthority>) -> Self {
+        Self::with_def(authority, small_chest())
+    }
+
+    /// [`new`](Self::new) over a menu definition of the caller's choosing.
+    fn with_def(authority: Arc<RecordingAuthority>, def: Arc<MenuDef>) -> Self {
         let registries = test_registries();
         let items = test_items(&registries);
         let mut app = minimal_ecs_app();
@@ -91,7 +96,6 @@ impl Fixture {
                 seen.0.push(event.id);
             });
 
-        let def = small_chest();
         let world = app.world_mut();
         let container = world
             .spawn(inventory([
@@ -224,6 +228,17 @@ impl Fixture {
     fn round_trips(&self) -> u32 {
         self.app.world().resource::<PendingRoundTrips>().0
     }
+
+    /// The hint a ghost or filter slot displays, out of the menu state.
+    fn hint(&self, slot: SlotIx) -> Option<ItemStack> {
+        self.app
+            .world()
+            .get::<OpenMenu>(self.menu)
+            .unwrap()
+            .state
+            .hint(slot)
+            .cloned()
+    }
 }
 
 /// `open_menu` needs `Commands` and the allocator at once.
@@ -328,6 +343,7 @@ fn a_resync_overwrites_the_prediction_and_emits_only_the_changed_slots() {
             state_id: 99,
             drag: None,
             properties: vec![7],
+            hints: std::collections::BTreeMap::new(),
         },
     };
     authority.resync(fixture.id, snapshot);
@@ -848,4 +864,155 @@ fn a_set_slot_for_an_unknown_slot_changes_nothing() {
         before,
         "nothing was told about a slot that does not exist"
     );
+}
+
+// ------------------------------------------------------- refusal and resync
+
+/// The snapshot the authority forces a refused client back to: the container
+/// untouched, nothing carried, and a state id far ahead of the client's.
+fn authoritative(items: &TestItems) -> MenuSnapshot {
+    let mut inventories = Inventories::new();
+    inventories.push(slotted_model::Inventory::from_slots([
+        stack(items.stone, 64),
+        stack(items.egg, 10),
+        None,
+        None,
+    ]));
+    inventories.push(slotted_model::Inventory::new(4));
+    MenuSnapshot {
+        inventories,
+        state: MenuState {
+            state_id: 42,
+            properties: vec![7],
+            ..MenuState::new(&small_chest())
+        },
+    }
+}
+
+#[test]
+fn a_refused_submission_asks_the_authority_for_a_snapshot() {
+    let authority = RecordingAuthority::new();
+    let mut fixture = Fixture::new(authority.clone());
+    authority.answer_resync_with(authoritative(&fixture.items));
+    authority.fail_with(Some(slotted_model::AuthorityError::Rejected(
+        slotted_model::ClickError::NotAllowed,
+    )));
+
+    // The client predicts the pickup, the authority refuses it.
+    fixture.click(0, Button::Left, Modifiers::default());
+    fixture.app.update();
+
+    assert_eq!(
+        authority.resync_requests(),
+        vec![fixture.id],
+        "the refusal is answered by asking for the truth, not by guessing"
+    );
+    assert_eq!(fixture.carried(), None, "the prediction was rolled back");
+    assert_eq!(
+        fixture.slot_of(fixture.container, 0),
+        Some(stack(fixture.items.stone, 64).unwrap())
+    );
+    assert_eq!(fixture.state_id(), 42, "the authority's state id wins");
+    assert_eq!(
+        fixture.round_trips(),
+        0,
+        "the request counted as a round trip and the resync closed it"
+    );
+}
+
+#[test]
+fn a_refusal_an_authority_cannot_answer_redraws_from_local_state() {
+    let authority = RecordingAuthority::new();
+    let mut fixture = Fixture::new(authority.clone());
+    authority.fail_with(Some(slotted_model::AuthorityError::Disconnected));
+
+    fixture.click(0, Button::Left, Modifiers::default());
+    fixture.app.update();
+
+    assert_eq!(authority.resync_requests(), vec![fixture.id]);
+    assert_eq!(
+        fixture.carried(),
+        stack(fixture.items.stone, 64),
+        "with no snapshot to apply the local prediction stands"
+    );
+    assert_eq!(
+        fixture.slot_changes().len(),
+        9,
+        "the predicted slot, then every slot of the menu re-emitted"
+    );
+    assert_eq!(fixture.round_trips(), 0);
+}
+
+// ------------------------------------------------------------ ghost hints
+
+/// A menu whose slot 2 is a ghost: it shows an item without holding one.
+fn ghost_chest() -> Arc<MenuDef> {
+    let mut def = MenuDef::clone(&small_chest());
+    def.slots[2].behaviour = SlotBehaviour::Ghost;
+    Arc::new(def)
+}
+
+#[test]
+fn a_ghost_slot_shows_a_hint_that_no_inventory_holds() {
+    let authority = RecordingAuthority::new();
+    let mut fixture = Fixture::with_def(authority, ghost_chest());
+    let egg = stack(fixture.items.egg, 1).unwrap();
+
+    // Pick up the eggs, then click the ghost slot: the hint is set and the
+    // carried stack is not consumed.
+    fixture.click(1, Button::Left, Modifiers::default());
+    fixture.app.update();
+    fixture.clear_slot_changes();
+    fixture.click(2, Button::Left, Modifiers::default());
+    fixture.app.update();
+
+    assert_eq!(
+        fixture.carried(),
+        stack(fixture.items.egg, 10),
+        "a hint costs nothing"
+    );
+    assert_eq!(
+        fixture.slot_changes(),
+        vec![(SlotIx(2), Some(egg.clone()))],
+        "the slot entity is told what to draw"
+    );
+    assert_eq!(
+        fixture.slot_of(fixture.container, 2),
+        None,
+        "and no inventory holds it"
+    );
+    assert_eq!(fixture.hint(SlotIx(2)), Some(egg));
+
+    // Clicking it with an empty hand clears the hint again.
+    fixture.act(ClickAction::Pickup {
+        slot: SlotIx(SlotIx::OUTSIDE.0),
+        button: Button::Left,
+    });
+    fixture.app.update();
+    fixture.clear_slot_changes();
+    fixture.click(2, Button::Left, Modifiers::default());
+    fixture.app.update();
+    assert_eq!(fixture.slot_changes(), vec![(SlotIx(2), None)]);
+    assert_eq!(fixture.hint(SlotIx(2)), None);
+}
+
+#[test]
+fn set_slot_on_a_ghost_writes_the_hint_not_the_inventory() {
+    let authority = RecordingAuthority::new();
+    let mut fixture = Fixture::with_def(authority, ghost_chest());
+    let egg = ItemStack::new(fixture.items.egg, 1);
+    fixture.app.world_mut().trigger(slotted_ecs::SetSlot {
+        entity: fixture.menu,
+        slot: SlotIx(2),
+        stack: Some(egg.clone()),
+    });
+    fixture.app.update();
+
+    assert_eq!(fixture.hint(SlotIx(2)), Some(egg.clone()));
+    assert_eq!(fixture.slot_of(fixture.container, 2), None);
+    assert!(fixture.app.world().resource::<SlotChanges>().0.contains(&(
+        fixture.slots[2],
+        SlotIx(2),
+        Some(egg)
+    )));
 }

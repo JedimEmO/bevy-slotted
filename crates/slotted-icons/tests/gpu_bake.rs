@@ -13,7 +13,7 @@ use bevy::image::Image;
 use bevy::pbr::StandardMaterial;
 use bevy::prelude::*;
 use slotted_icons::atlas::{IconItem, bake_icon_atlas};
-use slotted_icons::gpu::{IconBakeRig, despawn_bake_rig, spawn_bake_rig};
+use slotted_icons::gpu::{IconBakeProgress, IconBakeRig, despawn_bake_rig, spawn_bake_rig};
 use slotted_model::{ItemId, Namespaced};
 use slotted_registry::icon::{IconColor, IconDef, ShapeIcon, ShapeKind};
 
@@ -71,8 +71,9 @@ fn the_rig_is_one_camera_three_lights_and_a_mesh_per_cell() {
         .iter(&world)
         .count();
     assert_eq!(
-        cameras, 1,
-        "one camera renders the whole grid, not one a cell"
+        cameras, 2,
+        "two cameras render the whole grid, not one a cell: the one that \
+         draws into the atlas and the warm-up one that compiles its pipelines"
     );
     let lights = world.query::<&DirectionalLight>().iter(&world).count();
     assert_eq!(lights, 3, "key, fill and rim");
@@ -80,8 +81,47 @@ fn the_rig_is_one_camera_three_lights_and_a_mesh_per_cell() {
     assert_eq!(meshes, 4, "three shapes plus the accented one's head");
 
     let rig = world.resource::<IconBakeRig>();
-    assert_eq!(rig.entities.len(), 1 + 3 + 4);
-    assert!(rig.frames > 0, "the rig renders before it goes quiet");
+    assert_eq!(rig.entities.len(), 2 + 3 + 4);
+    assert!(
+        !rig.finished,
+        "a freshly spawned rig has not drawn anything yet"
+    );
+    assert_eq!(
+        rig.frames, 0,
+        "and it has not counted a frame against the timeout"
+    );
+    assert!(
+        rig.pending_models.is_empty(),
+        "three primitives and no glTF, so nothing is waiting on an asset"
+    );
+    // The atlas camera does not render yet, whatever the scene is. Rendering
+    // clears its target, and its target is the atlas a screen may already be
+    // drawing from, so it waits until the warm-up camera has made the
+    // renderer compile the pipelines it will need. Only then can it clear and
+    // refill the atlas within one frame.
+    assert!(!rig.camera_on, "the hand-over has not happened yet");
+    let atlas_camera = rig.camera.expect("an atlas camera");
+    let warmup_camera = rig.warmup_camera.expect("a warm-up camera");
+    assert!(
+        !world
+            .get::<Camera>(atlas_camera)
+            .expect("a camera")
+            .is_active,
+        "the atlas camera must not clear the atlas before it can refill it"
+    );
+    assert!(
+        world
+            .get::<Camera>(warmup_camera)
+            .expect("a camera")
+            .is_active,
+        "the warm-up camera runs from the first frame"
+    );
+    // The rig stops on the render world's report, not on a frame count, so a
+    // world with no renderer has nothing to report and the camera stays on.
+    assert!(
+        !world.resource::<IconBakeProgress>().drew_everything(),
+        "nothing has been drawn, so nothing is ready"
+    );
 
     let image = world
         .resource::<Assets<Image>>()
@@ -117,16 +157,28 @@ fn a_camera_targets_the_atlas_and_nothing_else() {
     let baked = bake_icon_atlas(&items, 32);
     let mut world = world_with_assets();
     let target = spawn_bake_rig(&mut world, &baked, 32).expect("a rig");
-    let targets: Vec<RenderTarget> = world
-        .query::<&RenderTarget>()
-        .iter(&world)
-        .cloned()
-        .collect();
-    assert_eq!(targets.len(), 1);
+    let rig = world.resource::<IconBakeRig>();
+    let (atlas_camera, warmup_camera) = (
+        rig.camera.expect("an atlas camera"),
+        rig.warmup_camera.expect("a warm-up camera"),
+    );
+    let target_of = |entity| world.get::<RenderTarget>(entity).cloned();
     assert!(
-        matches!(&targets[0], RenderTarget::Image(image) if image.handle == target),
-        "the one camera draws into the atlas image: {:?}",
-        targets[0]
+        matches!(target_of(atlas_camera), Some(RenderTarget::Image(image)) if image.handle == target),
+        "the atlas camera draws into the atlas image: {:?}",
+        target_of(atlas_camera)
+    );
+    // And the warm-up camera draws somewhere else entirely, which is the
+    // whole point: it exists to compile pipelines without touching the atlas.
+    assert!(
+        matches!(target_of(warmup_camera), Some(RenderTarget::Image(image)) if image.handle != target),
+        "the warm-up camera draws into a scratch image: {:?}",
+        target_of(warmup_camera)
+    );
+    assert_eq!(
+        world.query::<&RenderTarget>().iter(&world).count(),
+        2,
+        "and there are no other cameras in the rig"
     );
 }
 
@@ -147,8 +199,8 @@ fn a_second_bake_takes_the_first_rig_down() {
             .query_filtered::<Entity, With<Camera3d>>()
             .iter(&world)
             .count(),
-        1,
-        "a rebake leaves one rig, not two"
+        2,
+        "a rebake leaves one rig's two cameras, not two rigs' four"
     );
     despawn_bake_rig(&mut world);
     assert_eq!(

@@ -14,6 +14,7 @@ use slotted_ui::{SemanticLabel, SemanticRole, SpawnCtx, Tags, UiNodeDef, Widget}
 #[derive(bevy::prelude::Component, Debug, Default, Clone, Copy)]
 pub struct ChipText;
 
+use super::panel::{ChromeText, chrome};
 use super::roles;
 use crate::events::SearchChanged;
 use crate::recipes::Categories;
@@ -72,27 +73,29 @@ pub fn toggle_term(query: &str, term: &str) -> String {
 /// ones the current query selects.
 pub fn render_chips(
     categories: Res<Categories>,
+    loc: Res<slotted_ui::Localization>,
     runtime: Res<BrowserRuntime>,
     rows: Query<(Entity, Option<&Children>), With<ChipRowMarker>>,
     mut chips: Query<(&Chip, &mut Themed, Option<&Children>)>,
     mut texts: Query<&mut Themed, (With<ChipText>, Without<Chip>)>,
     mut commands: Commands,
 ) {
-    let wanted: Vec<crate::category::CategoryId> = categories.iter().map(|c| c.id()).collect();
+    let wanted: Vec<(crate::category::CategoryId, slotted_ui::LocKey)> =
+        categories.iter().map(|c| (c.id(), c.title_key())).collect();
     for (row, children) in &rows {
         let have: Vec<crate::category::CategoryId> = children
             .into_iter()
             .flatten()
             .filter_map(|c| chips.get(*c).ok().map(|(chip, _, _)| chip.0.clone()))
             .collect();
-        if have != wanted {
+        if have != wanted.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>() {
             for child in children.into_iter().flatten().copied() {
                 if chips.get(child).is_ok() {
                     commands.entity(child).despawn();
                 }
             }
-            for id in &wanted {
-                spawn_chip(&mut commands, row, id.clone());
+            for (id, title_key) in &wanted {
+                spawn_chip(&mut commands, row, id.clone(), title_key.clone(), &loc);
             }
         }
     }
@@ -124,8 +127,18 @@ pub fn render_chips(
     }
 }
 
-fn spawn_chip(commands: &mut Commands, row: Entity, id: crate::category::CategoryId) {
+/// One chip. The `entry` tag and the semantic label stay the category's raw
+/// path, so a locator names `crafting` whatever language the chip is drawn in;
+/// only the text a player reads is localised.
+fn spawn_chip(
+    commands: &mut Commands,
+    row: Entity,
+    id: crate::category::CategoryId,
+    title_key: slotted_ui::LocKey,
+    loc: &slotted_ui::Localization,
+) {
     let label = id.0.path().to_owned();
+    let text = chrome(loc, &title_key.0, &label);
     commands
         .spawn((
             Node {
@@ -143,8 +156,12 @@ fn spawn_chip(commands: &mut Commands, row: Entity, id: crate::category::Categor
             ChildOf(row),
         ))
         .with_child((
-            Text::new(label),
+            Text::new(text),
             Themed(roles::CHIP_TEXT),
+            ChromeText {
+                key: title_key,
+                fallback: label,
+            },
             ChipText,
             Pickable::IGNORE,
         ))

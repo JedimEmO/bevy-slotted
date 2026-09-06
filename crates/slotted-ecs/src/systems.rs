@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 use slotted_model::{
     Actor, AuthorityEvent, ClickAction, Delta, DragKind, DragStage, ItemId, ItemStack, LookupCtx,
-    MenuDef, MenuId, Namespaced, SlotIx,
+    MenuDef, MenuId, Namespaced, ResyncRequest, SlotIx, ValidationLevel,
 };
 
 use crate::authority::{Authority, PendingRoundTrips};
@@ -240,17 +240,19 @@ pub fn clear_dirty_masks(mut inventories: Query<&mut Inventory>) {
     }
 }
 
-/// Contents of every slot of `def`, in slot order, read out of `inventories`
-/// through `entities`.
-fn read_slots(
-    def: &MenuDef,
-    entities: &[Entity],
-    inventories: &Query<&mut Inventory>,
-) -> Vec<Option<ItemStack>> {
-    def.slots
+/// What every slot of `menu` displays, in slot order: real stacks read out of
+/// `inventories` through the menu's inventory entities, and, for ghost and
+/// filter slots, the hint the menu state holds.
+fn read_slots(menu: &OpenMenu, inventories: &Query<&mut Inventory>) -> Vec<Option<ItemStack>> {
+    menu.def
+        .slots
         .iter()
-        .map(|slot| {
-            entities
+        .enumerate()
+        .map(|(index, slot)| {
+            if slot.behaviour.is_ghost() {
+                return menu.state.hint(SlotIx(narrow(index))).cloned();
+            }
+            menu.inventories
                 .get(slot.source.index())
                 .and_then(|e| inventories.get(*e).ok())
                 .and_then(|inv| inv.get(usize::from(slot.index)))
@@ -274,12 +276,16 @@ pub fn predict(
     mut menus: Query<(Entity, &mut OpenMenu, &mut Carried, &SlotEntities)>,
     mut inventories: Query<&mut Inventory>,
     registries: Option<Res<Registries>>,
+    authority: Option<Res<Authority>>,
     mut sync: MessageWriter<SlotSync>,
     mut commands: Commands,
 ) {
     if queue.0.is_empty() {
         return;
     }
+    // The authority decides how hard its clients check themselves: wiring in a
+    // server-backed adapter also turns on the validation that server expects.
+    let validation = authority.map_or(ValidationLevel::Debug, |a| a.0.validation());
     let borrowed = registries.as_ref().map(|r| r.lookup());
     let lookup: &dyn LookupCtx = match borrowed.as_ref() {
         Some(l) => l,
@@ -316,8 +322,15 @@ pub fn predict(
             continue;
         };
 
-        let outcome =
-            slotted_model::apply_click(&def, &mut invs, &mut menu.state, action, &actor, lookup);
+        let outcome = slotted_model::apply_click_validated(
+            &def,
+            &mut invs,
+            &mut menu.state,
+            action,
+            &actor,
+            lookup,
+            validation,
+        );
         let delta = match outcome {
             Ok(delta) => delta,
             Err(error) => {
@@ -400,6 +413,10 @@ fn write_back(
 #[derive(Debug, Default)]
 pub struct SlotFanout {
     by_cell: std::collections::HashMap<(Entity, usize), Vec<(Entity, SlotIx, Option<Entity>)>>,
+    /// The ui entity drawing one slot of one menu. Ghost and filter slots are
+    /// addressed through this rather than through `by_cell`: their content is
+    /// a hint on the menu's own state, not a cell any other menu can see.
+    by_slot: std::collections::HashMap<(Entity, SlotIx), Entity>,
 }
 
 impl SlotFanout {
@@ -411,19 +428,23 @@ impl SlotFanout {
             (Entity, usize),
             Vec<(Entity, SlotIx, Option<Entity>)>,
         > = std::collections::HashMap::new();
+        let mut by_slot = std::collections::HashMap::new();
         for (menu, open, slot_entities) in menus {
             for (index, slot) in open.def.slots.iter().enumerate() {
+                let ix = SlotIx(narrow(index));
+                if let Some(entity) = slot_entities.0.get(&ix).copied() {
+                    by_slot.insert((menu, ix), entity);
+                }
                 let Some(inventory) = open.inventories.get(slot.source.index()) else {
                     continue;
                 };
-                let ix = SlotIx(narrow(index));
                 by_cell
                     .entry((*inventory, usize::from(slot.index)))
                     .or_default()
                     .push((menu, ix, slot_entities.0.get(&ix).copied()));
             }
         }
-        Self { by_cell }
+        Self { by_cell, by_slot }
     }
 
     /// The cell one slot of `def` over `inventories` addresses.
@@ -447,17 +468,32 @@ impl SlotFanout {
         commands: &mut Commands,
     ) {
         for (slot, stack) in slots {
-            let listeners = Self::cell(def, inventories, slot)
+            // A ghost slot's content is a hint on one menu's state, not an
+            // inventory cell, so it must not reach the other menus that
+            // happen to draw the cell the slot def points at.
+            let ghost = def.slot(slot).is_some_and(|s| s.behaviour.is_ghost());
+            let listeners = (!ghost)
+                .then(|| Self::cell(def, inventories, slot))
+                .flatten()
                 .and_then(|cell| self.by_cell.get(&cell))
                 .map_or(&[][..], Vec::as_slice);
             if listeners.is_empty() {
-                // A slot the index does not know about (no `Inventory`
-                // component behind it) still syncs for its own menu.
+                // A ghost slot, or a slot the index does not know about (no
+                // `Inventory` component behind it): it reaches its own menu
+                // and nothing else.
                 sync.write(SlotSync {
                     menu,
                     slot,
                     stack: stack.clone(),
                 });
+                if let Some(entity) = self.by_slot.get(&(menu, slot)) {
+                    commands.trigger(SlotChanged {
+                        entity: *entity,
+                        menu,
+                        slot,
+                        stack: stack.clone(),
+                    });
+                }
                 continue;
             }
             for (listener, listener_slot, entity) in listeners {
@@ -517,10 +553,24 @@ pub fn submit(
             Ok(()) => round_trips.0 = round_trips.0.saturating_add(1),
             Err(error) => {
                 tracing::warn!(menu = ?submission.menu, %error, "authority refused the submission");
+                // Prefer the authority's own picture of the menu to ours: our
+                // copy is exactly the one that just got refused. Only when the
+                // authority cannot produce one do we redraw from local state.
+                match authority.0.request_resync(submission.id) {
+                    Ok(ResyncRequest::Pending) => {
+                        // The `Resync` that answers this decrements it again.
+                        round_trips.0 = round_trips.0.saturating_add(1);
+                        continue;
+                    }
+                    Ok(ResyncRequest::Unsupported) => {}
+                    Err(error) => {
+                        tracing::warn!(menu = ?submission.menu, %error, "resync request failed");
+                    }
+                }
                 let Ok((_, menu, _)) = menus.get(submission.menu) else {
                     continue;
                 };
-                let contents = read_slots(&menu.def, &menu.inventories, &inventories);
+                let contents = read_slots(menu, &inventories);
                 let all = contents
                     .into_iter()
                     .enumerate()
@@ -590,6 +640,22 @@ pub fn reconcile(
                     &mut commands,
                 );
             }
+            AuthorityEvent::Slot { menu, slot, stack } => {
+                let Some(entity) = entity_of(menu) else {
+                    tracing::debug!(?menu, "slot push for a menu that is no longer open");
+                    continue;
+                };
+                apply_slot_push(
+                    entity,
+                    slot,
+                    stack,
+                    &fanout,
+                    &mut menus,
+                    &mut inventories,
+                    &mut sync,
+                    &mut commands,
+                );
+            }
             AuthorityEvent::Property { menu, id, value } => {
                 let Some(entity) = entity_of(menu) else {
                     continue;
@@ -616,6 +682,60 @@ pub fn reconcile(
     }
 }
 
+/// Writes one authoritative slot into the menu it belongs to and tells
+/// everything drawing it.
+///
+/// A ghost or filter slot's content is a hint on the menu state; every other
+/// slot's is a cell of a backing inventory, which other open menus may also
+/// draw, so the fanout does the telling either way.
+#[allow(clippy::too_many_arguments)]
+fn apply_slot_push(
+    entity: Entity,
+    slot: SlotIx,
+    stack: Option<ItemStack>,
+    fanout: &SlotFanout,
+    menus: &mut Query<(Entity, &mut OpenMenu, &mut Carried, &SlotEntities)>,
+    inventories: &mut Query<&mut Inventory>,
+    sync: &mut MessageWriter<SlotSync>,
+    commands: &mut Commands,
+) {
+    let Ok((_, mut menu, _, _)) = menus.get_mut(entity) else {
+        return;
+    };
+    let Some(def) = menu.def.slot(slot).cloned() else {
+        tracing::debug!(?slot, "slot push names no slot of this menu");
+        return;
+    };
+    let menu_def = menu.def.clone();
+    let entities = menu.inventories.clone();
+    if def.behaviour.is_ghost() {
+        if menu.state.hint(slot) == stack.as_ref() {
+            return;
+        }
+        menu.state.set_hint(slot, stack.clone());
+    } else {
+        let Some(target) = entities.get(def.source.index()).copied() else {
+            return;
+        };
+        let Ok(mut inventory) = inventories.get_mut(target) else {
+            return;
+        };
+        let index = usize::from(def.index);
+        if inventory.get(index) == stack.as_ref() {
+            return;
+        }
+        inventory.set(index, stack.clone());
+    }
+    fanout.emit(
+        &menu_def,
+        &entities,
+        entity,
+        std::iter::once((slot, stack)),
+        sync,
+        commands,
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 fn apply_resync(
     entity: Entity,
@@ -631,7 +751,7 @@ fn apply_resync(
     };
     let def = menu.def.clone();
     let entities = menu.inventories.clone();
-    let before = read_slots(&def, &entities, inventories);
+    let before = read_slots(&menu, inventories);
 
     for (index, target) in entities.iter().enumerate() {
         let Some(source) = snapshot
@@ -662,7 +782,12 @@ fn apply_resync(
     menu.state = snapshot.state.clone();
     carried.set_if_neq(Carried(menu.state.carried.clone()));
 
-    let after = read_slots(&def, &entities, inventories);
+    let after = {
+        let Ok((_, menu, _, _)) = menus.get(entity) else {
+            return;
+        };
+        read_slots(menu, inventories)
+    };
     let changed = before
         .into_iter()
         .zip(after)
@@ -730,6 +855,9 @@ pub fn register_slot_refs(
 
         let stack = menus.get(slot_ref.menu).ok().and_then(|menu| {
             let slot = menu.def.slot(slot_ref.slot)?;
+            if slot.behaviour.is_ghost() {
+                return menu.state.hint(slot_ref.slot).cloned();
+            }
             let source = menu.inventories.get(slot.source.index())?;
             inventories
                 .get(*source)
@@ -800,20 +928,42 @@ pub fn apply_set_property(
 /// Phase 6 contract section 0.
 pub fn apply_set_slot(
     event: On<crate::events::SetSlot>,
-    menus: Query<(&OpenMenu, &SlotEntities)>,
+    mut menus: Query<(&mut OpenMenu, &SlotEntities)>,
     mut inventories: Query<&mut Inventory>,
     mut sync: MessageWriter<SlotSync>,
     mut commands: Commands,
 ) {
     let menu_entity = event.entity;
-    let Ok((menu, slot_entities)) = menus.get(menu_entity) else {
+    let Ok((mut menu, slot_entities)) = menus.get_mut(menu_entity) else {
         tracing::warn!(?menu_entity, "SetSlot on an entity without OpenMenu");
         return;
     };
-    let Some(def) = menu.def.slot(event.slot) else {
+    let Some(def) = menu.def.slot(event.slot).cloned() else {
         tracing::warn!(?menu_entity, slot = ?event.slot, "SetSlot names no slot of this menu");
         return;
     };
+    // A ghost or filter slot stores no item; the write sets its hint instead.
+    if def.behaviour.is_ghost() {
+        if menu.state.hint(event.slot) == event.stack.as_ref() {
+            return;
+        }
+        menu.state.set_hint(event.slot, event.stack.clone());
+        let stack = menu.state.hint(event.slot).cloned();
+        sync.write(SlotSync {
+            menu: menu_entity,
+            slot: event.slot,
+            stack: stack.clone(),
+        });
+        if let Some(slot_entity) = slot_entities.0.get(&event.slot).copied() {
+            commands.trigger(SlotChanged {
+                entity: slot_entity,
+                menu: menu_entity,
+                slot: event.slot,
+                stack,
+            });
+        }
+        return;
+    }
     let Some(inventory_entity) = menu.inventories.get(def.source.index()).copied() else {
         tracing::warn!(?menu_entity, slot = ?event.slot, "SetSlot: the menu has no such inventory");
         return;

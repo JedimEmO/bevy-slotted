@@ -25,6 +25,7 @@ pub struct UiHarnessBuilder {
     width: f32,
     height: f32,
     scale_factor: f32,
+    ui_scale: Option<f32>,
     theme: Option<String>,
     frame_delta: Duration,
     max_settle_frames: usize,
@@ -42,6 +43,7 @@ impl Default for UiHarnessBuilder {
             width: 1280.0,
             height: 720.0,
             scale_factor: 1.0,
+            ui_scale: None,
             theme: None,
             frame_delta: Duration::from_micros(16_667),
             max_settle_frames: 600,
@@ -71,6 +73,18 @@ impl UiHarnessBuilder {
     pub fn resolution(mut self, width: f32, height: f32) -> Self {
         self.width = width;
         self.height = height;
+        self
+    }
+
+    /// Bevy's `UiScale`: how many logical window pixels one UI unit covers.
+    /// Default 1.0, which is also what the resource defaults to.
+    ///
+    /// Distinct from [`scale_factor`](Self::scale_factor), which is the
+    /// display's. Both multiply a `Node`'s pixels; only this one is the
+    /// player's own zoom.
+    #[must_use]
+    pub fn ui_scale(mut self, scale: f32) -> Self {
+        self.ui_scale = Some(scale);
         self
     }
 
@@ -157,6 +171,9 @@ impl UiHarnessBuilder {
                 .double_click_window = window;
         }
         app.insert_resource(TimeUpdateStrategy::ManualDuration(self.frame_delta));
+        if let Some(scale) = self.ui_scale {
+            app.insert_resource(bevy::ui::UiScale(scale));
+        }
 
         let physical = UVec2::new(
             physical_px(self.width, self.scale_factor),
@@ -426,13 +443,20 @@ impl UiHarness {
 
     /// Every laid-out node's rect, so `settle` can see layout move and say
     /// which nodes are still moving when it gives up.
+    ///
+    /// A [`slotted_ui::Decorative`] node and everything under it is left out:
+    /// a looping decoration such as the recipe view's progress arrow moves
+    /// for ever by design, and a fingerprint that watched it would never hold
+    /// still.
     fn rects(&mut self) -> HashMap<Entity, [u32; 4]> {
+        let decorative = self.decorative_subtrees();
         let mut q = self.app.world_mut().query::<(
             Entity,
             &ComputedNode,
             &bevy::ui::ui_transform::UiGlobalTransform,
         )>();
         q.iter(self.app.world())
+            .filter(|(e, _, _)| !decorative.contains(e))
             .map(|(e, node, tf)| {
                 (
                     e,
@@ -445,6 +469,27 @@ impl UiHarness {
                 )
             })
             .collect()
+    }
+
+    /// Every entity marked [`slotted_ui::Decorative`], plus its descendants.
+    fn decorative_subtrees(&mut self) -> std::collections::HashSet<Entity> {
+        let roots: Vec<Entity> = self
+            .app
+            .world_mut()
+            .query_filtered::<Entity, With<slotted_ui::Decorative>>()
+            .iter(self.app.world())
+            .collect();
+        let mut out = std::collections::HashSet::new();
+        let mut stack = roots;
+        while let Some(entity) = stack.pop() {
+            if !out.insert(entity) {
+                continue;
+            }
+            if let Some(children) = self.app.world().get::<Children>(entity) {
+                stack.extend(children.iter());
+            }
+        }
+        out
     }
 
     /// Hash of every laid-out node's rect, so `settle` can see layout move.

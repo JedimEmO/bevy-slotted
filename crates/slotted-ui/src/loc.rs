@@ -14,11 +14,14 @@
 //! wants no localisation at all, and every test that does not load a mod, gets
 //! the key verbatim, which is what the Phase 2 and Phase 3 snapshots expect.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use bevy::ecs::resource::Resource;
+use bevy::prelude::*;
 
 use crate::def::LocKey;
+use crate::semantic::LocText;
 
 /// Resolves a localisation key against whatever catalogue the host loaded.
 ///
@@ -82,6 +85,48 @@ impl Default for Localization {
 impl std::fmt::Debug for Localization {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Localization(..)")
+    }
+}
+
+/// `SlottedUiSet::Render`: writes `Text` for every new [`LocText`], and for
+/// all of them when [`Localization`] is replaced.
+///
+/// This lives here, beside the component and the port, rather than in the
+/// crate that happens to load Fluent files. A game with its own catalogue
+/// swaps the resource and expects its labels to repaint; before this system
+/// moved, that repaint only happened when `slotted-packs` was in the app, so
+/// a screen built on `slotted-ui` alone showed whatever the catalogue said at
+/// spawn time for ever.
+///
+/// A key nothing defines is drawn as written, which is what makes an
+/// unresolved key a legible bug report rather than an empty label. That also
+/// applies to a key that *stops* resolving: switching to a catalogue that has
+/// lost an entry puts the key back rather than leaving the previous
+/// language's text on screen.
+pub fn resolve_loc_text(
+    locales: Res<Localization>,
+    mut texts: Query<(Entity, &LocText, &mut Text)>,
+    fresh: Query<Entity, Added<LocText>>,
+) {
+    let all = locales.is_changed();
+    // Two `&mut Text` queries would conflict, so the freshly spawned entities
+    // arrive as a set of ids and the write goes through the one query.
+    let fresh: HashSet<Entity> = if all {
+        HashSet::new()
+    } else {
+        fresh.iter().collect()
+    };
+    if !all && fresh.is_empty() {
+        return;
+    }
+    for (entity, key, mut text) in &mut texts {
+        if !all && !fresh.contains(&entity) {
+            continue;
+        }
+        let want = locales.text(&key.0);
+        if text.0 != want {
+            text.0 = want;
+        }
     }
 }
 

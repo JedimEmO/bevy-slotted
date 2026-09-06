@@ -15,7 +15,7 @@ use crate::motion::{
     GestureTarget, clear_gesture_target, despawn_finished_flights, drop_squash, fly_to_slot,
     record_gesture_target, slot_motion,
 };
-use crate::nav::{NavKeys, directional_nav_keys};
+use crate::nav::{NavKeys, TextEntryFocused, directional_nav_keys};
 use crate::preview::{
     DragGhost, HintGlyphs, load_hint_glyphs, render_overlays, update_carried_validity,
     update_drag_phantoms, update_slot_hints,
@@ -110,6 +110,7 @@ impl Plugin for SlottedUiPlugin {
             .init_resource::<crate::loc::Localization>()
             .init_resource::<Injections>()
             .init_resource::<NavKeys>()
+            .init_resource::<TextEntryFocused>()
             .init_resource::<DragPaint>()
             .init_resource::<SweepQuickMove>()
             .init_resource::<DragGhost>()
@@ -142,6 +143,8 @@ impl Plugin for SlottedUiPlugin {
                 Startup,
                 (load_registry_screens, spawn_layers, load_hint_glyphs),
             );
+        // The `*.screen.ron` asset and its loader, when this app has assets.
+        crate::screen_asset::register(app);
         #[cfg(feature = "viewport")]
         app.add_systems(
             Update,
@@ -181,8 +184,9 @@ impl Plugin for SlottedUiPlugin {
             Update,
             (
                 (
-                    directional_nav_keys,
-                    hotbar_swap_keys,
+                    crate::nav::track_text_entry_focus,
+                    (directional_nav_keys, hotbar_swap_keys)
+                        .after(crate::nav::track_text_entry_focus),
                     clear_drag_suppression,
                 )
                     .in_set(SlottedUiSet::Input),
@@ -196,6 +200,7 @@ impl Plugin for SlottedUiPlugin {
                     render_overlays,
                     reresolve_icons_on_source_change,
                     render_items,
+                    crate::loc::resolve_loc_text,
                     slot_motion,
                     despawn_finished_flights,
                     tooltip_delay,

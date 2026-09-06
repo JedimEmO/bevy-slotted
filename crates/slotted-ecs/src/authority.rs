@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
-use slotted_model::{AuthorityError, AuthorityEvent, ClickAction, Delta, MenuId};
+use slotted_model::{AuthorityError, AuthorityEvent, ClickAction, Delta, MenuId, ValidationLevel};
 
 /// Who has the final say on a click. Holds any [`slotted_model::Authority`]
 /// adapter; the facade inserts a [`LocalAuthority`] unless the app replaced it
@@ -21,6 +21,11 @@ impl Authority {
     /// The local adapter, which acks everything immediately.
     pub fn local() -> Self {
         Self::new(LocalAuthority::default())
+    }
+
+    /// The local adapter, validating every click at `level`.
+    pub fn local_validated(level: ValidationLevel) -> Self {
+        Self::new(LocalAuthority::with_validation(level))
     }
 }
 
@@ -47,10 +52,27 @@ impl PendingRoundTrips {
 /// The single-player authority: the prediction is the truth.
 ///
 /// `submit` records an `Ack` at the predicted `state_id`; `poll` drains them.
-/// Never resyncs, never rejects.
+/// Never resyncs, never rejects, and answers
+/// [`ResyncRequest::Unsupported`](slotted_model::ResyncRequest::Unsupported)
+/// because it holds no second copy of the world to resynchronise from.
 #[derive(Default, Debug)]
 pub struct LocalAuthority {
     events: Mutex<VecDeque<AuthorityEvent>>,
+    validation: ValidationLevel,
+}
+
+impl LocalAuthority {
+    /// A local authority that has `predict` validate every click at `level`.
+    ///
+    /// A single-player game that wants the conservation check in its shipped
+    /// build, rather than only in tests, asks for
+    /// [`ValidationLevel::Always`] here.
+    pub fn with_validation(validation: ValidationLevel) -> Self {
+        Self {
+            events: Mutex::default(),
+            validation,
+        }
+    }
 }
 
 impl slotted_model::Authority for LocalAuthority {
@@ -77,6 +99,10 @@ impl slotted_model::Authority for LocalAuthority {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         events.drain(..).collect()
+    }
+
+    fn validation(&self) -> ValidationLevel {
+        self.validation
     }
 }
 

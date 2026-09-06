@@ -12,7 +12,10 @@
 use std::sync::{Arc, Mutex};
 
 use bevy::app::App;
-use bevy::asset::{AssetApp, AssetPlugin, Assets};
+use bevy::asset::{AssetApp, AssetPlugin};
+// Only the `gpu` rig test builds asset collections by hand.
+#[cfg(feature = "gpu")]
+use bevy::asset::Assets;
 use bevy::image::{Image, TextureAtlasLayout};
 use bevy::prelude::*;
 use slotted_ecs::Registries;
@@ -282,14 +285,20 @@ fn a_missing_image_path_resolves_to_missing_and_warns_once() {
     );
 }
 
-/// A `Model` icon is the same story with a different message: parsed,
-/// carried, warned about once, drawn as the missing glyph until the glTF
-/// loader lands.
+/// A `Model` icon is not the same story: it takes a cell like any other icon
+/// and the CPU bake fills that cell with its stand-in, so a headless app
+/// shows a shape rather than the missing glyph and says nothing about it.
+///
+/// The glTF is loaded by the GPU rig, which needs a renderer this app does
+/// not have; the point of the stand-in is that its absence is not an error.
 #[test]
-fn a_model_icon_warns_and_falls_back_rather_than_failing_the_bake() {
+fn a_model_icon_takes_a_cell_and_draws_its_stand_in() {
     let registries = frozen(vec![(
         "t:anvil",
-        Some(IconDef::Model("models/anvil.gltf".into())),
+        Some(IconDef::Model {
+            path: "models/anvil.gltf".into(),
+            stand_in: None,
+        }),
     )]);
     let warnings = WarnCounter::default();
     let app = warnings.capture(|| {
@@ -297,13 +306,24 @@ fn a_model_icon_warns_and_falls_back_rather_than_failing_the_bake() {
         app.update();
         app
     });
-    assert_eq!(
-        app.world()
-            .resource::<Icons>()
-            .icon(&ItemStack::new(ItemId(0), 1)),
-        IconRef::Missing
+    // `flat_icon`, not `icon`: with the `live` feature the active source is
+    // `LiveIcons`, which answers `Live` for every item the atlas knows and
+    // defers to the atlas underneath it. The question here is whether the
+    // *cell* exists, and that is a question for the atlas either way.
+    assert!(
+        matches!(
+            app.world()
+                .resource::<Icons>()
+                .flat_icon(&ItemStack::new(ItemId(0), 1)),
+            IconRef::Atlas { .. }
+        ),
+        "a model should get an atlas cell, not the missing glyph"
     );
-    assert_eq!(warnings.mentioning("anvil.gltf"), 1);
+    assert_eq!(
+        warnings.mentioning("anvil.gltf"),
+        0,
+        "a model with no renderer to draw it is the stand-in doing its job, not a problem"
+    );
 }
 
 // ---------------------------------------------------------------------------

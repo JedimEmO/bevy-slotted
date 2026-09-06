@@ -21,7 +21,7 @@ use crate::source::Icons;
 ///
 /// With the `gpu` feature and a renderer in the app, the atlas image is a
 /// render target an offscreen three-point rig draws into
-/// ([`crate::gpu`]). Without either, the CPU bake in [`crate::atlas`] is what
+/// (the `gpu` module). Without either, the CPU bake in [`crate::atlas`] is what
 /// the renderer gets, and it is what the headless harness always sees.
 #[derive(Debug, Clone)]
 pub struct SlottedIconsPlugin {
@@ -61,7 +61,24 @@ impl Plugin for SlottedIconsPlugin {
                 .run_if(resource_exists::<PendingIconImages>),
         );
         #[cfg(feature = "gpu")]
-        app.add_systems(Update, crate::gpu::quiet_bake_rig.after(IconBakeSet));
+        // Gated on the rig existing, because it is an exclusive system: the
+        // fit walks an arbitrary scene hierarchy and both halves want the rig
+        // resource mutably. Without the condition every frame of every app
+        // would pay for a sync point that almost always returns immediately.
+        app.add_systems(
+            Update,
+            crate::gpu::quiet_bake_rig
+                .after(IconBakeSet)
+                .run_if(resource_exists::<crate::gpu::IconBakeRig>),
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    fn finish(&self, app: &mut App) {
+        // The render sub-app exists only once `RenderPlugin` has been built,
+        // which is why the bake's readiness reporter is installed here rather
+        // than in `build`.
+        crate::gpu::install_progress_reporter(app);
     }
 }
 
@@ -120,17 +137,6 @@ fn bake_if_needed(world: &mut World, cell: u32) {
         })
         .collect();
     let baked = bake_icon_atlas(&borrowed, cell);
-
-    for (id, _, icon) in &items {
-        if matches!(icon, Some(IconDef::Model(_))) && baked.missing.contains(id) {
-            let path = icon.as_ref().and_then(IconDef::path).unwrap_or_default();
-            tracing::warn!(
-                item = %items.iter().find(|(i, ..)| i == id).map_or_else(String::new, |(_, n, _)| n.to_string()),
-                model = path,
-                "icon models are not loaded yet; this item draws the missing glyph"
-            );
-        }
-    }
 
     let images: HashMap<slotted_model::ItemId, Handle<Image>> =
         if let Some(server) = world.get_resource::<AssetServer>() {

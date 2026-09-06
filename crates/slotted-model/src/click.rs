@@ -216,10 +216,12 @@ pub struct Delta {
 /// every `Drag { stage: End }`, which ends the drag whatever it returns. A
 /// drag that painted no slots at all ends with an empty `Delta`.
 ///
-/// In debug builds the total item count per kind over all inventories, the
-/// carried stack and the dropped stacks is asserted unchanged, except for
-/// `Clone` and middle drags (creative duplication) and for `Ghost` / `Filter`
-/// slots, which hold no real items.
+/// Item conservation is checked at [`ValidationLevel::Debug`]: in debug
+/// builds the total item count per kind over all inventories, the carried
+/// stack and the dropped stacks is asserted unchanged, except for `Clone`,
+/// `Give` and middle drags, which create items on purpose. Ghost and filter
+/// hints live in [`MenuState::hints`] and are not items, so they never enter
+/// the tally. Use [`apply_click_validated`] to pick a different level.
 pub fn apply_click(
     def: &MenuDef,
     inv: &mut Inventories,
@@ -228,6 +230,70 @@ pub fn apply_click(
     actor: &Actor,
     ctx: &dyn LookupCtx,
 ) -> Result<Delta, ClickError> {
+    apply_click_validated(def, inv, state, action, actor, ctx, ValidationLevel::Debug)
+}
+
+/// How hard [`apply_click_validated`] checks that an action conserved items.
+///
+/// The check walks every slot of every inventory, so it is linear in the size
+/// of the open menu rather than in the size of the action. That is cheap for
+/// a chest and not free for a server running thousands of containers, which
+/// is why it is a choice rather than a constant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum ValidationLevel {
+    /// Never check. The fastest, and correct only when the caller trusts the
+    /// action's source.
+    Off,
+    /// Check in debug builds and panic on a violation; do nothing in release.
+    /// The historical behaviour, and the default: a bug in the state machine
+    /// stops a test run and costs a shipped game nothing.
+    #[default]
+    Debug,
+    /// Check in every build and return [`ClickError::Conservation`] on a
+    /// violation. What an authoritative server wants: a client that found a
+    /// duplication bug gets its action refused instead of its items minted.
+    ///
+    /// The action has already run by the time the check fails, so a caller at
+    /// this level must apply to a scratch copy and commit only on `Ok`.
+    Always,
+}
+
+impl ValidationLevel {
+    /// `true` when this level checks `action` in the current build.
+    ///
+    /// `Clone`, `Give` and middle drags duplicate items by design and are
+    /// never checked.
+    pub fn checks(self, action: ClickAction) -> bool {
+        let duplicates = matches!(
+            action,
+            ClickAction::Clone { .. }
+                | ClickAction::Give { .. }
+                | ClickAction::Drag {
+                    kind: DragKind::Middle,
+                    ..
+                }
+        );
+        if duplicates {
+            return false;
+        }
+        match self {
+            Self::Off => false,
+            Self::Debug => cfg!(debug_assertions),
+            Self::Always => true,
+        }
+    }
+}
+
+/// [`apply_click`] with an explicit [`ValidationLevel`].
+pub fn apply_click_validated(
+    def: &MenuDef,
+    inv: &mut Inventories,
+    state: &mut MenuState,
+    action: ClickAction,
+    actor: &Actor,
+    ctx: &dyn LookupCtx,
+    validation: ValidationLevel,
+) -> Result<Delta, ClickError> {
     check_layout(def, inv)?;
 
     if state.drag.is_some() && !matches!(action, ClickAction::Drag { .. }) {
@@ -235,72 +301,70 @@ pub fn apply_click(
         return Err(ClickError::InvalidDragSequence);
     }
 
-    #[cfg(debug_assertions)]
-    let before = conservation::tally(def, inv, state.carried.as_ref());
-    #[cfg(debug_assertions)]
-    let duplicates = matches!(
-        action,
-        ClickAction::Clone { .. }
-            | ClickAction::Give { .. }
-            | ClickAction::Drag {
-                kind: DragKind::Middle,
-                ..
-            }
-    );
+    let before = validation
+        .checks(action)
+        .then(|| conservation::tally(inv, state.carried.as_ref()));
 
     let mut op = Op {
         def,
         inv,
         ctx,
+        hints: std::mem::take(&mut state.hints),
         touched: Vec::new(),
         dropped: Vec::new(),
         taken_from_output: None,
     };
 
-    let mutated = match action {
-        ClickAction::Pickup { slot, button } => op.pickup(state, slot, button)?,
-        ClickAction::QuickMove { slot } => op.quick_move(state, slot)?,
-        ClickAction::Swap { slot, hotbar } => op.swap(state, slot, hotbar)?,
-        ClickAction::Clone { slot } => op.clone_stack(state, slot, *actor)?,
-        ClickAction::Throw { slot, all } => op.throw(state, slot, all)?,
-        ClickAction::Drag { stage, kind, slot } => op.drag(state, stage, kind, slot, *actor)?,
-        ClickAction::PickupAll { slot, reverse } => op.pickup_all(state, slot, reverse)?,
-        ClickAction::Toolbar(action) => op.toolbar(action)?,
+    // No `?` here: the hints have to go back into the state on the error path
+    // too, or a refused action would wipe every ghost slot in the menu.
+    let outcome = match action {
+        ClickAction::Pickup { slot, button } => op.pickup(state, slot, button),
+        ClickAction::QuickMove { slot } => op.quick_move(state, slot),
+        ClickAction::Swap { slot, hotbar } => op.swap(state, slot, hotbar),
+        ClickAction::Clone { slot } => op.clone_stack(state, slot, *actor),
+        ClickAction::Throw { slot, all } => op.throw(state, slot, all),
+        ClickAction::Drag { stage, kind, slot } => op.drag(state, stage, kind, slot, *actor),
+        ClickAction::PickupAll { slot, reverse } => op.pickup_all(state, slot, reverse),
+        ClickAction::Toolbar(action) => op.toolbar(action),
         ClickAction::Give {
             item,
             count,
             target,
-        } => op.give(state, item, count, target, *actor)?,
+        } => op.give(state, item, count, target, *actor),
     };
 
-    if mutated {
-        state.state_id = state.state_id.wrapping_add(1);
-    }
-
     let Op {
+        hints,
         mut touched,
         dropped,
         taken_from_output,
         ..
     } = op;
+    state.hints = hints;
 
-    #[cfg(debug_assertions)]
-    if !duplicates {
-        let mut after = conservation::tally(def, inv, state.carried.as_ref());
+    if outcome? {
+        state.state_id = state.state_id.wrapping_add(1);
+    }
+
+    if let Some(before) = before {
+        let mut after = conservation::tally(inv, state.carried.as_ref());
         for d in &dropped {
             conservation::add(&mut after, d);
         }
-        assert!(
-            conservation::same(&before, &after),
-            "item conservation violated: before {before:?}, after {after:?}"
-        );
+        if !conservation::same(&before, &after) {
+            assert!(
+                validation != ValidationLevel::Debug,
+                "item conservation violated: before {before:?}, after {after:?}"
+            );
+            return Err(ClickError::Conservation);
+        }
     }
 
     touched.sort_unstable();
     touched.dedup();
     let slots = touched
         .into_iter()
-        .map(|ix| (ix, slot_content(def, inv, ix).cloned()))
+        .map(|ix| (ix, slot_content(def, inv, &state.hints, ix).cloned()))
         .collect();
 
     Ok(Delta {
@@ -363,7 +427,7 @@ pub fn preview_drag(
     let (Some(drag), Some(carried)) = (state.drag.as_ref(), state.carried.as_ref()) else {
         return Vec::new();
     };
-    plan_drag(def, inv, ctx, drag, carried).slots
+    plan_drag(def, inv, &state.hints, ctx, drag, carried).slots
 }
 
 /// `true` when `slot` would take at least one item of `stack` right now.
@@ -391,7 +455,9 @@ pub fn can_accept(
     if sd.behaviour.is_ghost() {
         return true;
     }
-    match slot_content(def, inv, slot) {
+    // A ghost slot has already returned above, so the hint map is never
+    // consulted here and an empty one is exact.
+    match slot_content(def, inv, &Hints::new(), slot) {
         None => true,
         Some(existing) => existing.same_kind(stack) && existing.count < sd.cap(stack.id, ctx),
     }
@@ -410,6 +476,7 @@ struct DragPlan {
 fn plan_drag(
     def: &MenuDef,
     inv: &Inventories,
+    hints: &Hints,
     ctx: &dyn LookupCtx,
     drag: &DragState,
     carried: &ItemStack,
@@ -440,7 +507,7 @@ fn plan_drag(
         }
         if sd.behaviour.is_ghost() {
             let ghost = carried.clone().with_count(1);
-            if slot_content(def, inv, slot) != Some(&ghost) {
+            if slot_content(def, inv, hints, slot) != Some(&ghost) {
                 plan.slots.push((
                     slot,
                     DragPreview {
@@ -451,7 +518,7 @@ fn plan_drag(
             }
             continue;
         }
-        let existing = slot_content(def, inv, slot);
+        let existing = slot_content(def, inv, hints, slot);
         if existing.is_some_and(|e| !e.same_kind(carried)) {
             continue;
         }
@@ -476,8 +543,35 @@ fn plan_drag(
     plan
 }
 
-fn slot_content<'i>(def: &MenuDef, inv: &'i Inventories, ix: SlotIx) -> Option<&'i ItemStack> {
+/// A map of ghost and filter hints, as [`MenuState::hints`] holds it.
+type Hints = std::collections::BTreeMap<SlotIx, ItemStack>;
+
+/// What slot `ix` displays: a real stack out of the backing inventory, or,
+/// for a [`Ghost`](SlotBehaviour::Ghost) or [`Filter`](SlotBehaviour::Filter)
+/// slot, the hint the menu state holds for it.
+///
+/// Anything drawing a menu wants this rather than a raw inventory read: hints
+/// are not stored in inventories, so a ghost slot read straight out of one is
+/// always empty.
+pub fn slot_view<'a>(
+    def: &MenuDef,
+    inv: &'a Inventories,
+    state: &'a MenuState,
+    ix: SlotIx,
+) -> Option<&'a ItemStack> {
+    slot_content(def, inv, &state.hints, ix)
+}
+
+fn slot_content<'i>(
+    def: &MenuDef,
+    inv: &'i Inventories,
+    hints: &'i Hints,
+    ix: SlotIx,
+) -> Option<&'i ItemStack> {
     let s = def.slot(ix)?;
+    if s.behaviour.is_ghost() {
+        return hints.get(&ix);
+    }
     inv.get(s.source)?.get(usize::from(s.index))
 }
 
@@ -492,6 +586,11 @@ struct Op<'a> {
     def: &'a MenuDef,
     inv: &'a mut Inventories,
     ctx: &'a dyn LookupCtx,
+    /// Ghost and filter hints, moved out of the [`MenuState`] for the
+    /// duration of the action and moved back afterwards. Keeping them here
+    /// rather than borrowing the state lets every `Op` method take
+    /// `&mut MenuState` as it always has.
+    hints: Hints,
     touched: Vec<SlotIx>,
     dropped: Vec<ItemStack>,
     taken_from_output: Option<SlotIx>,
@@ -507,18 +606,28 @@ impl<'a> Op<'a> {
     }
 
     fn content(&self, ix: SlotIx) -> Option<&ItemStack> {
-        slot_content(self.def, self.inv, ix)
+        slot_content(self.def, self.inv, &self.hints, ix)
     }
 
     fn set(&mut self, ix: SlotIx, stack: Option<ItemStack>) {
         let sd = &self.def.slots[ix.index()];
-        self.inv[sd.source].set(usize::from(sd.index), stack);
+        if sd.behaviour.is_ghost() {
+            match stack {
+                Some(stack) => self.hints.insert(ix, stack.with_count(1)),
+                None => self.hints.remove(&ix),
+            };
+        } else {
+            self.inv[sd.source].set(usize::from(sd.index), stack);
+        }
         self.touched.push(ix);
     }
 
     fn take(&mut self, ix: SlotIx) -> Option<ItemStack> {
         let sd = &self.def.slots[ix.index()];
         self.touched.push(ix);
+        if sd.behaviour.is_ghost() {
+            return self.hints.remove(&ix);
+        }
         self.inv[sd.source].take(usize::from(sd.index))
     }
 
@@ -1075,7 +1184,7 @@ impl<'a> Op<'a> {
             // A drag that painted nothing: the drag is over and nothing moved.
             return Ok(false);
         }
-        let plan = plan_drag(self.def, self.inv, self.ctx, drag, carried);
+        let plan = plan_drag(self.def, self.inv, &self.hints, self.ctx, drag, carried);
         if plan.slots.is_empty() {
             return Err(ClickError::NothingToDo);
         }
@@ -1274,9 +1383,12 @@ impl<'a> Op<'a> {
     }
 }
 
-#[cfg(debug_assertions)]
+/// The item-count tally that backs [`ValidationLevel`].
+///
+/// It reads inventories only. Ghost and filter hints are not stored in an
+/// inventory, so nothing here has to know they exist.
 mod conservation {
-    use super::{Inventories, ItemStack, MenuDef};
+    use super::{Inventories, ItemStack};
 
     pub type Tally = Vec<(ItemStack, u64)>;
 
@@ -1287,23 +1399,12 @@ mod conservation {
         }
     }
 
-    /// Items per kind over every non-ghost slot plus the carried stack.
-    pub fn tally(def: &MenuDef, inv: &Inventories, carried: Option<&ItemStack>) -> Tally {
-        let ghost: Vec<_> = def
-            .slots
-            .iter()
-            .filter(|s| s.behaviour.is_ghost())
-            .map(|s| (s.source, usize::from(s.index)))
-            .collect();
+    /// Items per kind over every slot plus the carried stack.
+    pub fn tally(inv: &Inventories, carried: Option<&ItemStack>) -> Tally {
         let mut out = Tally::new();
-        for (handle, inventory) in inv.iter() {
-            for (i, slot) in inventory.slots().iter().enumerate() {
-                if ghost.contains(&(handle, i)) {
-                    continue;
-                }
-                if let Some(s) = slot {
-                    add(&mut out, s);
-                }
+        for (_, inventory) in inv.iter() {
+            for slot in inventory.slots().iter().flatten() {
+                add(&mut out, slot);
             }
         }
         if let Some(c) = carried {

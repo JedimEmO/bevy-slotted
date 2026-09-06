@@ -78,7 +78,9 @@ fn skips_output_locked_and_ghost_slots() {
     assert_eq!(f.carried(), Some((STONE, 3)));
     assert_eq!(f.at_kind(0), Some((STONE, 2)));
     assert_eq!(f.at_kind(1), Some((STONE, 2)));
-    assert_eq!(f.at_kind(2), Some((STONE, 2)));
+    // A hint has no quantity: slot 2 shows one stone however many were put
+    // there, and the gather leaves it alone.
+    assert_eq!(f.at_kind(2), Some((STONE, 1)));
     assert_eq!(f.at(3), None);
 }
 

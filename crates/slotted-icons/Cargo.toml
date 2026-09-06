@@ -22,6 +22,11 @@ live = ["bevy/bevy_camera"]
 # that *is* the atlas. No readback, so it works on WebGL2 too. Falls back to
 # the CPU bake at runtime when the app has no renderer.
 gpu = ["bevy/bevy_core_pipeline", "bevy/bevy_pbr", "bevy/bevy_render"]
+# `IconDef::Model`: the GPU bake loads a glTF scene and lights it under the
+# same rig. Off by default because `bevy_gltf` and `bevy_scene` are module
+# size a build with no models pays for nothing; without it a model draws the
+# stand-in shape its data file declared and warns once.
+gltf = ["gpu", "bevy/bevy_gltf"]
 # Bake at 128 px a cell instead of 64.
 hidpi = []
 

@@ -27,7 +27,9 @@ pub mod nav;
 pub mod plugin;
 pub mod preview;
 pub mod recording;
+pub mod scale;
 pub mod screen;
+pub mod screen_asset;
 pub mod semantic;
 pub mod tooltip;
 pub mod widgets;
@@ -48,25 +50,30 @@ pub use item::{
     DurabilityBar, DurabilityFill, ItemCount, ItemIcon, ItemView, RarityRing, render_items,
 };
 pub use layers::{
-    CarriedItem, CarriedLayer, ExclusionZone, Exclusions, TooltipLayer, update_carried_layer,
-    zbands,
+    CarriedItem, CarriedLayer, Decorative, ExclusionZone, Exclusions, TooltipLayer,
+    update_carried_layer, zbands,
 };
-pub use loc::{Localization, Localizer, NoLocalization};
+pub use loc::{Localization, Localizer, NoLocalization, resolve_loc_text};
 pub use motion::{
     FlyingItem, GestureTarget, HOVER_SCALE, MotionTarget, PRESS_SCALE, REST_SCALE, SQUASH_SCALE,
     SlotPressed, despawn_finished_flights, drop_squash, fly_to_slot, slot_motion,
 };
-pub use nav::{NavKeys, directional_nav_keys};
+pub use nav::{NavKeys, TextEntryFocused, directional_nav_keys, track_text_entry_focus};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use preview::{
     DragGhost, HintGlyphs, SlotHint, SlotPhantom, Validity, render_overlays,
     update_carried_validity, update_drag_phantoms, update_slot_hints,
 };
 pub use recording::{RECORDING_VERSION, RecordedButton, RecordedFrame, RecordedInput, Recording};
+pub use scale::{UiUnits, ui_scale_of};
 pub use screen::{
-    Injection, Injections, ScreenClosed, ScreenLaidOut, ScreenLayout, ScreenSpawned, Screens,
-    SpawnCtx, SpawnScreen, UnmatchedInjections, Widget, WidgetRegistry, close_screen,
-    emit_screen_layout, spawn_screen,
+    Injection, Injections, MAX_INHERIT_DEPTH, ScreenClosed, ScreenLaidOut, ScreenLayout,
+    ScreenSpawned, Screens, SpawnCtx, SpawnScreen, UnmatchedInjections, Widget, WidgetRegistry,
+    active_tokens, close_screen, emit_screen_layout, respawn_open_screens, spawn_screen,
+};
+pub use screen_asset::{
+    FailedScreenAssets, ScreenAssetError, ScreenAssets, ScreenLoader, apply_screen_assets,
+    report_failed_screen_assets,
 };
 pub use semantic::{
     AnchorNode, LocText, ScreenRoot, SemanticLabel, SemanticRole, TestId, WidgetNode,
@@ -87,16 +94,17 @@ pub use widgets::tank::{
 };
 pub use widgets::viewport::{VIEWPORT_LAYER_BASE, ViewportSubject};
 pub use widgets::virtual_grid::{
-    VirtualCell, VirtualGridSource, VirtualGridSources, VirtualGridState,
+    PooledCell, VirtualCell, VirtualGridSource, VirtualGridSources, VirtualGridState,
+    refresh_virtual_grids,
 };
 pub use widgets::{RailAction, SLOT_SIZE, slot_state_roles};
 
 /// Everything a game needs to define and open screens.
 pub mod prelude {
     pub use crate::{
-        AnchorId, Injection, Injections, ItemView, Layout, ScreenClosed, ScreenDef, ScreenKind,
-        ScreenRoot, ScreenSpawned, Screens, SemanticLabel, SemanticRole, SlottedUiPlugin,
-        SlottedUiSet, Tags, TestId, TextRole, UiNodeDef, WidgetKind, close_screen, spawn_screen,
-        widgets::kinds, zbands,
+        AnchorId, Injection, Injections, ItemView, Layout, ScreenAssets, ScreenClosed, ScreenDef,
+        ScreenKind, ScreenRoot, ScreenSpawned, Screens, SemanticLabel, SemanticRole,
+        SlottedUiPlugin, SlottedUiSet, Tags, TestId, TextRole, UiNodeDef, WidgetKind, close_screen,
+        spawn_screen, widgets::kinds, zbands,
     };
 }

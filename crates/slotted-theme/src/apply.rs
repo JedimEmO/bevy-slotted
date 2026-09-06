@@ -942,27 +942,32 @@ mod tests {
             theme.material(&roles::COUNT).expect("count is defined"),
         );
         assert_eq!(paint.text, Some((hex("1E1B18"), 11.0)));
-        // Named but not shipped: the family is documentation until a file
-        // or the system flag arrives, so Bevy's default font stays.
-        assert_eq!(paint.font, None);
+        // paper ships IBM Plex Mono under `assets/fonts/`, so the count's
+        // `mono` token resolves to that file and a path beats every fallback.
+        assert_eq!(
+            paint.font,
+            Some(FontPaint::Path(
+                "fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf".to_owned()
+            ))
+        );
 
-        let mut with_file = theme.clone();
-        with_file
+        // Drop the file and the family is documentation again: no path and no
+        // system flag means Bevy's built-in face.
+        let mut named_only = theme.clone();
+        named_only
             .tokens
             .fonts
             .get_mut("mono")
             .expect("mono token")
-            .path = Some("fonts/IBMPlexMono-Regular.ttf".to_owned());
+            .path = None;
         let paint = Paint::from_material(
-            &with_file,
-            with_file.material(&roles::COUNT).expect("count"),
+            &named_only,
+            named_only.material(&roles::COUNT).expect("count"),
         );
-        assert_eq!(
-            paint.font,
-            Some(FontPaint::Path("fonts/IBMPlexMono-Regular.ttf".to_owned()))
-        );
+        assert_eq!(paint.font, None);
 
-        let mut system = theme;
+        // Same token with `system: true` asks the OS for the family instead.
+        let mut system = named_only;
         system
             .tokens
             .fonts

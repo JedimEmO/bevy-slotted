@@ -11,7 +11,7 @@ use fluent_bundle::FluentResource;
 use fluent_bundle::concurrent::FluentBundle;
 use slotted_script::ModId;
 use slotted_ui::def::LocKey;
-use slotted_ui::{LocText, Localization, Localizer};
+use slotted_ui::{Localization, Localizer};
 use unic_langid::LanguageIdentifier;
 
 use crate::assets::TextLoadError;
@@ -234,35 +234,13 @@ pub fn normalise_ids(source: &str) -> String {
     out
 }
 
-/// Writes `Text` for every new `LocText`, and for all of them when `Locales`
-/// changed. Unresolved keys stay verbatim. Runs in `SlottedUiSet::Render`.
-pub fn resolve_loc_text(
-    locales: Res<Localization>,
-    mut texts: Query<(Entity, &LocText, &mut Text)>,
-    fresh: Query<Entity, Added<LocText>>,
-) {
-    let all = locales.is_changed();
-    // Two `&mut Text` queries would conflict, so the freshly spawned entities
-    // arrive as a set of ids and the write goes through the one query.
-    let fresh: HashSet<Entity> = if all {
-        HashSet::new()
-    } else {
-        fresh.iter().collect()
-    };
-    if !all && fresh.is_empty() {
-        return;
-    }
-    for (entity, key, mut text) in &mut texts {
-        if !all && !fresh.contains(&entity) {
-            continue;
-        }
-        if let Some(resolved) = locales.resolve(&key.0)
-            && text.0 != resolved
-        {
-            text.0 = resolved;
-        }
-    }
-}
+/// Writes `Text` for every new `LocText`, and for all of them when the
+/// catalogue changed.
+///
+/// Re-exported from `slotted-ui`, which owns both the component and the
+/// [`Localization`] port and registers this in `SlottedUiPlugin`. It stays
+/// named here because it was published here.
+pub use slotted_ui::resolve_loc_text;
 
 /// Reads `locale/<lang>.ftl` from base and every mod, in load order, so the
 /// last mod loaded wins.

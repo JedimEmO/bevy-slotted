@@ -16,6 +16,7 @@ fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new("demo:chest"),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout::default(),

@@ -11,7 +11,91 @@
 //! coordinates (`0..1`, y down). [`silhouette`] is the union used for the rim
 //! test.
 
+use bevy::color::{Color, ColorToComponents, Hsla, Srgba};
+use bevy::math::Quat;
 use slotted_registry::icon::{IconColor, ShapeIcon, ShapeKind};
+
+/// What one atlas cell draws.
+///
+/// This is the single description both bakes read. The CPU bake in
+/// [`crate::atlas`] rasterises it as flat polygons; the GPU bake in
+/// `crate::gpu` builds meshes for it under the three-point rig. Colour, view
+/// angle and cell fill are decided here, once, so the two never disagree
+/// about how an item sits in its cell.
+///
+/// What is still authored twice is the geometry itself: the CPU bake's
+/// polygons in this module against the GPU bake's `Mesh` primitives. They are
+/// drawn from the same viewpoint at the same scale and they read the same at
+/// 64 px, but a seventh [`ShapeKind`] would have to be added to both. Turning
+/// the meshes into the one source and projecting them for the CPU silhouette
+/// is the remaining half of that job.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CellDraw {
+    /// A lit primitive.
+    Shape(ShapeIcon),
+    /// A glTF scene, with the shape that stands in for it.
+    Model {
+        /// Asset path of the glTF.
+        path: String,
+        /// What the CPU bake draws instead, and whose [`view_rotation`] and
+        /// [`cell_fill`] the GPU bake renders the loaded scene at.
+        stand_in: ShapeIcon,
+    },
+}
+
+impl CellDraw {
+    /// The shape this cell reads as: its own, or a model's stand-in.
+    #[must_use]
+    pub const fn shape(&self) -> &ShapeIcon {
+        match self {
+            Self::Shape(shape)
+            | Self::Model {
+                stand_in: shape, ..
+            } => shape,
+        }
+    }
+
+    /// The glTF path, when this cell is a model.
+    #[must_use]
+    pub fn model_path(&self) -> Option<&str> {
+        match self {
+            Self::Model { path, .. } => Some(path),
+            Self::Shape(_) => None,
+        }
+    }
+}
+
+/// The three-quarter view every icon is drawn from: yawed 45 degrees, then
+/// tipped forward so the top face reads.
+///
+/// The CPU bake's polygons are authored at exactly this angle rather than
+/// computed from it, which is why this lives here beside them and not in the
+/// GPU module that consumes it.
+#[must_use]
+pub fn view_rotation(kind: ShapeKind) -> Quat {
+    match kind {
+        // A rod is read along its length, not from a corner.
+        ShapeKind::Rod => Quat::from_rotation_z(std::f32::consts::FRAC_PI_4),
+        _ => {
+            Quat::from_rotation_x(-std::f32::consts::FRAC_PI_6)
+                * Quat::from_rotation_y(std::f32::consts::FRAC_PI_4)
+        }
+    }
+}
+
+/// How much of its cell a shape fills, in world units where the cell is 1.
+///
+/// A model is normalised to a unit cube before this is applied, so the number
+/// means the same thing for a glTF as it does for a primitive.
+#[must_use]
+pub fn cell_fill(kind: ShapeKind) -> f32 {
+    match kind {
+        ShapeKind::Cube | ShapeKind::Slab => 0.46,
+        ShapeKind::Ingot => 0.66,
+        ShapeKind::Gem | ShapeKind::Sphere => 0.62,
+        ShapeKind::Rod => 0.72,
+    }
+}
 
 /// Which colour a face takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -255,6 +339,33 @@ pub fn sample(icon: &ShapeIcon, u: f32, v: f32) -> Option<[f32; 4]> {
     Some([rgb[0], rgb[1], rgb[2], alpha])
 }
 
+/// The stand-in a `Model` gets when its data file declared no shape fields:
+/// a cube in a colour hashed from the model's own path.
+///
+/// Bounding-box shaped on purpose. A glTF's real silhouette is not knowable
+/// without loading and projecting it, and the CPU bake has to be
+/// deterministic and available with no renderer and no asset server at all;
+/// a box in a stable colour is the honest answer. A data file that wants
+/// better says so with `shape:` and `color:` beside `model:`.
+#[must_use]
+pub fn model_stand_in(path: &str) -> ShapeIcon {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in path.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let hue = (hash % 360) as f32;
+    fallback_shape(hue_color(hue))
+}
+
+/// A hue at fixed saturation and lightness, in the same spread
+/// `atlas::placeholder_color` uses for an item that declared no icon at all.
+fn hue_color(hue: f32) -> IconColor {
+    let rgba = Srgba::from(Color::Hsla(Hsla::new(hue, 0.55, 0.58, 1.0))).to_f32_array();
+    IconColor(rgba)
+}
+
 /// The shape a `None` icon falls back to: a cube in the item's hash colour,
 /// so an item that declares nothing still reads as a lit 3D object rather
 /// than as a missing texture.
@@ -272,6 +383,51 @@ pub fn fallback_shape(color: IconColor) -> ShapeIcon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_kind_has_a_view_and_fills_part_of_its_cell() {
+        for kind in ShapeKind::ALL {
+            assert!(view_rotation(kind).is_normalized(), "{kind}");
+            assert!(cell_fill(kind) > 0.0 && cell_fill(kind) < 1.0, "{kind}");
+        }
+        // A rod is the one shape read along its length rather than from a
+        // corner, and the difference is what makes a tool legible.
+        assert_ne!(
+            view_rotation(ShapeKind::Rod),
+            view_rotation(ShapeKind::Cube)
+        );
+    }
+
+    #[test]
+    fn a_models_stand_in_is_stable_and_follows_its_path() {
+        let one = model_stand_in("models/pickaxe.gltf");
+        assert_eq!(one, model_stand_in("models/pickaxe.gltf"));
+        assert_ne!(one.color, model_stand_in("models/anvil.gltf").color);
+        // Bounding-box shaped: a box is what is known about a model that has
+        // not been loaded.
+        assert_eq!(one.shape, ShapeKind::Cube);
+        // And it is a real colour, not black or white.
+        let [r, g, b, a] = one.color.0;
+        assert!((a - 1.0).abs() < f32::EPSILON);
+        assert!(
+            r.max(g).max(b) > 0.2 && r.min(g).min(b) < 0.9,
+            "{:?}",
+            one.color
+        );
+    }
+
+    #[test]
+    fn a_cell_reads_as_its_shape_whether_or_not_it_is_a_model() {
+        let shape = ShapeIcon::new(ShapeKind::Gem, IconColor::rgb(1, 2, 3));
+        assert_eq!(CellDraw::Shape(shape.clone()).shape(), &shape);
+        assert_eq!(CellDraw::Shape(shape.clone()).model_path(), None);
+        let model = CellDraw::Model {
+            path: "models/pickaxe.gltf".to_owned(),
+            stand_in: shape.clone(),
+        };
+        assert_eq!(model.shape(), &shape);
+        assert_eq!(model.model_path(), Some("models/pickaxe.gltf"));
+    }
 
     #[test]
     fn every_kind_covers_its_centre() {

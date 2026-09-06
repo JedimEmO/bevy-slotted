@@ -5387,6 +5387,7 @@ dependencies = [
  "slotted-ecs",
  "slotted-icons",
  "slotted-model",
+ "slotted-net",
  "slotted-packs",
  "slotted-registry",
  "slotted-script",
@@ -5453,6 +5454,18 @@ dependencies = [
  "ron",
  "serde",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "slotted-net"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "ron",
+ "serde",
+ "slotted-model",
+ "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

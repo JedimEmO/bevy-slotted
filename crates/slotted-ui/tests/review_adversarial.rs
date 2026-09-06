@@ -38,6 +38,7 @@ fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: roles::PANEL,
             layout: Layout {
@@ -212,14 +213,15 @@ fn closing_a_screen_removes_its_exclusion_zones_and_the_carried_stack() {
     );
 }
 
-/// A screen that says it inherits from another does not silently produce a
-/// broken tree: Phase 2 falls back to the screen's own root and warns.
+/// A three-deep `inherits` chain spawns one flattened tree: every ancestor's
+/// children, the leaf's root shape, and the ancestor's anchor still in place.
 #[test]
-fn an_inherits_chain_falls_back_to_the_screens_own_root() {
+fn an_inherits_chain_spawns_the_flattened_tree() {
     let mut h = harness();
     let base = ScreenDef {
         kind: ScreenKind::new("demo:base"),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: roles::PANEL,
             layout: Layout::default(),
@@ -233,6 +235,7 @@ fn an_inherits_chain_falls_back_to_the_screens_own_root() {
     let middle = ScreenDef {
         kind: ScreenKind::new("demo:middle"),
         inherits: Some(ScreenKind::new("demo:base")),
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: roles::PANEL,
             layout: Layout::default(),
@@ -244,6 +247,7 @@ fn an_inherits_chain_falls_back_to_the_screens_own_root() {
     let leaf = ScreenDef {
         kind: ScreenKind::new("demo:leaf"),
         inherits: Some(ScreenKind::new("demo:middle")),
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: roles::PANEL,
             layout: Layout::default(),
@@ -271,13 +275,17 @@ fn an_inherits_chain_falls_back_to_the_screens_own_root() {
     h.open_screen(ScreenKind::new("demo:leaf"), ChestFixture::empty());
     h.settle();
 
-    // Phase 2 does not flatten `inherits` (docs/FOLLOWUPS.md). The leaf's own
-    // tree is what spawns, so the ancestor's anchor and the injection at it
-    // are not there. This test pins the fallback so the day inheritance lands
-    // it fails loudly rather than quietly changing behaviour.
+    // The leaf's root wins on shape, so `leaf_panel` is the panel that
+    // spawned and the ancestors' roots are gone as nodes -- but their
+    // children, and the base's anchor, came down the chain.
     assert!(h.try_find(&by::test_id("leaf_panel")).is_some());
     assert!(h.try_find(&by::test_id("middle_panel")).is_none());
-    assert!(h.try_find(&by::anchor("base_anchor")).is_none());
+    assert!(h.try_find(&by::anchor("base_anchor")).is_some());
+    assert!(h.try_find(&by::test_id("middle_text")).is_some());
+    assert!(h.try_find(&by::test_id("leaf_text")).is_some());
+    // An injection names one screen kind. `demo:base` is not what opened, so
+    // its injection does not follow the tree into `demo:leaf`; a mod that
+    // wants to reach every descendant targets `ScreenKind::any()`.
     assert!(h.try_find(&by::test_id("injected")).is_none());
 }
 
@@ -735,6 +743,7 @@ fn an_unknown_custom_widget_kind_still_spawns_a_findable_node() {
     let def = ScreenDef {
         kind: ScreenKind::new("demo:unknown"),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: roles::PANEL,
             layout: Layout::default(),
@@ -772,6 +781,7 @@ fn two_grid_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new("demo:chest_full"),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: roles::PANEL,
             layout: Layout {

@@ -217,6 +217,16 @@ impl Plugin for SlottedBrowserPlugin {
 
         if self.config.ui {
             ui::register(app);
+            // The panel's own chrome. It runs after everything else in
+            // `Render`, so a chip or a tab spawned this pass is repainted in
+            // the same frame it is laid out, and a replaced `Localization`
+            // repaints every label that was written once at spawn time.
+            app.add_systems(
+                Update,
+                ui::panel::render_chrome
+                    .in_set(BrowserSet::Render)
+                    .after(ui::recipe_view::render_recipe_view),
+            );
         }
     }
 }

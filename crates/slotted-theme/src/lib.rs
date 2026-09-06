@@ -39,7 +39,7 @@ pub use plugin::{SlottedThemePlugin, SlottedThemeSet};
 pub use role::{Role, roles};
 pub use theme::{Theme, ThemeError, ThemeLoader};
 pub use tokens::{
-    Blur, Durations, Elevation, FontToken, MotionSpec, MotionTokens, Radii, Spacing, Tokens,
+    Blur, Durations, Elevation, FontToken, MotionSpec, MotionTokens, Radii, Sizes, Spacing, Tokens,
 };
 
 /// The names a widget author needs.

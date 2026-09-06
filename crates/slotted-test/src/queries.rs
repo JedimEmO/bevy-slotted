@@ -104,11 +104,17 @@ impl UiHarness {
 
     /// The stack a slot entity shows, read from the model through `SlotRef`
     /// (not from the widget), so it is true even before rendering catches up.
+    ///
+    /// A `Ghost` or `Filter` slot reports the hint the menu state holds for
+    /// it, which is what such a slot draws; no inventory holds it.
     pub fn stack_at(&self, slot: Entity) -> Option<ItemStack> {
         let world = self.world();
         let slot_ref = world.get::<SlotRef>(slot)?;
         let menu = world.get::<OpenMenu>(slot_ref.menu)?;
         let def = menu.def.slot(slot_ref.slot)?;
+        if def.behaviour.is_ghost() {
+            return menu.state.hint(slot_ref.slot).cloned();
+        }
         let inv_entity = *menu.inventories.get(def.source.index())?;
         let inv = world.get::<slotted_ecs::Inventory>(inv_entity)?;
         inv.get(usize::from(def.index)).cloned()

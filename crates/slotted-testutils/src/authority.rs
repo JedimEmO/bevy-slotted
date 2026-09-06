@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use slotted_model::{
     Authority, AuthorityError, AuthorityEvent, ClickAction, Delta, MenuId, MenuSnapshot,
+    ResyncRequest, ValidationLevel,
 };
 
 /// One call to [`Authority::submit`], as the fakes recorded it.
@@ -27,6 +28,12 @@ struct Recording {
     outbox: VecDeque<AuthorityEvent>,
     auto_ack: bool,
     error: Option<AuthorityError>,
+    /// Menus a caller has asked for a full snapshot of, in order.
+    resync_requests: Vec<MenuId>,
+    /// What a resync request answers with. `None` reports the request
+    /// unsupported, which is what a single-player authority does.
+    resync_answer: Option<MenuSnapshot>,
+    validation: ValidationLevel,
 }
 
 /// An authority that remembers everything submitted to it.
@@ -124,6 +131,23 @@ impl RecordingAuthority {
     pub fn fail_with(&self, error: Option<AuthorityError>) {
         self.lock().error = error;
     }
+
+    /// Answers every [`Authority::request_resync`] with `snapshot`, as a
+    /// networked authority does. Without this the fake reports the request
+    /// unsupported and the client redraws from its own state.
+    pub fn answer_resync_with(&self, snapshot: MenuSnapshot) {
+        self.lock().resync_answer = Some(snapshot);
+    }
+
+    /// Menus a caller has asked for a full snapshot of, in order.
+    pub fn resync_requests(&self) -> Vec<MenuId> {
+        self.lock().resync_requests.clone()
+    }
+
+    /// Reports `level` as the validation this authority wants.
+    pub fn require_validation(&self, level: ValidationLevel) {
+        self.lock().validation = level;
+    }
 }
 
 impl Authority for RecordingAuthority {
@@ -156,6 +180,22 @@ impl Authority for RecordingAuthority {
 
     fn poll(&self) -> Vec<AuthorityEvent> {
         self.lock().outbox.drain(..).collect()
+    }
+
+    fn request_resync(&self, menu: MenuId) -> Result<ResyncRequest, AuthorityError> {
+        let mut state = self.lock();
+        state.resync_requests.push(menu);
+        let Some(snapshot) = state.resync_answer.clone() else {
+            return Ok(ResyncRequest::Unsupported);
+        };
+        state
+            .outbox
+            .push_back(AuthorityEvent::Resync { menu, snapshot });
+        Ok(ResyncRequest::Pending)
+    }
+
+    fn validation(&self) -> ValidationLevel {
+        self.lock().validation
     }
 }
 

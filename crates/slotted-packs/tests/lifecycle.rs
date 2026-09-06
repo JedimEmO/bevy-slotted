@@ -497,6 +497,74 @@ fn reload_keeps_inventory_contents_when_item_ids_shift() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// The dense ids inside a `ComponentPatch` are interned by the same freeze
+/// that numbers items, and a reload renumbers both. A patch that is not
+/// remapped therefore reads some other component's value out of the same
+/// slot, silently and with no error anywhere.
+#[test]
+fn reload_remaps_component_patch_keys_by_name() {
+    let root = scratch("reload-patch");
+    copy_dir(&fixtures(), &root);
+    let mut harness = harness_at(&root);
+    harness.run_all();
+
+    let old = harness.registries();
+    let gem = old.item_id(&id("beta:gem")).expect("the RON item loaded");
+    let charge = old
+        .components
+        .get(&id("beta:charge"))
+        .expect("the item's component key was interned");
+
+    let mut stack = ItemStack::new(gem, 3);
+    stack.patch.insert(charge, Value::from(7_i64));
+    harness.open_menu_with(vec![Some(stack), None, None, None]);
+    let inventory = harness
+        .app
+        .world_mut()
+        .query_filtered::<Entity, With<slotted_ecs::Inventory>>()
+        .iter(harness.app.world())
+        .next()
+        .expect("the inventory entity exists");
+
+    // A new item declaring its own component sorts before `gem.ron`, so both
+    // the item ids and the component ids after it shift.
+    std::fs::write(
+        root.join("mods/beta/data/beta/items/aardvark.ron"),
+        "(name: \"beta:aardvark\", max_stack_size: 1, components: { \"beta:aura\": 0 })",
+    )
+    .expect("write the new item");
+
+    ModLoader::reload_mod(harness.app.world_mut(), &mod_id("beta")).expect("the reload succeeds");
+
+    let new = harness.registries();
+    let new_charge = new
+        .components
+        .get(&id("beta:charge"))
+        .expect("the key still exists");
+    assert_ne!(new_charge, charge, "the new file shifted the component ids");
+
+    let stack = harness
+        .app
+        .world()
+        .get::<slotted_ecs::Inventory>(inventory)
+        .expect("the entity survives")
+        .0
+        .get(0)
+        .cloned()
+        .expect("the slot still holds a stack");
+    assert_eq!(
+        stack.patch.get(new_charge),
+        Some(&Value::from(7_i64)),
+        "the override followed its name, not its number"
+    );
+    assert!(
+        stack.patch.get(charge).is_none() || charge == new_charge,
+        "and nothing was left behind at the old id"
+    );
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
 #[test]
 fn a_failed_reload_keeps_the_previous_registries() {
     let root = scratch("reload-fail");

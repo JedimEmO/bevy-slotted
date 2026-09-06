@@ -52,10 +52,12 @@ pub mod menu;
 pub mod stack;
 pub mod value;
 
-pub use authority::{Authority, AuthorityError, AuthorityEvent, MenuId, MenuSnapshot};
+pub use authority::{
+    Authority, AuthorityError, AuthorityEvent, MenuId, MenuSnapshot, ResyncRequest,
+};
 pub use click::{
     Actor, Button, ClickAction, Delta, DragKind, DragPreview, DragStage, GiveTarget, ToolbarAction,
-    apply_click, can_accept, preview_drag,
+    ValidationLevel, apply_click, apply_click_validated, can_accept, preview_drag, slot_view,
 };
 pub use error::ClickError;
 pub use id::{ComponentId, ItemId, Namespaced, NamespacedError};

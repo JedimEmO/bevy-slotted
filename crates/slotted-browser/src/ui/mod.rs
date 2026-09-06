@@ -211,6 +211,12 @@ pub fn register(app: &mut App) {
         registry.register(kinds::recipe_view(), recipe_view::RecipeViewWidget);
         registry.register(kinds::status_line(), status_line::StatusLineWidget);
     }
+    if let Some(mut sources) = app
+        .world_mut()
+        .get_resource_mut::<slotted_ui::VirtualGridSources>()
+    {
+        sources.register(card_grid::card_source_id(), card_grid::CardSource);
+    }
     app.init_resource::<hotkeys::HoverTarget>()
         .add_observer(panel::attach_panel)
         .add_observer(panel::detach_panel)
@@ -229,7 +235,6 @@ pub fn register(app: &mut App) {
                     .in_set(BrowserSet::Input),
                 (
                     card_grid::size_card_pool,
-                    card_grid::rebind_cards,
                     card_grid::card_state_roles,
                     chip_row::render_chips,
                     bookmarks_strip::render_bookmarks,
@@ -243,7 +248,10 @@ pub fn register(app: &mut App) {
                     status_line::render_status,
                 )
                     .chain()
-                    .in_set(BrowserSet::Render),
+                    .in_set(BrowserSet::Render)
+                    // `size_card_pool` writes the grid's window; the shared
+                    // pooling pass reads it and rebinds the cards.
+                    .before(slotted_ui::refresh_virtual_grids),
             ),
         )
         .add_systems(PostUpdate, dock::dock_panels.in_set(BrowserSet::Layout));

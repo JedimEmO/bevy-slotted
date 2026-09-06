@@ -111,13 +111,17 @@ lands.
 
 ## Fonts
 
-None of IBM Plex Sans, IBM Plex Mono, Manrope, Rajdhani or Barlow Condensed
-are installed here (`fc-list` is empty for all five), and the brief said not to
-fetch them, so no TTF ships. Both themes name their families in
-`tokens.fonts` and every text role points at a token; the shots use Bevy's
-default face. To complete a direction: put the OFL files under `assets/fonts/`
-and add `path: "fonts/IBMPlexMono-Regular.ttf"` to the token, or enable
-`system_font_discovery` in the game's Bevy features and set `system: true`.
+Superseded. At the time none of IBM Plex Sans, IBM Plex Mono, Manrope,
+Rajdhani or Barlow Condensed were installed (`fc-list` was empty for all five)
+and the brief said not to fetch them, so the themes named their families in
+`tokens.fonts`, every text role pointed at a token, and the shots used Bevy's
+default face.
+
+The gap pass, package C, shipped all five under `assets/fonts/<family>/` with
+their `OFL.txt` and pointed the three themes' tokens at them; glass gained a
+`fonts` block and `font:` on its text roles, which it had neither of. See
+`docs/design/gaps-notes-C.md` section 4 and `assets/fonts/README.md`. The
+`system: true` route is still there for a game that would rather ask the OS.
 
 ## Left as is, on purpose
 

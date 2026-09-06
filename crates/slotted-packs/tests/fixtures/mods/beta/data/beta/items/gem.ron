@@ -1,1 +1,1 @@
-(name: "beta:gem", max_stack_size: 8)
+(name: "beta:gem", max_stack_size: 8, components: { "beta:charge": 0 })

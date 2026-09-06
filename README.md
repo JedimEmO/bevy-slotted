@@ -125,13 +125,14 @@ Every crate is `0.1.0` and unpublished. `slotted` is the one a game depends on.
 | [`slotted-model`](crates/slotted-model) | Domain: ids, stacks, inventories, menus, the click state machine. No Bevy. | Phase 1 |
 | [`slotted-registry`](crates/slotted-registry) | Namespaced registries, data-stage loading, patch rounds, freeze, tags, recipes. No Bevy. | Phase 1 |
 | [`slotted-ecs`](crates/slotted-ecs) | Bevy adapter of the model: components, events, prediction, the `Authority` port. | Phase 2 |
-| [`slotted-theme`](crates/slotted-theme) | Tokens, roles, materials, RON themes, hot reload, motion presets. Three shipped skins: glass, paper, neon. | Phase 7 |
-| [`slotted-ui`](crates/slotted-ui) | Screen trees, widgets, anchors, injection, tooltips, HUD layers, semantic roles. | Phase 6 |
-| [`slotted-icons`](crates/slotted-icons) | The `IconSource` port, the lit-shape icon bake (CPU and offscreen GPU rig) and live viewport icons. | Phase 7 |
+| [`slotted-theme`](crates/slotted-theme) | Tokens (colour, spacing, size, type), roles, materials, RON themes, hot reload, motion presets. Three shipped skins: glass, paper, neon, each with its OFL font files. | Gaps |
+| [`slotted-ui`](crates/slotted-ui) | Screen trees as `.screen.ron` assets with inheritance, widgets, anchors, injection, tooltips, HUD layers, semantic roles, localisation. | Gaps |
+| [`slotted-icons`](crates/slotted-icons) | The `IconSource` port, the lit-shape icon bake (CPU and offscreen GPU rig), glTF item models and live viewport icons. | Gaps |
 | [`slotted-browser`](crates/slotted-browser) | Ingredient registry, categories, search index, browser panel, recipe transfer. | Phase 3 |
 | [`slotted-script`](crates/slotted-script) | The `ScriptRuntime` port, the `slotted.*` API surface, event and command types. | Phase 4 |
 | [`slotted-script-luaur`](crates/slotted-script-luaur) | The script runtime: Luau through luaur, a pure-Rust port. Native and wasm. | Phase 4 |
-| [`slotted-packs`](crates/slotted-packs) | Layered `AssetReader` for mods and resource packs, `mod.toml`, Fluent. | Phase 4 |
+| [`slotted-packs`](crates/slotted-packs) | Layered `AssetReader` for mods and resource packs, `mod.toml`, Fluent locales. | Phase 4 |
+| [`slotted-net`](crates/slotted-net) | Networked authority: click messages, a predicting client, an authoritative menu server, a transport port with a lossy in-process link. | Gaps |
 | [`slotted-test`](crates/slotted-test) | Public UI test harness: headless app, locators, synthetic input, snapshots. | Phase 6 |
 | [`slotted-testutils`](crates/slotted-testutils) | Internal fakes, builders, the script conformance suite. Never published. | Phase 1 |
 

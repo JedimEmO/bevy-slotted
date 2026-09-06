@@ -183,6 +183,73 @@ impl Default for Blur {
     }
 }
 
+/// Widget sizes, in logical pixels at `UiScale` 1.
+///
+/// A slot's edge, the gap between slots and the item browser's panel
+/// geometry were constants in `slotted-ui` and `slotted-browser` until a
+/// theme needed to say a slot is bigger than 44 px. The defaults are the
+/// numbers those constants held, so a theme that names none looks exactly as
+/// it did.
+///
+/// Every number is a UI unit: `UiScale` multiplies a `Node`'s pixels on its
+/// way to the screen, so a widget writes these values unscaled and code that
+/// plans a layout outside the node tree (the browser's dock) converts the
+/// window into the same units first.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Sizes {
+    /// Edge length of a slot.
+    #[serde(default = "default_slot_size")]
+    pub slot_size: f32,
+    /// Gap between slots in a grid. `None` follows the spacing scale's `sm`
+    /// step, which is where the gap came from before it was a size; read it
+    /// through [`Tokens::slot_gap`] rather than directly.
+    #[serde(default)]
+    pub slot_gap: Option<f32>,
+    /// The item browser panel's width where the free strip allows it.
+    #[serde(default = "default_panel_width")]
+    pub panel_width: f32,
+    /// One browser card's width.
+    #[serde(default = "default_card_width")]
+    pub card_width: f32,
+    /// One browser card's height.
+    #[serde(default = "default_card_height")]
+    pub card_height: f32,
+    /// Height the browser panel reserves for everything that is not the card
+    /// grid: the search field, the chip row, the bookmark strip and the
+    /// status line.
+    #[serde(default = "default_chrome_height")]
+    pub chrome_height: f32,
+}
+
+const fn default_slot_size() -> f32 {
+    44.0
+}
+const fn default_panel_width() -> f32 {
+    352.0
+}
+const fn default_card_width() -> f32 {
+    75.0
+}
+const fn default_card_height() -> f32 {
+    94.0
+}
+const fn default_chrome_height() -> f32 {
+    190.0
+}
+
+impl Default for Sizes {
+    fn default() -> Self {
+        Self {
+            slot_size: default_slot_size(),
+            slot_gap: None,
+            panel_width: default_panel_width(),
+            card_width: default_card_width(),
+            card_height: default_card_height(),
+            chrome_height: default_chrome_height(),
+        }
+    }
+}
+
 /// The whole table.
 ///
 /// [`Tokens::default`] is the `glass` theme's numbers with empty colour maps:
@@ -191,6 +258,9 @@ impl Default for Blur {
 pub struct Tokens {
     /// Spacing scale.
     pub spacing: Spacing,
+    /// Widget sizes. A theme that names none gets the built-in numbers.
+    #[serde(default)]
+    pub sizes: Sizes,
     /// Corner radii.
     pub radii: Radii,
     /// Named shadow levels (`low`, `mid`, `high` by convention).
@@ -245,6 +315,12 @@ impl Tokens {
             .get(&preset)
             .and_then(|spec| spec.easing)
             .unwrap_or(self.motion.easing)
+    }
+
+    /// The gap between slots in a grid: the theme's [`Sizes::slot_gap`] when
+    /// it names one, else the spacing scale's `sm` step.
+    pub fn slot_gap(&self) -> f32 {
+        self.sizes.slot_gap.unwrap_or(self.spacing.sm)
     }
 
     /// The font token a text role names, if the theme defines it.

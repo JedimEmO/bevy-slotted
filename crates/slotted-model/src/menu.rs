@@ -491,17 +491,50 @@ pub struct MenuState {
     pub drag: Option<DragState>,
     /// Current property values, indexed like [`MenuDef::properties`].
     pub properties: Vec<i32>,
+    /// What each [`Ghost`](SlotBehaviour::Ghost) and
+    /// [`Filter`](SlotBehaviour::Filter) slot displays.
+    ///
+    /// A hint is a picture of an item, not an item. It lives here rather than
+    /// in the backing [`Inventory`](crate::inventory::Inventory) so that
+    /// `count_of`, item conservation and inventory sync never see a phantom
+    /// stack. Every entry has `count == 1` and every key names a slot of the
+    /// menu whose `behaviour.is_ghost()`. Read and write it through
+    /// [`hint`](Self::hint) and [`set_hint`](Self::set_hint); the click state
+    /// machine keeps it in step, and it travels inside
+    /// [`MenuSnapshot`](crate::authority::MenuSnapshot) with the rest of the
+    /// state.
+    #[serde(default)]
+    pub hints: std::collections::BTreeMap<SlotIx, ItemStack>,
 }
 
 impl MenuState {
-    /// Fresh state for `def`: nothing carried, properties at their initial
-    /// values.
+    /// Fresh state for `def`: nothing carried, no hints, properties at their
+    /// initial values.
     pub fn new(def: &MenuDef) -> Self {
         Self {
             carried: None,
             state_id: 0,
             drag: None,
             properties: def.properties.iter().map(|p| p.initial).collect(),
+            hints: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// What the ghost or filter slot `slot` displays, if anything.
+    pub fn hint(&self, slot: SlotIx) -> Option<&ItemStack> {
+        self.hints.get(&slot)
+    }
+
+    /// Sets or clears the hint on `slot`. The stack is stored with `count`
+    /// forced to one, because a hint has no quantity.
+    pub fn set_hint(&mut self, slot: SlotIx, stack: Option<ItemStack>) {
+        match stack {
+            Some(stack) => {
+                self.hints.insert(slot, stack.with_count(1));
+            }
+            None => {
+                self.hints.remove(&slot);
+            }
         }
     }
 }

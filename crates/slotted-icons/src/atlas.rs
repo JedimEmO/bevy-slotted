@@ -10,7 +10,7 @@ use slotted_model::{ItemId, ItemStack, Namespaced};
 use slotted_registry::icon::{IconColor, IconDef, ShapeIcon};
 use wgpu_types::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::shape;
+use crate::shape::{self, CellDraw};
 use crate::source::{IconRef, IconSource};
 
 /// Cell size of the baked atlas, in pixels. 128 with the `hidpi` feature,
@@ -36,7 +36,8 @@ pub struct AtlasIcons {
     /// from the atlas, because the bake has nothing to render for them.
     pub images: HashMap<ItemId, Handle<Image>>,
     /// Items the bake could not draw, so the renderer shows the missing
-    /// glyph. `Model` icons land here until the glTF loader exists.
+    /// glyph. Only an `Image` whose file failed to load reaches this now;
+    /// a `Model` gets a cell like a shape does.
     pub missing: HashSet<ItemId>,
 }
 
@@ -70,12 +71,24 @@ pub struct IconItem<'a> {
 /// What the bake decided to draw for an item.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Baked {
-    /// A shape rendered into the atlas.
-    Shape(ShapeIcon),
+    /// A cell in the atlas: a shape, or a model with the shape that stands
+    /// in for it.
+    Cell(CellDraw),
     /// An asset path to load and draw directly.
     Image(String),
     /// Nothing: the renderer draws the missing glyph.
     Missing,
+}
+
+impl Baked {
+    /// The cell this plan draws, when it draws one.
+    #[must_use]
+    pub const fn cell(&self) -> Option<&CellDraw> {
+        match self {
+            Self::Cell(cell) => Some(cell),
+            _ => None,
+        }
+    }
 }
 
 /// The plan for one item: which of the three the bake will do.
@@ -85,10 +98,19 @@ pub enum Baked {
 #[must_use]
 pub fn plan(item: &IconItem<'_>) -> Baked {
     match item.icon {
-        Some(IconDef::Shape(shape)) => Baked::Shape(shape.clone()),
+        Some(IconDef::Shape(shape)) => Baked::Cell(CellDraw::Shape(shape.clone())),
         Some(IconDef::Image(path)) => Baked::Image(path.clone()),
-        Some(IconDef::Model(_)) => Baked::Missing,
-        None => Baked::Shape(shape::fallback_shape(hash_color(item.name))),
+        Some(IconDef::Model { path, stand_in }) => Baked::Cell(CellDraw::Model {
+            path: path.clone(),
+            // A model that named no shape gets a box in its path's colour.
+            // The cell exists either way: a model is drawn, not missing.
+            stand_in: stand_in
+                .clone()
+                .unwrap_or_else(|| shape::model_stand_in(path)),
+        }),
+        None => Baked::Cell(CellDraw::Shape(shape::fallback_shape(hash_color(
+            item.name,
+        )))),
     }
 }
 
@@ -105,8 +127,9 @@ pub struct BakedAtlas {
     pub images: Vec<(ItemId, String)>,
     /// Items the bake refused. Every one of them has been warned about once.
     pub missing: HashSet<ItemId>,
-    /// The shape each cell holds, in cell order, for the GPU bake to render.
-    pub shapes: Vec<ShapeIcon>,
+    /// What each cell draws, in cell order. The GPU bake renders this same
+    /// list; see [`CellDraw`].
+    pub cells: Vec<CellDraw>,
 }
 
 /// Output of the CPU bake. The Phase 2 name, kept because it is what
@@ -141,12 +164,9 @@ fn hash_color(name: &Namespaced) -> IconColor {
 /// byte-identical images.
 pub fn bake_icon_atlas(items: &[IconItem<'_>], cell: u32) -> BakedAtlas {
     let plans: Vec<(ItemId, Baked)> = items.iter().map(|item| (item.id, plan(item))).collect();
-    let shaped: Vec<(ItemId, ShapeIcon)> = plans
+    let shaped: Vec<(ItemId, CellDraw)> = plans
         .iter()
-        .filter_map(|(id, baked)| match baked {
-            Baked::Shape(shape) => Some((*id, shape.clone())),
-            _ => None,
-        })
+        .filter_map(|(id, baked)| baked.cell().map(|cell| (*id, cell.clone())))
         .collect();
 
     let count = u32::try_from(shaped.len().max(1)).expect("fewer than 2^32 items");
@@ -160,13 +180,16 @@ pub fn bake_icon_atlas(items: &[IconItem<'_>], cell: u32) -> BakedAtlas {
     let mut index = HashMap::with_capacity(shaped.len());
     let mut cell_shapes = Vec::with_capacity(shaped.len());
 
-    for (i, (id, icon)) in shaped.into_iter().enumerate() {
+    for (i, (id, draw)) in shaped.into_iter().enumerate() {
         #[allow(clippy::cast_possible_truncation)]
         let (cx, cy) = ((i as u32 % cols) * cell, (i as u32 / cols) * cell);
-        draw_cell(&mut data, width, cx, cy, cell, &icon);
+        // A model draws its stand-in here. The GPU bake overwrites this cell
+        // with the lit glTF once the scene has loaded; until then, and
+        // forever in a headless run, the stand-in is what a slot shows.
+        draw_cell(&mut data, width, cx, cy, cell, draw.shape());
         let rect = URect::new(cx, cy, cx + cell, cy + cell);
         index.insert(id, layout.add_texture(rect));
-        cell_shapes.push(icon);
+        cell_shapes.push(draw);
     }
 
     let images = plans
@@ -198,7 +221,7 @@ pub fn bake_icon_atlas(items: &[IconItem<'_>], cell: u32) -> BakedAtlas {
         index,
         images,
         missing,
-        shapes: cell_shapes,
+        cells: cell_shapes,
     }
 }
 
@@ -344,22 +367,56 @@ mod tests {
     }
 
     #[test]
-    fn an_image_icon_takes_no_cell_and_a_model_is_missing() {
+    fn an_image_icon_takes_no_cell_but_a_model_does() {
         let names = names(&["t:img", "t:model", "t:shape"]);
         let icons = [
             Some(IconDef::Image("icons/sword.png".to_owned())),
-            Some(IconDef::Model("models/anvil.gltf".to_owned())),
+            Some(IconDef::Model {
+                path: "models/anvil.gltf".to_owned(),
+                stand_in: None,
+            }),
             None,
         ];
         let baked = bake_icon_atlas(&items(&names, &icons), 16);
-        assert_eq!(baked.layout.len(), 1);
-        assert_eq!(baked.index.len(), 1);
+        // Two cells: the model and the shape. The image draws from its own
+        // texture and has nothing to put in the atlas.
+        assert_eq!(baked.layout.len(), 2);
+        assert!(baked.index.contains_key(&ItemId(1)));
         assert!(baked.index.contains_key(&ItemId(2)));
         assert_eq!(
             baked.images,
             vec![(ItemId(0), "icons/sword.png".to_owned())]
         );
-        assert_eq!(baked.missing, HashSet::from([ItemId(1)]));
+        assert!(baked.missing.is_empty());
+        assert_eq!(
+            baked.cells[0].model_path(),
+            Some("models/anvil.gltf"),
+            "the model keeps its path for the GPU bake to load"
+        );
+    }
+
+    #[test]
+    fn a_models_declared_stand_in_is_what_the_cpu_bake_draws() {
+        let names = names(&["t:pick"]);
+        let stand_in = ShapeIcon::new(ShapeKind::Rod, IconColor::rgb(110, 78, 52));
+        let declared = [Some(IconDef::Model {
+            path: "models/pickaxe.gltf".to_owned(),
+            stand_in: Some(stand_in.clone()),
+        })];
+        let bare = [Some(IconDef::Model {
+            path: "models/pickaxe.gltf".to_owned(),
+            stand_in: None,
+        })];
+        let with = bake_icon_atlas(&items(&names, &declared), 32);
+        let without = bake_icon_atlas(&items(&names, &bare), 32);
+        assert_eq!(with.cells[0].shape(), &stand_in);
+        // A rod silhouette is not a box silhouette.
+        assert_ne!(with.image.data, without.image.data);
+        // And the bare one is still deterministic.
+        assert_eq!(
+            without.image.data,
+            bake_icon_atlas(&items(&names, &bare), 32).image.data
+        );
     }
 
     #[test]

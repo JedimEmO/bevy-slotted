@@ -823,6 +823,11 @@ impl UiHarness {
         loc: &slotted_script::TestLocator,
         action: fn(&mut Self, Entity),
     ) -> Result<Value, String> {
+        // Let layout stop moving before the pointer aims at anything. A
+        // pointer gesture is delivered at a position, so a node that is still
+        // settling -- a font that has just loaded and re-measured every label
+        // is the usual reason -- would be clicked where it used to be.
+        let _ = self.try_settle();
         let entity = ops::resolve_one(self.world(), loc)?;
         action(self, entity);
         Ok(Value::Null)

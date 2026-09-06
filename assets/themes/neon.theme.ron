@@ -8,10 +8,10 @@
 // GPU materials feature); a headless app or a build without it gets the same
 // colours on square nodes, and the rarity bar becomes a hard-stop gradient.
 //
-// Type is Manrope body with Rajdhani display and counts. The fonts are named,
-// not shipped: drop the OFL files into assets/fonts/ and add `path:` to the
-// two tokens below, or enable Bevy's `system_font_discovery` and set
-// `system: true`. Until then Bevy's default face carries the layout.
+// Type is Manrope body with Rajdhani display and counts, shipped under
+// assets/fonts/ with their OFL.txt. A game that would rather ask the OS for
+// the family can drop `path:` from the two tokens below and set
+// `system: true`, which needs Bevy's `system_font_discovery` feature.
 #![enable(implicit_some)]
 (
     name: "neon",
@@ -36,8 +36,8 @@
             },
         ),
         fonts: {
-            "body": (family: "Manrope"),
-            "display": (family: "Rajdhani"),
+            "body": (family: "Manrope", path: "fonts/manrope/Manrope-Variable.ttf"),
+            "display": (family: "Rajdhani", path: "fonts/rajdhani/Rajdhani-SemiBold.ttf"),
         },
         blur: (radius: 0.0, backdrop_divisor: 4),
         palette: {

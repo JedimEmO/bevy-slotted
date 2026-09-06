@@ -135,14 +135,41 @@ elevation colours and rarity colours.
 | Token | Fields | Meaning |
 |---|---|---|
 | `spacing` | `xs`, `sm`, `md`, `lg`, `xl` | Logical pixels. `xs` icon to count, `sm` slot gap, `md` panel padding, `lg` between sections, `xl` between panels. A screen's `gap` and `padding` are multiples of `sm`. |
+| `sizes` | `slot_size`, `slot_gap`, `panel_width`, `card_width`, `card_height`, `chrome_height` | Widget geometry in UI units. Every field is optional and defaults to the number the code used before it was a token: a 44 px slot, the spacing scale's `sm` step between slots, and the item browser's 352 px panel of 75x94 cards above 190 px of chrome. See [Sizes and UI scale](#sizes-and-ui-scale). |
 | `radii` | `sm`, `md`, `lg` | Slots and small buttons, buttons and tooltips, panels. |
 | `elevation` | a map of `(x, y, blur, spread, color)` | Named shadow levels, `low`, `mid` and `high` by convention. `x` defaults to 0; paper's ink shadows are `2px 2px 0`. |
 | `durations` | `fast`, `normal`, `slow`, `hover_delay` | Milliseconds. The first three are motion tiers before scaling: hover and press, fades, squashes and fly-to-slot, stagger. `hover_delay` is how long a slot is hovered before its compact tooltip appears; it defaults to 120 and is not scaled by `Motion`. |
-| `fonts` | a map of names to `(family, path, system)` | What a text role's `font` names. With `path` the file is loaded; with `system: true` the family goes to the OS font database; with neither, Bevy's default face is used and the family name documents which file completes the look. |
+| `fonts` | a map of names to `(family, path, system)` | What a text role's `font` names. With `path` the file is loaded; with `system: true` the family goes to the OS font database; with neither, Bevy's default face is used and the family name documents which file completes the look. The three shipped themes use `path`, pointing at the OFL faces under `assets/fonts/`; see `assets/fonts/README.md`. |
 | `motion` | `easing` and a map of `MotionPreset` to `(duration, easing)` | Per-preset overrides of the duration tiers and the curve. |
 | `blur` | `radius`, `backdrop_divisor` | Read only with the `blur` feature. |
 | `palette` | a map of names to colours | The `$name` targets. |
 | `rarity` | a map of rarity names to colours | Tints item names in tooltips and browser cards. |
+
+## Sizes and UI scale
+
+`sizes` is the table a theme changes when a slot should be bigger, not just a
+different colour. A widget reads it as it spawns, so a theme swap takes effect
+with the next screen rather than by resizing the nodes already on the glass.
+
+```ron
+sizes: (slot_size: 52.0, slot_gap: 8.0, panel_width: 400.0),
+```
+
+The numbers are **UI units**, not pixels on the player's display. Bevy
+multiplies every `Node` pixel by the render target's scale factor and by
+`UiScale`, so a 44-unit slot is 88 physical pixels at `UiScale` 2 without any
+of this code knowing. What does have to know is anything that plans a layout
+from something measured in another space, because a window and a pointer are
+in the window's logical pixels. `slotted_ui::UiUnits` converts them, and the
+item browser's dock uses it: at `UiScale` 2 a 1280 px window is a 640-unit box,
+so the panel re-docks into the strip that is really there and fits fewer cards
+rather than overflowing the screen. Multiplying a token by `UiScale` before
+writing it into a `Node` is the mistake this avoids; it scales twice.
+
+Two numbers are deliberately not tokens yet. The recipe layouts in
+`slotted-browser` (`category.rs`) place their slots from the default constants,
+because `RecipeCategory::size` and `layout` are a public trait a mod
+implements, and threading sizes through them changes that contract.
 
 ## Motion
 

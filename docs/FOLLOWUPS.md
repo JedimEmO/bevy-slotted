@@ -2,10 +2,106 @@
 
 Decisions deferred during phases. Each entry names the phase that should pick it up.
 
-## From Phase 1 review
+Entries the gap-closing round closed have been deleted rather than struck
+through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
+and summarised below. What is left here is open.
 
-- **Ghost and Filter hints are stored as real count-1 stacks in the backing inventory.** `Inventories::count_of` therefore sees phantoms. Options: a parallel `ghosts` map on `Inventory`, or a `SlotBehaviour`-aware counting API. Decide in Phase 2 when the ECS layer needs to render ghost slots differently anyway. Pinned by `a_ghost_hint_is_visible_to_inventory_counting`.
-- **Item conservation is asserted in debug builds only.** If `apply_click` runs as server-side validation, release builds need the check. Plan: make it a runtime `ValidationLevel` on the `Authority` adapter, not a compile-time assert. Decide when the networked authority adapter is designed.
+## Gap-closing round, 2026-09-06
+
+Three packages landed together and were integrated and reviewed as one round.
+The notes are `docs/design/gaps-notes-A.md` (authority, validation, the
+networked adapter), `-B.md` (UI, theme, browser) and `-C.md` (icons, fonts,
+advisories, wasm size). What changed, in one list:
+
+- **`slotted-net`.** A new crate: `ClientMessage`/`ServerMessage`, a predicting
+  `RemoteAuthority` that implements `slotted_model::Authority`, an
+  authoritative `MenuServer` that applies every click to a scratch copy at
+  `ValidationLevel::Always`, and a `Transport` port with an in-process
+  `Loopback` that can add latency, reorder and drop. A `bevy_replicon` adapter
+  is designed in notes A section 6 and not built.
+- **Hints out of the inventories.** `MenuState::hints`, keyed by menu slot, and
+  `slotted_model::slot_view` as the one accessor for "what does this slot
+  show". A recipe filter no longer inflates `Inventories::count_of`.
+- **`ValidationLevel`.** `Off`/`Debug`/`Always`, chosen by `Authority::validation`
+  rather than by a global.
+- **Resync.** `Authority::request_resync` and `AuthorityEvent::Slot`, so a
+  refused submission can ask for the truth instead of repainting from a local
+  copy.
+- **`ComponentPatch` across a reload.** Patch keys are rebuilt by name beside
+  the item; a key the new registry lost is reported as
+  `ModError::ComponentVanished`.
+- **Sizes are theme tokens.** `Tokens::sizes` carries `slot_size`, `slot_gap`,
+  `panel_width`, `card_width`, `card_height` and `chrome_height`. `UiUnits`
+  converts the things Bevy measures in another space; a widget never multiplies
+  a token by `UiScale`.
+- **One virtual grid.** The browser's card grid registers a `VirtualGridSource`
+  and `slotted-ui` owns the pooling, so there is no second implementation.
+- **Screen inheritance and the `.screen.ron` loader.** `inherits` and `remove`,
+  merged by node id, with cycles and missing ancestors reported rather than
+  panicked; `ScreenDef` is a Bevy asset and an edit respawns the open screen.
+- **glTF icons.** `IconDef::Model { path, stand_in }` takes an atlas cell like
+  any other icon; with the `gltf` feature the GPU rig loads the scene, and
+  without one the declared stand-in (or a box hashed from the path) is what the
+  CPU bake draws.
+- **Fonts.** Five OFL families under `assets/fonts/<family>/` with the
+  `OFL.txt` each was published with, wired into the three themes.
+- **`cargo deny` in CI.** A `just deny` recipe, in `just ci` and in the
+  workflow, with a dated single-id ignore for RUSTSEC-2026-0192.
+
+### Found and fixed during the integration review
+
+- **The atlas was published while the rig was clearing it.** The GPU bake's
+  camera cleared its render target to transparent on every frame it drew, and
+  that target *was* the image the UI sampled. A mesh pipeline compiles
+  asynchronously, so on a cold shader cache the atlas was wiped and not
+  refilled before the chest example's fixed two-second capture: five captures
+  gave one blank and four good ones. The rig now warms its pipelines on a
+  scratch target and only switches the atlas camera on once every pipeline
+  behind the view is compiled, so the clear and the refill happen in one frame.
+  Twenty-five captures over five cold-cache rounds of `just shot-chest` all
+  show icons. `tools/check-shot.py` (`just shot-check`, and run by
+  `just shot-chest`) measures the icons in the captured pixels, and
+  `slotted-icons/tests/review_gaps.rs` holds the headless half: every baked
+  cell has ink in it, and the rig's target starts as the CPU bake rather than
+  as zeroes.
+- **A lost resync request was never repeated.** `Transport::send` reports `Ok`
+  for a message the link then drops, which is what an unreliable transport
+  does, and `RemoteAuthority` marked the menu as awaiting a resync on the send.
+  One dropped `RequestResync` left the client waiting for a container that was
+  never coming. Resync requests are now retransmitted on the same timer clicks
+  are. Pinned by
+  `slotted-net/tests/review_adversarial.rs::a_resync_request_the_link_eats_is_asked_for_again`.
+- **`report_unmatched_injections` deduplicated with `Vec::dedup`,** which only
+  collapses adjacent equal entries, so two mods aiming at the same missing
+  anchor with a third injection registered between them were reported twice.
+- **`resolve_loc_text` lived in `slotted-packs`.** `slotted-ui` owns `LocText`
+  and the `Localization` port, but the system that repaints a label when the
+  catalogue is replaced was registered by the packs plugin, so a game using
+  `slotted-ui` with its own localiser got labels frozen at spawn time. The
+  system moved to `slotted-ui::loc` and `SlottedUiPlugin` runs it;
+  `slotted-packs` re-exports the name it published. It also now puts the key
+  back when a key stops resolving, instead of leaving the previous language's
+  text on screen.
+- **The browser's status line resolved two locale keys and formatted a string
+  every frame,** for every open browser, and threw all of it away: the write
+  was guarded, the work was not. It is now composed only when the index state,
+  the visible count or the catalogue moves.
+
+### Left open by the round
+
+- `bevy_replicon` has no adapter; the design is notes A section 6.
+- The two bakes still author their *geometry* twice (see below).
+- A model's stand-in cannot be derived from the glTF; it is declared or it is a
+  box.
+- The `ttf-parser` ignore has a review date (2027-03-06), not a fix.
+- The GPU render tests in `slotted-icons` cannot run even with a GPU. libtest
+  runs each test on a spawned thread, winit refuses to build an event loop off
+  the main thread, and without `WinitPlugin` `RenderPlugin` leaves no
+  `RenderDevice` in the main world, so `bevy_pbr`'s own systems panic on the
+  first frame. `tests/gpu_bake.rs::the_rig_actually_draws_into_the_atlas` is
+  marked `#[ignore = "needs a GPU"]` and fails when it is run with `--ignored`.
+  The evidence for the render path is `just shot-chest` plus `just shot-check`
+  until a headless render harness exists. **Phase 8.**
 
 ## From Phase 2
 
@@ -22,18 +118,9 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   (`Tank`, `Bar`) need the `MenuProperty` binding that Phase 2 only mirrors.
 - **`slotted_icons::LiveIcons` returns `IconRef::Missing`.** The `live` feature compiles the type
   but there is no offscreen item-model bake yet. **Phase 6**, together with `Viewport`.
-- **Screen inheritance is not implemented.** `Screens::resolve` clones and warns. What
-  "the ancestor's tree with this screen's anchors kept" means for a child screen that also has a
-  root needs a decision. **Phase 3**, per `docs/design/phase2-notes-B.md` item 11.
 - **`Favorite` is mirrored as a marker component but is not a theme role swap.** The glass theme
   defines `slot.favorite` and nothing selects it. **Phase 3**, with the rest of the slot state
   machine.
-- **A refused submission cannot ask the authority for a resync.** `slotted_model::Authority` has no
-  such method, so `submit` re-emits the menu's slots from local state instead. A networked adapter
-  has to answer with `AuthorityEvent::Resync` rather than `Err`. Revisit when the networked
-  authority adapter is designed, per `docs/design/phase2-notes-A.md` item 6.
-- **`SLOT_SIZE` is a 44px constant in `slotted-ui`, not a theme token.** It should become one the
-  first time a theme needs a different slot size. **Phase 3**.
 
 ## From the chest example
 
@@ -43,11 +130,6 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   `manual_directional_navigation ... Resource does not exist`. `examples/chest/src/main.rs` adds
   them by hand. The facade should either add them itself or ship a `SlottedPlugins::windowed()`
   companion to `headless()`. **Phase 3**, and it is a five-minute fix.
-- **There is no `ScreenDef` asset loader.** `slotted-theme` registers a `ThemeLoader` for
-  `*.theme.ron`, but a screen has to be read with `std::fs` and `ScreenDef::from_ron`, which costs
-  the example hot reload and `AssetServer` path resolution. A `ScreenLoader` for
-  `*.screen.ron`, plus an `AssetEvent` hook that respawns open screens, belongs with the rest of
-  the reload story. **Phase 3**.
 - **Nothing renders a rail button's or a text node's label in a human language.** `LocKey` is
   shown verbatim and rail buttons are labelled `quick_stack`, so the example carries a
   `fill_labels` system that substitutes strings by `test_id` and by the `action` tag. That is a
@@ -81,12 +163,6 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   buttons animate nothing at all. `SQUASH_SCALE` and friends are constants in `slotted-ui` rather
   than theme tokens, so a theme cannot say how far a slot pops. **Phase 3**, with the slot state
   machine and the `SLOT_SIZE` token above.
-- **`directional_nav_keys` and `hotbar_swap_keys` read the keyboard unconditionally.** Neither
-  consults `InputFocus` to see whether a text-entry node owns the keyboard, so the day a search
-  field lands in the browser panel, typing "3" into it will also swap a hovered slot with hotbar
-  slot 3 and the arrow keys will move focus out of the field. There is no text widget in Phase 2,
-  so no test can prove it yet; `slotted-test/tests/review_adversarial.rs::type_text_is_inert_while_no_text_field_exists`
-  documents the absence. **Phase 3**, with the browser's search box.
 - **A screen and its tooltips live in different trees.** Tooltips are spawned under
   `TooltipLayer`, not under the screen root, so despawning a screen used to leave its tooltip on
   screen forever. `despawn_orphan_tooltips` now sweeps them. The same shape applies to anything
@@ -106,20 +182,11 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   the focus's title above the tabs, so `browser.back` now comes first and `browser.forward` sits
   beside `+` under the recipe. Amend section 7 to match, or move the header behind a theme
   option. **Phase 4**, with the first contract revision.
-- **The panel does not react to `UiScale`.** `PANEL_WIDTH`, `CARD_WIDTH` and `CHROME_HEIGHT` are
-  logical pixels at scale 1, and `dock::choose` never reads `UiScale`, so a scaled UI gets a panel
-  that is the right number of pixels but the wrong number of cards. The contract already lists
-  `Changed<UiScale>` as a dock input. **Phase 4**.
-- **`CHROME_HEIGHT` is a measured constant, not a measurement.** The card grid's row count is
-  derived from a fixed 190 px allowance for the search field, chips, bookmarks and footer. A theme
-  that changes those font sizes gets a row too many or too few; the grid scrolls either way, so
-  nothing breaks, but the last row can end up half visible. Deriving rows from the grid's own
-  `ComputedNode` after the first layout would be exact. **Phase 4**.
-- **The arrow sweeps from its centre, not its left edge.** `animate_arrow` writes only
-  `UiTransform::scale`, because `UiHarness::settle` watches translation and a left-anchored sweep
-  never settles. A `Node::width` animation excluded from the settle fingerprint, or a settle that
-  ignores nodes marked as decorative, would let the arrow fill the way the moodboard's does.
-  **Phase 4**, with the motion pass.
+- **`chrome_height` is a declared number, not a measurement.** The card grid's row count is
+  derived from a 190-unit allowance for the search field, chips, bookmarks and footer. It is a
+  theme token now, so a theme that changes those font sizes can say so, but it still has to know
+  to; deriving rows from the grid's own `ComputedNode` after the first layout would be exact and
+  would need no token at all. Half closed in the gaps pass, package B. **Phase 8**.
 - **The dev feature is still empty.** `slotted-browser`'s `dev` feature is declared but the
   exclusion highlighter, the id tooltips and copy-recipe-id are not implemented (notes B, section
   10). **Phase 6**.
@@ -128,17 +195,6 @@ Decisions deferred during phases. Each entry names the phase that should pick it
 
 ## From Phase 4
 
-- **The browser's own chrome is not localised.** The item names on cards, in the search index and
-  in a recipe page title now resolve through `slotted_ui::Localization`, but "Search items",
-  "R recipes / U uses / A bookmark", "indexing…" and a category chip's label are English literals
-  in `slotted-browser`. A chip is the harder one: it draws the category's path because
-  `RecipeCategory::title_key` invents `category.<ns>.<path>` and nothing carries the
-  `RecipeTypeDef::title_key` a mod actually declared into the category. **Phase 5**, with the
-  localisation pass.
-- **A stack's `ComponentPatch` is not remapped across a reload.** `remap_inventories` remaps
-  `ItemStack::id` by name across every `Inventory` and `Carried`, but a patch is keyed by
-  `ComponentId`, which the same freeze re-interns; those keys are left as they are. No Phase 4
-  example writes a component patch, so nothing fails today. **Phase 5** (packs notes B, item 13).
 - **The per-frame script budget is a constant, not configuration.** `route::MAX_SCRIPT_CALLS_PER_FRAME`
   is 512 calls. `PacksConfig` has no field for it and its shape is shared, so making it
   configurable means amending the contract. **Phase 5** (packs notes B, item 10).
@@ -154,11 +210,6 @@ Decisions deferred during phases. Each entry names the phase that should pick it
 
 ## From Phase 5
 
-- **`ttf-parser` is unmaintained (RUSTSEC-2026-0192), so `cargo deny check advisories` fails.**
-  It arrives through Bevy's text stack and nothing in this workspace depends on it directly, so
-  there is nothing to bump here. Left unignored on purpose: an `ignore` entry in `deny.toml` would
-  hide the next advisory on the same crate too. CI does not run `cargo deny`, so nothing is red
-  today. Revisit when Bevy moves off it, or add a dated ignore if the wait gets long. **Phase 6**.
 - **The item browser's status line wraps when the panel is squeezed.** On a canvas narrow enough
   that the free strip beside the chest is under about 260 px, `dock::choose` still docks the panel
   and shrinks it to one or two card columns; "6 items" and "R recipes / U uses / A bookmark" then
@@ -166,24 +217,16 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   in `slotted-browser`'s status line rather than in the playground: either a narrow form of the
   hint text or a minimum width below which the panel hides. Seen in the playground screenshot at a
   1400 px window. **Phase 6**.
-- **A wasm build's Bevy feature list is shared with the native debug run.** `web-playground`'s
-  `bevy` dependency carries `x11` so `cargo run -p web-playground` opens a window, and a wasm build
-  compiles that feature for nothing. Splitting it into two `[target.'cfg(..)'.dependencies]`
-  entries would drop whatever winit's x11 path contributes, which was not measured. **Phase 6**.
-- **`wasm-opt` is still the difference between 47 MiB and 23 MiB.** The `wasm-release` profile is
-  as small as the cheap knobs make it (`opt-level = "z"`, fat LTO, one codegen unit, `panic =
-  "abort"`, debuginfo stripped) and the module is still a whole Bevy renderer. The next real cut is
-  Bevy's own feature surface, not the profile. **Phase 6**.
+- **`wasm-opt` is still where most of the module goes.** Re-measured in the gap pass, package C:
+  62.24 MiB out of `cargo build`, 54.39 after `wasm-bindgen`, 26.57 after `wasm-opt -Oz`. The
+  profile is as small as the knobs make it (`opt-level = "z"`, fat LTO, one codegen unit,
+  `panic = "abort"`, debuginfo stripped); `strip = "symbols"` is not one of them, because
+  wasm-bindgen reads the symbol names and `wasm-opt` drops the name section afterwards anyway.
+  Splitting the Bevy feature list by target was tried and saved ten kilobytes. The module is a
+  whole Bevy renderer and the next real cut is Bevy's own feature surface. **Phase 8**.
 
 ## From the Phase 6 design
 
-- ~~**`slotted_icons::LiveIcons` stays `IconRef::Missing` through Phase 6.**~~ Closed in Phase 7
-  package C. `ItemDef.icon` carries an `IconDef::Shape`, the viewport draws that shape's mesh with
-  that shape's material under the same three-point rig, and `LiveIcons` returns `IconRef::Live` for
-  every item the atlas knows. See `docs/design/phase7-notes-C.md`.
-- **The browser's card grid and `slotted_ui::VirtualGridSource` are two implementations.** The
-  card grid pools and rebinds cards; the virtual grid respawns cells from a `UiNodeDef` per index.
-  Moving the browser onto the trait needs a cell-recycling hook on the trait. **Phase 7**.
 - **`Injections` has one wildcard (`slotted:any`) and no per-screen-type filter.** A mod that
   wants "every container screen but not settings pages" has no way to say so. Add an
   `InjectionTarget` enum when the second filter shape appears. **Phase 7**.
@@ -230,55 +273,19 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   exists because the warning lives on the render path, which runs every frame. A crate-wide
   warn-once utility would be better than a component per case. **Phase 7**.
 
-## Closed in Phase 7 (package C)
-
-- ~~`examples/machine` items render as magenta placeholders.~~ Two causes, both fixed. The demo
-  data now declares `icon` shapes, and the icons plugin rebakes whenever `Registries` changes
-  rather than only at startup, which is what the machine needed: `slotted-packs` installs its own
-  frozen set, the example then installs its own, and the atlas was left indexed by the wrong item
-  ids.
-- ~~The tank's `BarText` readout overlaps the fill.~~ A vertical tank is now a column: the well,
-  then the stacked reading underneath it.
-- ~~Progress arrows are small.~~ 40x14 with a pill track.
-
 ## From Phase 7 package C
 
-- **The icon bake rig renders for a fixed 240 frames and then switches its camera off.** A mesh
-  pipeline is specialised and compiled asynchronously, so the first frames after the rig appears
-  draw nothing at all; switching the camera off after two or three frames left an atlas that was
-  blank forever. The window is a guess with a wide margin. The real fix needs an observable "this
-  view has produced a frame" signal from the render world. **Phase 8**.
-- **The CPU bake and the GPU bake are two drawings of the same shapes, not the same drawing.** The
-  CPU one is flat-shaded polygons authored by hand in `shape.rs`; the GPU one is PBR meshes. They
-  read the same at 64 px, and the CPU one is only ever seen headless or during the rig's warmup,
-  but a shape added to one has to be added to the other. A single source (silhouettes generated
-  from the meshes) would remove the drift. **Phase 8**.
-- **`IconDef::Model` parses and warns.** No glTF loader; the item draws the missing glyph. The
-  format carries the path, so the loader is purely additive. **Phase 8**.
-- ~~**The GPU bake compiles for wasm but has not been run in a browser.**~~ Run in the Phase 7
-  review. `just playground && just serve && just shot-playground` draws the modded chest with lit
-  3D icons on a WebGL2 context, so the grid render target really does sidestep the readback WebGL2
-  lacks. The adapter in this run was ANGLE over SwiftShader, which is software: the code path is
-  confirmed, the performance is not. A look on hardware is still worth having. **Phase 8**.
-- ~~**`examples/machine`'s screen snapshot drifted by one simulation tick.**~~ Closed in the
-  Phase 7 review. Re-accepting it would have drifted again on the next change to `settle()`: the
-  readouts were whatever tick the settle stopped on. `MachineSim { paused }` now stops the
-  furnace, `the_furnace_screen_matches_its_snapshot` opens the screen with it paused, and the
-  snapshot holds the values `menu_def` declares. The sim-driven assertions stayed in the tests
-  that advance the clock on purpose.
+- **The CPU bake and the GPU bake still author their *geometry* twice.** Narrowed in the gap pass,
+  package C. What a cell draws is now one description, `shape::CellDraw`, read by both bakes, and
+  the view angle (`shape::view_rotation`) and the cell fill (`shape::cell_fill`) moved beside the
+  polygons that are authored to match them, so colour, orientation and size are decided once.
+  What is left is the drawing itself: flat polygons in `shape.rs` against `Mesh` primitives in
+  `gpu.rs`, so a seventh `ShapeKind` has to be added to both. Generating the silhouette by
+  projecting the mesh would remove that, and it means moving `Mesh` construction into the
+  no-renderer path and re-accepting every atlas snapshot. **Phase 8**.
 
 ## From the Phase 7 review
 
-- ~~**The CPU icon bake ignored `metallic` and did not clamp either material parameter.**~~ Fixed.
-  `0.5f32.mul_add(m, 1.0 - 0.5 * m)` is identically `1.0`, so the line meant to widen the gap
-  between a metal's lit and shadowed faces was a no-op multiply; and an out-of-range `roughness`
-  (a plain `f32` in a data file) added brightness to every lit face. `shape::sample` now clamps
-  both and raises the face brightness to `1 + metallic`. Pinned by
-  `slotted-icons/tests/review_adversarial.rs`.
-- ~~**An `Image` icon naming a file nobody shipped drew a white square.**~~ Fixed. The bake cannot
-  know whether a path exists, because an asset load is asynchronous, so it hands the server every
-  path; `downgrade_failed_image_icons` now watches those loads and moves an item whose load failed
-  into the missing set, with one warning naming the path. The renderer draws the theme's glyph.
 - **`Theme::missing_roles()` cannot see a missing child role.** A role falls back to its parent, so
   a theme that drops `tank.fill` still paints it, in the tank's own material, and completeness
   reports nothing. Only the cross-theme key-set comparison catches it, and nothing would catch a
@@ -290,6 +297,22 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   colour over the filled part, or a readout beside the bar the way the tank's now is, would fix
   it. Cosmetic, present since Phase 6. **Phase 8**.
 
+## From the gaps pass (package B)
+
+- **A Lua test's pointer gesture now settles first.** `t.click`/`t.hover` in a mod's test file
+  aimed at the node's rect as it stood, and the frame the fonts landed every label re-measured and
+  the button moved out from under the pointer: `examples/machine`'s `sorter/sort.lua` clicked
+  nothing and reported "control.lua logs the sort". `LuaTestDriver::act` settles before it
+  resolves a locator. The deeper shape is that a gesture is delivered at a position while an
+  assertion is written against a node, so any asynchronous relayout can separate them. A pointer
+  action that re-reads the rect between the move and the press would be sturdier than settling
+  first, and a recording that stores a locator beside each position (the Phase 6 entry above) is
+  the same fix seen from the replay side.
+- **`slotted_ui::Decorative` is honoured by the harness, not by the renderer.** It says "leave this
+  node out of the settled fingerprint", which is a testing concept living on a rendering
+  component. Nothing else reads it yet. If a second consumer appears (a screenshot that waits for
+  motion to stop, say), it wants a name that is about the node rather than about the harness.
+
 ## From the luaur swap (ADR 0004)
 
 - **There is no second script runtime any more, and luaur is 0.1.8 with one
@@ -299,7 +322,12 @@ Decisions deferred during phases. Each entry names the phase that should pick it
   the piccolo removal a day's work. Worth revisiting only if luaur goes
   unmaintained or a case it cannot pass turns up; the thing to watch is the
   upstream repository, not this file.
-- **luaur costs about 3.4 MiB of optimised wasm more than piccolo did.** The
+- **luaur costs about 3.4 MiB of optimised wasm more than piccolo did.** Investigated in the gap
+  pass, package C, and not attempted: `luaur-rt` compiles every chunk from text
+  (`ChunkMode::Binary` is documented as unsupported) and depends on `luaur-compiler`
+  unconditionally, so shipping a compiler-less VM needs two upstream changes; and the playground
+  edits Lua in the browser, so it needs the compiler at runtime regardless. The design, and what
+  would have to land upstream first, is in `docs/design/gaps-notes-C.md` section 6. The
   playground's module went from 23.05 MiB to 26.46 MiB. It is not the VM core
   (the Phase 0 spike measured luaur smaller than piccolo standalone) but the
   Luau lexer, parser and bytecode compiler a real embedding keeps live.

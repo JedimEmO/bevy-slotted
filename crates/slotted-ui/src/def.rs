@@ -6,7 +6,9 @@
 
 use std::collections::BTreeMap;
 
+use bevy::asset::Asset;
 use bevy::ecs::component::Component;
+use bevy::reflect::TypePath;
 use serde::{Deserialize, Serialize};
 use slotted_model::{InventoryRef, Namespaced, PropertyId, SlotIx};
 use slotted_registry::Value;
@@ -555,6 +557,20 @@ impl UiNodeDef {
         }
     }
 
+    /// The node's merge identity: its `test_id` tag, or an
+    /// [`Anchor`](Self::Anchor)'s id. `None` for a node that carries neither,
+    /// which is a node screen inheritance cannot address.
+    ///
+    /// One namespace on purpose: an ancestor's `(type: "anchor", id: "rail")`
+    /// and a child's node tagged `test_id: "rail"` are the same point in the
+    /// tree, so a child fills an ancestor's anchor by naming it.
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Self::Anchor { id } => Some(id.0.as_str()),
+            other => other.tags().and_then(|t| t.get(Tags::TEST_ID)),
+        }
+    }
+
     /// Mutable direct children, `None` for leaves.
     pub fn children_mut(&mut self) -> Option<&mut Vec<UiNodeDef>> {
         match self {
@@ -586,7 +602,12 @@ impl UiNodeDef {
 }
 
 /// A whole screen.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Also a Bevy [`Asset`]: `*.screen.ron` files load through
+/// [`ScreenLoader`](crate::screen_asset::ScreenLoader), and
+/// [`ScreenAssets`](crate::screen_asset::ScreenAssets) feeds what they hold
+/// into [`Screens`](crate::Screens).
+#[derive(Asset, TypePath, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScreenDef {
     /// Its id.
     pub kind: ScreenKind,
@@ -600,6 +621,13 @@ pub struct ScreenDef {
     /// `MenuDef::listring`.
     #[serde(default)]
     pub listring: Vec<InventoryRef>,
+    /// Node ids ([`UiNodeDef::id`]) to delete from the flattened tree after
+    /// this screen's overrides are merged onto the one it `inherits`.
+    ///
+    /// Only meaningful on a screen that inherits; a screen with no ancestor
+    /// simply does not write the node it does not want.
+    #[serde(default)]
+    pub remove: Vec<String>,
 }
 
 impl ScreenDef {

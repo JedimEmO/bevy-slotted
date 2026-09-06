@@ -44,6 +44,25 @@ allow-wildcard-paths = true
 version = 2
 yanked = "deny"
 
+# One advisory id, not a crate-wide mute: a second advisory on `ttf-parser`
+# would still fail this check.
+#
+# RUSTSEC-2026-0192 is "unmaintained", not a vulnerability, and it is four
+# levels down a dependency nothing here chose. `cargo tree -i ttf-parser`
+# reads ttf-parser <- owned_ttf_parser <- ab_glyph <- sctk-adwaita <- winit
+# <- bevy_winit: it is winit's Wayland client-side window decorations, which
+# arrive through winit's default features and are not reachable from any API
+# this workspace calls. It is not Bevy's text stack, and no `cargo update`
+# moves off it because 0.25.1 is the last release there will be.
+#
+# The exit is winit dropping sctk-adwaita or Bevy pinning winit without its
+# default features; both are upstream. Review 2027-03-06: if Bevy has moved,
+# delete this entry, and if it has not, re-read the advisory before extending
+# the date rather than extending it on sight.
+ignore = [
+    { id = "RUSTSEC-2026-0192", reason = "winit's Wayland decorations, unmaintained but not vulnerable; upstream's to fix. Review 2027-03-06." },
+]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

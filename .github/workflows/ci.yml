@@ -46,6 +46,14 @@ jobs:
           cargo run -p xtask -- gen-docs --check
           cargo run -p xtask -- luau-stubs --check
 
+      # Licences, advisories, banned crates and sources, from deny.toml.
+      # `just ci` runs the same thing, so a red branch here is reproducible
+      # locally with one command. An advisory that has been read and accepted
+      # is a dated, single-id `ignore` entry in deny.toml, not a skipped step.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
   wasm:
     name: Check (wasm32)
     runs-on: ubuntu-latest

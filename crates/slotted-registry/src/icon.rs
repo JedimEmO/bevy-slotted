@@ -9,9 +9,12 @@
 //!   demo data uses, so the shipped examples have real 3D icons without
 //!   shipping a single texture:
 //!   `icon: Some((shape: "ingot", color: "#c98a4b", metallic: 0.9))`.
-//! - `Model`, a glTF path. Parsed and carried, but Phase 7 renders it as
-//!   [`IconRef::Missing`](../../slotted_icons/enum.IconRef.html) with one
-//!   warning; the loader for it is Phase 8.
+//! - `Model`, a glTF path, optionally with the shape fields beside it:
+//!   `icon: Some((model: "models/pickaxe.gltf", shape: "rod", color: "#6b4c33"))`.
+//!   The GPU bake loads the glTF scene and lights it under the same rig; the
+//!   shape fields describe the stand-in the CPU bake draws when there is no
+//!   renderer, and they also decide the view angle and the cell fill the
+//!   model is rendered at, so the two bakes agree about how the item sits.
 //!
 //! The three are told apart by shape rather than by a tag, so RON, JSON and a
 //! Lua table all write the same thing: a string is an image, a map with a
@@ -240,8 +243,19 @@ pub enum IconDef {
     Image(String),
     /// A primitive the icon bake lights and renders.
     Shape(ShapeIcon),
-    /// A glTF model, by asset path. Phase 7 warns and falls back.
-    Model(String),
+    /// A glTF model, by asset path.
+    Model {
+        /// Asset path of the `.gltf` or `.glb`.
+        path: String,
+        /// What the CPU bake draws in its place, and the shape whose view
+        /// angle and cell fill the GPU bake renders the model at.
+        ///
+        /// `None` means "a cube in a colour hashed from the path", which is
+        /// what [`ShapeIcon`] the icon bake substitutes; a data file that
+        /// cares gives the real silhouette so a headless run and a rendered
+        /// run read the same way.
+        stand_in: Option<ShapeIcon>,
+    },
 }
 
 impl IconDef {
@@ -249,7 +263,7 @@ impl IconDef {
     #[must_use]
     pub fn path(&self) -> Option<&str> {
         match self {
-            Self::Image(path) | Self::Model(path) => Some(path),
+            Self::Image(path) | Self::Model { path, .. } => Some(path),
             Self::Shape(_) => None,
         }
     }
@@ -262,6 +276,15 @@ impl IconDef {
             _ => None,
         }
     }
+
+    /// The shape a `Model` declared as its stand-in, when it declared one.
+    #[must_use]
+    pub const fn stand_in(&self) -> Option<&ShapeIcon> {
+        match self {
+            Self::Model { stand_in, .. } => stand_in.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 impl Serialize for IconDef {
@@ -269,9 +292,23 @@ impl Serialize for IconDef {
         match self {
             Self::Image(path) => serializer.serialize_str(path),
             Self::Shape(shape) => shape.serialize(serializer),
-            Self::Model(path) => {
-                let mut map = serializer.serialize_map(Some(1))?;
+            Self::Model { path, stand_in } => {
+                let mut map =
+                    serializer.serialize_map(Some(if stand_in.is_some() { 5 } else { 1 }))?;
                 map.serialize_entry("model", path)?;
+                // The stand-in is written flat beside `model`, which is how
+                // it parses: a model map is a shape map with a path added,
+                // not a shape map nested inside one.
+                if let Some(shape) = stand_in {
+                    map.serialize_entry("shape", &shape.shape)?;
+                    map.serialize_entry("color", &shape.color)?;
+                    // The `Option` itself, not its contents: the visitor reads
+                    // `accent` as an `Option<IconColor>`, and RON without
+                    // `implicit_some` writes and expects `Some("#rrggbb")`.
+                    map.serialize_entry("accent", &shape.accent)?;
+                    map.serialize_entry("metallic", &shape.metallic)?;
+                    map.serialize_entry("roughness", &shape.roughness)?;
+                }
                 map.end()
             }
         }
@@ -325,7 +362,19 @@ impl<'de> Deserialize<'de> for IconDef {
                     }
                 }
                 if let Some(model) = model {
-                    return Ok(IconDef::Model(model));
+                    // A `color` beside `model` is the stand-in; without one
+                    // there is nothing to describe and the bake substitutes a
+                    // cube in the path's hash colour.
+                    return Ok(IconDef::Model {
+                        path: model,
+                        stand_in: color.map(|color| ShapeIcon {
+                            shape: shape.unwrap_or_default(),
+                            color,
+                            accent,
+                            metallic: metallic.unwrap_or(0.0),
+                            roughness: roughness.unwrap_or_else(default_roughness),
+                        }),
+                    });
                 }
                 if let Some(image) = image {
                     return Ok(IconDef::Image(image));
@@ -371,8 +420,45 @@ mod tests {
     #[test]
     fn a_model_map_parses_and_keeps_its_path() {
         let icon: IconDef = ron::from_str(r#"(model: "models/anvil.gltf")"#).expect("parses");
-        assert_eq!(icon, IconDef::Model("models/anvil.gltf".to_owned()));
+        assert_eq!(
+            icon,
+            IconDef::Model {
+                path: "models/anvil.gltf".to_owned(),
+                stand_in: None,
+            }
+        );
         assert_eq!(icon.path(), Some("models/anvil.gltf"));
+        assert_eq!(icon.stand_in(), None);
+    }
+
+    #[test]
+    fn a_model_can_carry_the_shape_the_cpu_bake_draws_instead() {
+        let icon: IconDef = ron::from_str(
+            r##"(model: "models/pickaxe.gltf", shape: "rod", color: "#6b4c33", accent: Some("#d0d6dd"))"##,
+        )
+        .expect("parses");
+        let stand_in = icon.stand_in().expect("a stand-in");
+        assert_eq!(stand_in.shape, ShapeKind::Rod);
+        assert_eq!(stand_in.color, IconColor::rgb(0x6b, 0x4c, 0x33));
+        assert_eq!(stand_in.accent, Some(IconColor::rgb(0xd0, 0xd6, 0xdd)));
+        assert_eq!(icon.path(), Some("models/pickaxe.gltf"));
+    }
+
+    #[test]
+    fn a_model_with_a_stand_in_round_trips_through_ron() {
+        let icon = IconDef::Model {
+            path: "models/pickaxe.gltf".to_owned(),
+            stand_in: Some(ShapeIcon {
+                shape: ShapeKind::Rod,
+                color: IconColor::rgb(0x6b, 0x4c, 0x33),
+                accent: Some(IconColor::rgb(0xd0, 0xd6, 0xdd)),
+                metallic: 0.3,
+                roughness: 0.4,
+            }),
+        };
+        let text = ron::to_string(&icon).expect("serialises");
+        let back: IconDef = ron::from_str(&text).expect("parses back");
+        assert_eq!(back, icon);
     }
 
     #[test]

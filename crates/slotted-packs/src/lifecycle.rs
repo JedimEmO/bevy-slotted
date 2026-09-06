@@ -1091,12 +1091,53 @@ fn read_script(
 }
 
 /// Contract 2.6 step 2: every live stack looked up again by name.
+/// Contract 2.6 step 2, the component half.
+///
+/// The dense ids inside a `ComponentPatch` are interned by the same freeze
+/// that numbers items, and a reload renumbers both. A patch left alone would
+/// therefore read some other component's value out of the same slot, with no
+/// error anywhere. Rebuilds `patch` by name; a key the new registry has lost
+/// is dropped and recorded in `dropped` against the item that carried it.
+/// Returns whether anything moved.
+fn remap_patch(
+    old: &FrozenRegistries,
+    new: &FrozenRegistries,
+    item: &slotted_model::Namespaced,
+    patch: &mut slotted_model::ComponentPatch,
+    dropped: &mut BTreeSet<(String, String)>,
+) -> bool {
+    if patch.is_empty() {
+        return false;
+    }
+    let mut rebuilt = slotted_model::ComponentPatch::new();
+    let mut changed = false;
+    for (id, value) in patch.iter() {
+        let Some(key) = old.components.name(id) else {
+            dropped.insert((format!("{id:?}"), item.to_string()));
+            changed = true;
+            continue;
+        };
+        if let Some(fresh) = new.components.get(key) {
+            changed |= fresh != id;
+            rebuilt.insert(fresh, value.clone());
+        } else {
+            dropped.insert((key.to_string(), item.to_string()));
+            changed = true;
+        }
+    }
+    if changed {
+        *patch = rebuilt;
+    }
+    changed
+}
+
 fn remap_inventories(
     world: &mut World,
     old: &FrozenRegistries,
     new: &FrozenRegistries,
 ) -> Vec<ModError> {
     let mut vanished: BTreeMap<String, u32> = BTreeMap::new();
+    let mut dropped: BTreeSet<(String, String)> = BTreeSet::new();
     let mut remap = |stack: &mut Option<slotted_model::ItemStack>| {
         let Some(current) = stack.as_ref() else {
             return false;
@@ -1107,7 +1148,7 @@ fn remap_inventories(
             *stack = None;
             return true;
         };
-        match new.items.id_of(name) {
+        let mut changed = match new.items.id_of(name) {
             Some(id) if id == current.id => false,
             Some(id) => {
                 if let Some(stack) = stack.as_mut() {
@@ -1118,9 +1159,13 @@ fn remap_inventories(
             None => {
                 *vanished.entry(name.to_string()).or_default() += current.count;
                 *stack = None;
-                true
+                return true;
             }
+        };
+        if let Some(stack) = stack.as_mut() {
+            changed |= remap_patch(old, new, name, &mut stack.patch, &mut dropped);
         }
+        changed
     };
 
     let entities: Vec<Entity> = world
@@ -1153,9 +1198,38 @@ fn remap_inventories(
         }
     }
 
+    // Ghost and filter hints live on the menu state, not in an inventory, and
+    // they are stacks like any other: a hint that still points at the old
+    // dense id would draw the wrong item after a reload.
+    let open: Vec<Entity> = world
+        .query_filtered::<Entity, With<slotted_ecs::OpenMenu>>()
+        .iter(world)
+        .collect();
+    for entity in open {
+        let Some(mut menu) = world.get_mut::<slotted_ecs::OpenMenu>(entity) else {
+            continue;
+        };
+        let slots: Vec<slotted_model::SlotIx> = menu.state.hints.keys().copied().collect();
+        for slot in slots {
+            let mut hint = menu.state.hint(slot).cloned();
+            if remap(&mut hint) {
+                menu.state.set_hint(slot, hint);
+            }
+        }
+        let mut carried = menu.state.carried.clone();
+        if remap(&mut carried) {
+            menu.state.carried = carried;
+        }
+    }
+
     vanished
         .into_iter()
         .map(|(item, count)| ModError::ItemVanished { item, count })
+        .chain(
+            dropped
+                .into_iter()
+                .map(|(component, item)| ModError::ComponentVanished { component, item }),
+        )
         .collect()
 }
 

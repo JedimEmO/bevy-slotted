@@ -2,16 +2,34 @@
 //!
 //! [`IconSource`] is the port: give it a stack, get back an [`IconRef`] the
 //! item renderer can draw. [`AtlasIcons`] is the shipped adapter: one texture
-//! atlas, one index per item. In Phase 2 the atlas is baked on the CPU by
-//! [`bake_placeholder_atlas`]: a coloured rounded square per item, hue from
-//! the item id hash. The offscreen-camera bake of real item models comes when
-//! there are item models to render; the port and the adapter do not change.
+//! atlas, one index per item.
 //!
-//! Why CPU for Phase 2: it needs no camera and no `bevy_render`, so it works
-//! in the headless test harness and on wasm, it is deterministic (snapshot
-//! tests see the same atlas every run), and the result is an ordinary
-//! `Image` + `TextureAtlasLayout` pair, so the renderer path is exactly what
-//! the real bake will feed later.
+//! An item says what it looks like in its `icon` field: a texture path, a lit
+//! primitive with a colour and material parameters, or a glTF model. An item
+//! that says nothing gets a cube in a colour hashed from its id, so no screen
+//! ever shows a grid of missing textures.
+//!
+//! # Two bakes, one description
+//!
+//! What a cell draws is decided once, as a [`shape::CellDraw`], and drawn
+//! twice.
+//!
+//! The CPU bake ([`bake_icon_atlas`]) rasterises flat polygons. It needs no
+//! camera and no `bevy_render`, so it works in the headless harness and on
+//! wasm; it is deterministic, so snapshot tests see the same atlas every run;
+//! and the result is an ordinary `Image` plus `TextureAtlasLayout`.
+//!
+//! The GPU bake (the `gpu` module, behind the `gpu` feature) renders those
+//! same cells as lit meshes under a fixed three-point rig, into a grid render
+//! target that *is* the atlas. Nothing is ever read back, which is what makes
+//! it work on WebGL2. The target starts life holding the CPU bake, so a screen drawn
+//! before the rig's pipelines have compiled shows flat-shaded icons rather
+//! than nothing at all.
+//!
+//! With the `gltf` feature a `model` icon loads a glTF scene, is normalised to
+//! a unit cube and is lit under the same rig. The shape fields written beside
+//! `model` are its stand-in: what the CPU bake draws, and the angle and size
+//! the model itself is rendered at.
 
 pub mod atlas;
 pub mod plugin;

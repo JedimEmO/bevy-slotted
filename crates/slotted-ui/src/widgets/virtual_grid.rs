@@ -1,6 +1,7 @@
 //! `virtual_grid`: a windowed grid over a [`VirtualGridSource`]. Phase 6
-//! contract section 1.5. Cells are respawned when the window moves; the
-//! browser's pooled card grid stays separate this phase.
+//! contract section 1.5. Cells are respawned when the window moves, unless the
+//! source [pools](VirtualGridSource::pooled) them — the browser's card grid
+//! does — in which case the same cells are kept and rebound.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,10 +17,15 @@ use slotted_theme::{Themed, roles};
 use crate::def::{DataSourceId, Tags, UiNodeDef};
 use crate::screen::SpawnCtx;
 use crate::semantic::{ScreenRoot, SemanticRole, WidgetNode};
-use crate::widgets::SLOT_SIZE;
 
 /// What a virtual grid shows. Cells are `UiNodeDef`s spawned through the
 /// ordinary widget path, so a source can hand out slots, cards or anything.
+///
+/// A source that would rather keep its cells and rebind them — the browser's
+/// card pool is one — overrides [`pooled`](Self::pooled),
+/// [`spawn_cell`](Self::spawn_cell) and [`rebind`](Self::rebind). Everything
+/// else keeps the respawn behaviour, which is the whole trait for a source
+/// that only implements the four required methods.
 pub trait VirtualGridSource: Send + Sync {
     /// Total number of cells.
     fn len(&self) -> usize;
@@ -31,6 +37,42 @@ pub trait VirtualGridSource: Send + Sync {
     fn version(&self) -> u64;
     /// The cell at `index`.
     fn cell(&self, index: usize) -> UiNodeDef;
+
+    /// [`len`](Self::len) for a source whose list lives in the world. The
+    /// grid asks this one; the default hands the question back to `len`.
+    fn len_in(&self, _world: &World) -> usize {
+        self.len()
+    }
+
+    /// Whether the grid pools its cells.
+    ///
+    /// A pooled grid keeps `cols * rows` cells alive with stable entities,
+    /// rebinds them through [`rebind`](Self::rebind) every frame and lets the
+    /// source hide the ones past the end of the source; it never despawns a
+    /// cell to move its window, and it does not clamp `first_row` for the
+    /// source, since an over-scrolled window simply binds nothing. A
+    /// non-pooled grid — the default — despawns and respawns the window.
+    fn pooled(&self) -> bool {
+        false
+    }
+
+    /// Spawns the pooled cell for pool position `slot`, as a child of `grid`.
+    ///
+    /// `None`, the default, spawns `cell(slot)` through the ordinary widget
+    /// path instead. A source that wants a bespoke cell — observers, children
+    /// laid out by hand — spawns it here and keeps the entity for the life of
+    /// the pool.
+    fn spawn_cell(&self, _world: &mut World, _grid: Entity, _slot: usize) -> Option<Entity> {
+        None
+    }
+
+    /// Binds an existing `cell` to `index`, or to nothing when the pool runs
+    /// past the end of the source. Returns whether the cell could be reused;
+    /// `false` — the default — makes the grid despawn it and spawn a fresh
+    /// one, which is what every non-pooled source does anyway.
+    fn rebind(&self, _world: &mut World, _cell: Entity, _index: Option<usize>) -> bool {
+        false
+    }
 }
 
 /// Registered sources by id.
@@ -94,9 +136,17 @@ impl VirtualGridState {
     }
 }
 
-/// A spawned cell; `index` into the source. Also tagged `cell=<index>`.
+/// A spawned cell; `index` into the source. On a non-pooled grid the cell is
+/// also tagged `cell=<index>`; a pooled cell keeps its own tags, since it
+/// outlives any one index.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VirtualCell(pub usize);
+
+/// On a pooled cell: its fixed position in the pool, stable for the life of
+/// the cell. [`VirtualCell`] says which index it currently shows, and is
+/// absent while it shows none.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PooledCell(pub usize);
 
 /// The scrollbar track child. `SemanticRole::Custom("scrollbar")`.
 #[derive(Component, Debug, Clone, Copy, Default)]
@@ -154,15 +204,17 @@ pub fn spawn_virtual_grid(
     params: &VirtualGridParams,
     _tags: &Tags,
 ) -> Entity {
-    let gap = ctx.tokens().spacing.sm;
+    let tokens = ctx.tokens();
+    let gap = tokens.slot_gap();
+    let cell = tokens.sizes.slot_size;
     let entity = ctx.spawn_node((
         Node {
             display: Display::Grid,
             grid_template_columns: vec![
-                RepeatedGridTrack::px(params.cols, SLOT_SIZE),
+                RepeatedGridTrack::px(params.cols, cell),
                 RepeatedGridTrack::px(1, SCROLLBAR_WIDTH),
             ],
-            grid_template_rows: vec![RepeatedGridTrack::px(params.rows, SLOT_SIZE)],
+            grid_template_rows: vec![RepeatedGridTrack::px(params.rows, cell)],
             row_gap: px(gap),
             column_gap: px(gap),
             overflow: Overflow::clip(),
@@ -278,7 +330,9 @@ pub fn on_virtual_grid_key(
 }
 
 /// `SlottedUiSet::Render`: despawns and respawns the visible cells of every
-/// grid whose `first_row`, source length or version changed.
+/// grid whose `first_row`, source length or version changed. A grid over a
+/// [pooled](VirtualGridSource::pooled) source instead keeps its cells and
+/// rebinds them, every frame, through [`VirtualGridSource::rebind`].
 pub fn refresh_virtual_grids(world: &mut World) {
     let grids: Vec<(Entity, VirtualGridState)> = world
         .query::<(Entity, &VirtualGridState)>()
@@ -303,26 +357,42 @@ pub fn refresh_virtual_grids(world: &mut World) {
         };
         world.entity_mut(entity).remove::<UnknownGridSource>();
 
+        let pooled = source.pooled();
         let mut next = state.clone();
-        next.total = source.len();
+        next.total = source.len_in(world);
         next.version = source.version();
-        next.first_row = next.first_row.min(next.max_first_row());
+        if !pooled {
+            // A pooled grid's window is its owner's to place: nothing is
+            // despawned when it runs past the end, so there is nothing to
+            // clamp it for.
+            next.first_row = next.first_row.min(next.max_first_row());
+        }
         let built = VirtualGridBuilt {
             first_row: next.first_row,
             total: next.total,
             version: next.version,
         };
-        if world.get::<VirtualGridBuilt>(entity) == Some(&built) {
+        // A pooled source rebinds every frame — binding is its own idempotent
+        // work, and it is the source, not the window, that decides what a
+        // cell shows.
+        if !pooled && world.get::<VirtualGridBuilt>(entity) == Some(&built) {
             continue;
         }
         let window = next.window();
+        let pool = next.clone();
         if let Some(mut state) = world.get_mut::<VirtualGridState>(entity) {
             *state = next;
         }
         world.entity_mut(entity).insert(built);
 
-        // No pooling this phase: the window is small and a cell is an
-        // arbitrary `UiNodeDef`, so reusing one would mean diffing trees.
+        if pooled {
+            refresh_pool(world, entity, source.as_ref(), &pool);
+            update_scrollbar(world, entity);
+            continue;
+        }
+
+        // A non-pooled cell is an arbitrary `UiNodeDef`, so reusing one would
+        // mean diffing trees: the window is small, and respawning is honest.
         let stale: Vec<Entity> = world
             .query::<(Entity, &VirtualCell)>()
             .iter(world)
@@ -357,6 +427,91 @@ pub fn refresh_virtual_grids(world: &mut World) {
         }
         update_scrollbar(world, entity);
     }
+}
+
+/// Keeps a pooled grid's `cols * rows` cells alive and rebinds them to the
+/// current window. Cell entities are stable: the pool only grows or shrinks
+/// when the grid's shape does, so a screen-tree snapshot lists the same cells
+/// — the hidden ones included — however far the window has moved.
+fn refresh_pool(
+    world: &mut World,
+    grid: Entity,
+    source: &dyn VirtualGridSource,
+    state: &VirtualGridState,
+) {
+    let cols = usize::from(state.cols).max(1);
+    let want = cols * usize::from(state.rows);
+
+    let mut pool: Vec<(usize, Entity)> = world
+        .get::<Children>(grid)
+        .map(|children| children.iter().collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|cell| world.get::<PooledCell>(cell).map(|slot| (slot.0, cell)))
+        .collect();
+    pool.retain(|(slot, cell)| {
+        let keep = *slot < want;
+        if !keep {
+            world.entity_mut(*cell).despawn();
+        }
+        keep
+    });
+    pool.sort_unstable();
+    let held: std::collections::HashSet<usize> = pool.iter().map(|(slot, _)| *slot).collect();
+    for slot in 0..want {
+        if !held.contains(&slot) {
+            pool.push((slot, spawn_pooled_cell(world, grid, source, slot)));
+        }
+    }
+    pool.sort_unstable();
+
+    let start = state.first_row * cols;
+    for (slot, cell) in pool {
+        let index = start + slot;
+        let index = (index < state.total).then_some(index);
+        let mut cell = cell;
+        if !source.rebind(world, cell, index) {
+            // The source cannot reuse this one: it gets a fresh cell in the
+            // same slot, and one more chance to bind it.
+            world.entity_mut(cell).despawn();
+            cell = spawn_pooled_cell(world, grid, source, slot);
+            source.rebind(world, cell, index);
+        }
+        match index {
+            Some(index) => {
+                world.entity_mut(cell).insert(VirtualCell(index));
+            }
+            None => {
+                world.entity_mut(cell).remove::<VirtualCell>();
+            }
+        }
+    }
+}
+
+/// One pooled cell, from the source's own spawner or, failing that, from the
+/// `UiNodeDef` it hands out for that pool position.
+fn spawn_pooled_cell(
+    world: &mut World,
+    grid: Entity,
+    source: &dyn VirtualGridSource,
+    slot: usize,
+) -> Entity {
+    let cell = source.spawn_cell(world, grid, slot).unwrap_or_else(|| {
+        let def = source.cell(slot);
+        let (screen, kind, menu) = screen_of(world, grid);
+        let mut ctx = SpawnCtx {
+            world,
+            screen,
+            kind,
+            menu,
+            parent: grid,
+        };
+        ctx.spawn_child(&def)
+    });
+    world
+        .entity_mut(cell)
+        .insert((PooledCell(slot), ChildOf(grid)));
+    cell
 }
 
 /// The window a grid's spawned cells stand for. Compared against the source

@@ -144,7 +144,7 @@ fn geometry(
     dock::geometry_of(
         screen,
         root,
-        dock::window_rect(&windows),
+        dock::window_rect(&windows, slotted_ui::ui_scale_of(world)),
         &nodes,
         &children,
         &exclusions,

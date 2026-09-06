@@ -209,6 +209,13 @@ pub trait RecipeCategory: Send + Sync {
     /// Tab identity.
     fn id(&self) -> CategoryId;
     /// Tab title localisation key.
+    ///
+    /// The chip row and the recipe view's tabs both draw this through
+    /// [`Localization`](slotted_ui::Localization), falling back to the
+    /// category's path when nothing defines it. A category built from a
+    /// [`RecipeTypeDef`](slotted_registry::defs::RecipeTypeDef) that declared
+    /// a `title_key` returns that key; otherwise it invents
+    /// [`invented_title_key`].
     fn title_key(&self) -> LocKey;
     /// Tab icon.
     fn icon(&self) -> IconDef;
@@ -224,6 +231,12 @@ pub trait RecipeCategory: Send + Sync {
     }
 }
 
+/// The key a category falls back on when its recipe type declared none:
+/// `category.<namespace>.<path>`.
+pub fn invented_title_key(id: &CategoryId) -> LocKey {
+    LocKey(format!("category.{}.{}", id.0.namespace(), id.0.path()))
+}
+
 /// Gap between slots in a layout, px.
 pub const SLOT_GAP: f32 = 4.0;
 /// Width of the arrow region between inputs and output, px.
@@ -237,6 +250,7 @@ pub struct CraftingCategory {
     recipe_type: Namespaced,
     cols: u16,
     rows: u16,
+    title_key: Option<LocKey>,
 }
 
 impl CraftingCategory {
@@ -247,7 +261,16 @@ impl CraftingCategory {
             recipe_type,
             cols: cols.max(1),
             rows: rows.max(1),
+            title_key: None,
         }
+    }
+
+    /// The title key the recipe type declared, if any; `None` keeps the
+    /// invented one.
+    #[must_use]
+    pub fn with_title_key(mut self, key: Option<LocKey>) -> Self {
+        self.title_key = key;
+        self
     }
 
     /// Grid size in cells.
@@ -269,11 +292,9 @@ impl RecipeCategory for CraftingCategory {
     }
 
     fn title_key(&self) -> LocKey {
-        LocKey(format!(
-            "category.{}.{}",
-            self.id.0.namespace(),
-            self.id.0.path()
-        ))
+        self.title_key
+            .clone()
+            .unwrap_or_else(|| invented_title_key(&self.id))
     }
 
     fn icon(&self) -> IconDef {
@@ -361,12 +382,25 @@ fn narrow16(i: usize) -> u16 {
 pub struct ProcessingCategory {
     id: CategoryId,
     recipe_type: Namespaced,
+    title_key: Option<LocKey>,
 }
 
 impl ProcessingCategory {
     /// A one-input category for `recipe_type`.
     pub fn new(id: CategoryId, recipe_type: Namespaced) -> Self {
-        Self { id, recipe_type }
+        Self {
+            id,
+            recipe_type,
+            title_key: None,
+        }
+    }
+
+    /// The title key the recipe type declared, if any; `None` keeps the
+    /// invented one.
+    #[must_use]
+    pub fn with_title_key(mut self, key: Option<LocKey>) -> Self {
+        self.title_key = key;
+        self
     }
 }
 
@@ -376,11 +410,9 @@ impl RecipeCategory for ProcessingCategory {
     }
 
     fn title_key(&self) -> LocKey {
-        LocKey(format!(
-            "category.{}.{}",
-            self.id.0.namespace(),
-            self.id.0.path()
-        ))
+        self.title_key
+            .clone()
+            .unwrap_or_else(|| invented_title_key(&self.id))
     }
 
     fn icon(&self) -> IconDef {

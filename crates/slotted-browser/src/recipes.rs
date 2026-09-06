@@ -67,10 +67,18 @@ impl Categories {
                 continue;
             }
             let id = CategoryId(name.clone());
+            // The one place a mod's declared `RecipeTypeDef::title_key`
+            // reaches the browser: without this the chip and the tab would
+            // draw the invented `category.<ns>.<path>` and the mod's own
+            // `.ftl` entry would never be looked up.
+            let declared = def
+                .title_key
+                .as_ref()
+                .map(|key| slotted_ui::LocKey(key.clone()));
             let category: Arc<dyn RecipeCategory> = if def.size == (1, 1) {
-                Arc::new(ProcessingCategory::new(id, name.clone()))
+                Arc::new(ProcessingCategory::new(id, name.clone()).with_title_key(declared))
             } else {
-                Arc::new(CraftingCategory::new(id, name.clone(), def.size))
+                Arc::new(CraftingCategory::new(id, name.clone(), def.size).with_title_key(declared))
             };
             self.register(category);
         }

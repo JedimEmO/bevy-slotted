@@ -70,6 +70,7 @@ slotted-registry = { path = "crates/slotted-registry", version = "0.1.0", defaul
 # covers the wildcard this leaves in the graph.
 slotted-testutils = { path = "crates/slotted-testutils" }
 slotted-ecs = { path = "crates/slotted-ecs", version = "0.1.0" }
+slotted-net = { path = "crates/slotted-net", version = "0.1.0" }
 slotted-theme = { path = "crates/slotted-theme", version = "0.1.0" }
 slotted-ui = { path = "crates/slotted-ui", version = "0.1.0" }
 slotted-icons = { path = "crates/slotted-icons", version = "0.1.0" }

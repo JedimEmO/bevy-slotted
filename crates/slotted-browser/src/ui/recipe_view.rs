@@ -10,7 +10,7 @@ use bevy::input_focus::tab_navigation::TabIndex;
 use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::ui::InteractionDisabled;
-use bevy::ui::ui_transform::UiTransform;
+use bevy::ui::ui_transform::{UiTransform, Val2};
 use bevy::ui_widgets::Activate;
 use slotted_ecs::{OpenMenu, Registries};
 use slotted_model::Inventories;
@@ -21,7 +21,7 @@ use slotted_ui::{
     widgets::SLOT_SIZE,
 };
 
-use super::panel::BrowserPanel;
+use super::panel::{BrowserPanel, ChromeText, chrome_in, keys};
 use super::{ShowsIngredient, ingredient_key, ingredient_stack, roles};
 use crate::category::{CategoryId, RecipeLayout, RecipeRef, RecipeSlotIx, SlotRole};
 use crate::events::{RecipeNav, TransferFailed, TransferRequested};
@@ -103,35 +103,7 @@ impl Widget for RecipeViewWidget {
             Visibility::Hidden,
         ));
         let world = &mut *ctx.world;
-        // The header: a back pill and the focus's name, the moodboard's
-        // `.recipe .hdr`. It carries no `SemanticRole`, so the tree lifts the
-        // button and the title text is elided.
-        let header = world
-            .spawn((
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: px(10),
-                    ..default()
-                },
-                ChildOf(root),
-            ))
-            .id();
-        spawn_view_button(
-            world,
-            header,
-            "browser.back",
-            "<",
-            HistoryButton { forward: false },
-        );
-        world.spawn((
-            Node::default(),
-            Text::new(String::new()),
-            Themed(roles::TITLE),
-            RecipeTitle,
-            Pickable::IGNORE,
-            ChildOf(header),
-        ));
+        spawn_header(world, root);
         world.spawn((
             Node {
                 flex_direction: FlexDirection::Row,
@@ -171,6 +143,7 @@ impl Widget for RecipeViewWidget {
             world,
             controls,
             "browser.transfer",
+            keys::BUTTON_TRANSFER,
             "+",
             TransferButton::default(),
         );
@@ -178,6 +151,7 @@ impl Widget for RecipeViewWidget {
             world,
             controls,
             "browser.forward",
+            keys::BUTTON_FORWARD,
             ">",
             HistoryButton { forward: true },
         );
@@ -199,13 +173,50 @@ impl Widget for RecipeViewWidget {
     }
 }
 
+/// The header: a back pill and the focus's name, the moodboard's
+/// `.recipe .hdr`. It carries no `SemanticRole`, so the tree lifts the button
+/// and the title text is elided.
+fn spawn_header(world: &mut World, root: Entity) {
+    let header = world
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(10),
+                ..default()
+            },
+            ChildOf(root),
+        ))
+        .id();
+    spawn_view_button(
+        world,
+        header,
+        "browser.back",
+        keys::BUTTON_BACK,
+        "<",
+        HistoryButton { forward: false },
+    );
+    world.spawn((
+        Node::default(),
+        Text::new(String::new()),
+        Themed(roles::TITLE),
+        RecipeTitle,
+        Pickable::IGNORE,
+        ChildOf(header),
+    ));
+}
+
+/// One pill button. The `TestId` and the semantic label keep the English
+/// glyph, so `by::test_id("browser.transfer")` is language-independent.
 fn spawn_view_button(
     world: &mut World,
     parent: Entity,
     test_id: &str,
+    key: &str,
     label: &str,
     marker: impl Bundle,
 ) -> Entity {
+    let text = chrome_in(world, key, label);
     let button = world
         .spawn((
             Node {
@@ -229,8 +240,9 @@ fn spawn_view_button(
         .id();
     world.spawn((
         Node::default(),
-        Text::new(label.to_owned()),
+        Text::new(text),
         Themed(roles::PILL_TEXT),
+        ChromeText::new(key, label),
         Pickable::IGNORE,
         ChildOf(button),
     ));
@@ -426,7 +438,13 @@ fn draw(world: &mut World, root: Entity, page: &RecipePage, resolved: &Page) {
     if let Some(tabs) = region::<TabRow>(world, root) {
         clear_children(world, tabs);
         for id in &resolved.tabs {
-            spawn_tab(world, tabs, id.clone(), *id == page.category);
+            // The category's declared title key, threaded from the mod's
+            // `RecipeTypeDef::title_key` where there is one.
+            let key = world
+                .get_resource::<Categories>()
+                .and_then(|c| c.get(id).map(|c| c.title_key()))
+                .unwrap_or_else(|| slotted_ui::LocKey(id.0.path().to_owned()));
+            spawn_tab(world, tabs, id.clone(), key, *id == page.category);
         }
     }
     if let Some(area) = region::<SlotArea>(world, root) {
@@ -450,14 +468,17 @@ fn draw(world: &mut World, root: Entity, page: &RecipePage, resolved: &Page) {
         clear_children(world, uses);
         // The moodboard's "Used in:" line, always present so an item that
         // feeds nothing says so rather than showing an empty row.
+        let (key, fallback) = if resolved.uses.is_empty() {
+            (keys::USES_EMPTY, "Used in: nothing yet")
+        } else {
+            (keys::USES_TITLE, "Used in:")
+        };
+        let heading = chrome_in(world, key, fallback);
         world.spawn((
             Node::default(),
-            Text::new(if resolved.uses.is_empty() {
-                "Used in: nothing yet".to_owned()
-            } else {
-                "Used in:".to_owned()
-            }),
+            Text::new(heading),
             Themed(roles::HINT),
+            ChromeText::new(key, fallback),
             Pickable::IGNORE,
             ChildOf(uses),
         ));
@@ -467,8 +488,15 @@ fn draw(world: &mut World, root: Entity, page: &RecipePage, resolved: &Page) {
     }
 }
 
-fn spawn_tab(world: &mut World, row: Entity, id: CategoryId, active: bool) {
+fn spawn_tab(
+    world: &mut World,
+    row: Entity,
+    id: CategoryId,
+    title_key: slotted_ui::LocKey,
+    active: bool,
+) {
     let label = id.0.path().to_owned();
+    let text = chrome_in(world, &title_key.0, &label);
     let tab = world
         .spawn((
             Node {
@@ -491,12 +519,16 @@ fn spawn_tab(world: &mut World, row: Entity, id: CategoryId, active: bool) {
         .id();
     world.spawn((
         Node::default(),
-        Text::new(label),
+        Text::new(text),
         Themed(if active {
             roles::CHIP_TEXT_ACTIVE
         } else {
             roles::CHIP_TEXT
         }),
+        ChromeText {
+            key: title_key,
+            fallback: label,
+        },
         Pickable::IGNORE,
         ChildOf(tab),
     ));
@@ -544,6 +576,7 @@ fn draw_layout(world: &mut World, area: Entity, layout: &RecipeLayout) {
             },
             UiTransform::default(),
             Themed(roles::ARROW_PROGRESS),
+            slotted_ui::Decorative,
             ArrowProgress,
             Pickable::IGNORE,
             ChildOf(node),
@@ -710,13 +743,19 @@ fn set_display(node: &mut Mut<'_, Node>, want: Display) {
     }
 }
 
-/// `BrowserSet::Render`: the arrow's progress sweeps left to right once per
-/// `durations.slow`.
+/// `BrowserSet::Render`: the arrow's progress fills from its left edge once
+/// per `durations.slow`.
 ///
-/// The sweep is a `UiTransform` scale rather than a width, and it is written
+/// The sweep is a `UiTransform` rather than a width, and it is written
 /// directly rather than through a `Tween`: a repeating `Tween` would hold
 /// `ActiveMotions` above zero forever and `UiHarness::settle` would never
 /// return, and a changing width would move the layout every frame.
+///
+/// A scale alone grows the fill about its centre, which is not what the
+/// moodboard draws. The other half is a translation of half the width the
+/// scale took off, which anchors the fill to the track's left edge. That
+/// moves the node, so the fill is marked [`slotted_ui::Decorative`] and the
+/// harness leaves it out of the rects it watches for a settled frame.
 pub fn animate_arrow(
     time: Res<Time<Virtual>>,
     motion: Option<Res<Motion>>,
@@ -740,12 +779,17 @@ pub fn animate_arrow(
         (time.elapsed_secs() % period_secs) / period_secs
     };
     for mut transform in &mut arrows {
-        let scale = Vec2::new(progress.max(0.01), 1.0);
-        // Scale only: `UiHarness::settle` watches translation and rects, so a
-        // sweep that moved the node would keep every test spinning. The bar
-        // therefore grows about its centre rather than from the left edge.
+        let filled = progress.max(0.01);
+        let scale = Vec2::new(filled, 1.0);
+        // Half of what the scale took off, back to the left: a node scaled to
+        // `filled` about its centre has lost `(1 - filled)` of its width,
+        // half of it from each side.
+        let translation = Val2::new(percent(-50.0 * (1.0 - filled)), px(0));
         if transform.scale != scale {
             transform.scale = scale;
+        }
+        if transform.translation != translation {
+            transform.translation = translation;
         }
     }
 }

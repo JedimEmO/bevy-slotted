@@ -2,10 +2,9 @@
 //
 // Nothing in this file is example-specific machinery: it is the same
 // `slotted_ui::ScreenDef` shape a mod would ship, and the same text a Lua
-// `data.lua` would produce as a table. The example reads it with
-// `ScreenDef::from_ron`; there is no `ScreenDef` asset loader in Phase 2, so
-// the file is read through `std::fs` rather than `AssetServer` (see
-// docs/FOLLOWUPS.md).
+// `data.lua` would produce as a table. The windowed example loads it through
+// the `AssetServer` (`slotted_ui::ScreenLoader`), so saving this file
+// respawns the open chest; the tests read the same bytes with `std::fs`.
 //
 // Slot indices follow `MenuDef::chest(3)`: 0..27 container, 27..54 player
 // main, 54..63 hotbar. `inventory` picks which backing inventory a grid draws

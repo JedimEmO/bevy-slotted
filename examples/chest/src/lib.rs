@@ -29,6 +29,12 @@ use slotted_registry::{DataStage, DirSource, FrozenRegistries, ModId};
 /// The screen this example opens.
 pub const CHEST: &str = "demo:chest";
 
+/// The screen file, relative to the asset root. The windowed example loads it
+/// through the `AssetServer` (`ScreenLoader`), which is what makes it hot
+/// reloadable; [`demo_screen`] reads the same file with `std::fs` for tests
+/// that run without asset plumbing.
+pub const SCREEN_PATH: &str = "screens/demo_chest.screen.ron";
+
 /// The mod id the demo content is loaded under: `assets/data/demo/`.
 pub const DEMO_MOD: &str = "demo";
 
@@ -82,15 +88,16 @@ pub fn load_registries() -> Arc<FrozenRegistries> {
 
 /// Reads `assets/screens/demo_chest.screen.ron`.
 ///
-/// Phase 2 ships no `ScreenDef` asset loader, so this goes through `std::fs`
-/// and `ron` rather than `AssetServer`; see docs/FOLLOWUPS.md. The upside for
-/// now is that the tests read the identical bytes with no Bevy asset plumbing.
+/// The windowed example does not use this: `src/main.rs` loads the same file
+/// through the `AssetServer` so it hot-reloads. This is the shortcut for
+/// tests, which want the tree with no asset plumbing and no waiting; both
+/// paths end in `ScreenDef::from_ron` over the identical bytes.
 ///
 /// # Panics
 ///
 /// If the file is missing or malformed.
 pub fn demo_screen() -> ScreenDef {
-    let path = assets_dir().join("screens/demo_chest.screen.ron");
+    let path = assets_dir().join(SCREEN_PATH);
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
     ScreenDef::from_ron(&text).unwrap_or_else(|e| panic!("parsing {}: {e}", path.display()))

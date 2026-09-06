@@ -136,6 +136,7 @@ fn main() {
     .add_systems(
         Update,
         (
+            open_chest_when_loaded,
             orbit_camera,
             spin_cubes,
             park_pointer,
@@ -232,19 +233,38 @@ fn setup_scene(
     ));
 }
 
-/// Loads the theme, registers the screen from RON and opens the chest.
+/// Loads the theme and the screen, both through the `AssetServer`.
+///
+/// The screen goes through `ScreenLoader` rather than `std::fs` so the
+/// running example hot-reloads: saving `assets/screens/demo_chest.screen.ron`
+/// re-registers the definition and respawns the open chest on the same menu.
+/// (`chest::demo_screen` still reads the same file with `std::fs`; the tests
+/// use it to skip the asset server entirely.)
 fn setup_screen(
     mut commands: Commands,
     assets: Res<AssetServer>,
     cli: Res<Cli>,
-    mut screens: ResMut<Screens>,
-    registries: Res<Registries>,
-    cheat: Res<chest::CheatMode>,
+    mut screen_assets: ResMut<slotted::ui::ScreenAssets>,
 ) {
     commands.insert_resource(ActiveTheme(
         assets.load(format!("themes/{}.theme.ron", cli.theme)),
     ));
-    screens.register(chest::demo_screen());
+    screen_assets.load(&assets, chest::SCREEN_PATH);
+}
+
+/// Opens the chest the first frame `demo:chest` is registered, which is the
+/// frame `ScreenLoader` finished reading the file.
+fn open_chest_when_loaded(
+    mut commands: Commands,
+    screens: Res<Screens>,
+    registries: Res<Registries>,
+    cheat: Res<chest::CheatMode>,
+    mut opened: Local<bool>,
+) {
+    if *opened || screens.get(&ScreenKind::new(chest::CHEST)).is_none() {
+        return;
+    }
+    *opened = true;
     chest::open_chest(&mut commands, &registries, cheat.0);
 }
 

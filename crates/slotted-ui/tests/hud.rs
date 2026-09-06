@@ -302,6 +302,7 @@ fn one_slot_screen() -> slotted_ui::ScreenDef {
     slotted_ui::ScreenDef {
         kind: slotted_ui::ScreenKind::new("test:hud"),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Slot {
             slot: SlotIx(0),
             tags: Tags::new(),

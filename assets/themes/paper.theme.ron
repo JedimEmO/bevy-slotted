@@ -5,10 +5,10 @@
 // with no springs and a stamp-down drop. Nothing here is translucent and
 // nothing is blurred.
 //
-// Type is IBM Plex Sans with Plex Mono counts. The fonts are named, not
-// shipped: drop the OFL files into assets/fonts/ and add `path:` to the two
-// tokens below, or enable Bevy's `system_font_discovery` and set `system:
-// true`. Until then Bevy's default face carries the layout.
+// Type is IBM Plex Sans with Plex Mono counts, shipped under assets/fonts/
+// with their OFL.txt. A game that would rather ask the OS for the family can
+// drop `path:` from the two tokens below and set `system: true` instead,
+// which needs Bevy's `system_font_discovery` feature.
 #![enable(implicit_some)]
 (
     name: "paper",
@@ -37,8 +37,8 @@
             },
         ),
         fonts: {
-            "body": (family: "IBM Plex Sans"),
-            "mono": (family: "IBM Plex Mono"),
+            "body": (family: "IBM Plex Sans", path: "fonts/ibm-plex-sans/IBMPlexSans-Variable.ttf"),
+            "mono": (family: "IBM Plex Mono", path: "fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf"),
         },
         blur: (radius: 0.0, backdrop_divisor: 4),
         palette: {

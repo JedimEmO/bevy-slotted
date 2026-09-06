@@ -581,19 +581,40 @@ fn a_filter_slot_still_honours_its_predicate() {
     assert_eq!(f.at_kind(4), Some((STONE, 1)));
 }
 
-/// Documents a real footgun rather than a bug in `apply_click`: a hint lives in
-/// a real inventory index, so `Inventories::count_of` sees it even though the
-/// conservation check does not.
+/// A hint is a picture of an item, not an item. It lives in
+/// `MenuState::hints`, so no inventory read can see it: not `count_of`, not
+/// the conservation tally, not a sync of the backing inventory.
 #[test]
-fn a_ghost_hint_is_visible_to_inventory_counting() {
+fn a_ghost_hint_is_invisible_to_inventory_counting() {
     let mut f = lab();
     f.carry(stack(STONE, 5));
     f.ok(left(3));
+    assert_eq!(f.at_kind(3), Some((STONE, 1)), "the hint is shown");
+    assert!(f.stored_at(3).is_none(), "and stored nowhere real");
+    assert_eq!(f.total(STONE), 5, "only the five on the cursor are items");
+    assert_eq!(f.state.hint(SlotIx(3)), Some(&stack(STONE, 1)));
+}
+
+/// Clearing a hint is not a source of items either, and a refused action
+/// leaves the hints it did not touch alone.
+#[test]
+fn hints_survive_a_refused_action_and_leave_no_items_behind() {
+    let mut f = lab();
+    f.carry(stack(STONE, 5));
+    f.ok(left(3));
+    f.state.carried = Some(stack(EGG, 1));
+    // Slot 4 only accepts stone, so this is refused mid-action.
+    assert_eq!(f.click(left(4)), Err(ClickError::NotAllowed));
     assert_eq!(
-        f.total(STONE),
-        6,
-        "five real plus one phantom: callers must exclude ghost slots themselves"
+        f.at_kind(3),
+        Some((STONE, 1)),
+        "the other hint is untouched"
     );
+    f.state.carried = None;
+    f.ok(left(3));
+    assert_eq!(f.at(3), None);
+    assert_eq!(f.total(STONE), 0, "clearing a hint destroys no items");
+    assert!(f.state.hints.is_empty());
 }
 
 // ----- state id ------------------------------------------------------------

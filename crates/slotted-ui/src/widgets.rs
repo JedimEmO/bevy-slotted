@@ -33,7 +33,12 @@ use crate::screen::{SpawnCtx, Widget, WidgetRegistry};
 use crate::semantic::{AnchorNode, LocText, SemanticLabel, SemanticRole, WidgetNode};
 use crate::tooltip::on_slot_over;
 
-/// Edge length of a slot in logical pixels. Not a theme token in Phase 2.
+/// Edge length of a slot in logical pixels, before any theme has loaded.
+///
+/// The live number is the theme's, `Tokens::sizes.slot_size`, and every
+/// widget reads it from there; this constant is that token's default and what
+/// code with no theme in reach (a layout computed off the node tree) falls
+/// back to.
 pub const SLOT_SIZE: f32 = 44.0;
 /// Border width every themed node reserves, so a `BorderColor` is visible.
 pub const BORDER_WIDTH: f32 = 1.0;
@@ -281,11 +286,13 @@ pub fn spawn_text(ctx: &mut SpawnCtx<'_>, key: &LocKey, style: TextRole) -> Enti
 ///
 /// `tab_index` orders keyboard navigation; grids pass the cell number.
 pub fn spawn_slot(ctx: &mut SpawnCtx<'_>, slot: SlotIx, tags: &Tags, tab_index: i32) -> Entity {
-    let radius = ctx.tokens().radii.sm;
+    let tokens = ctx.tokens();
+    let radius = tokens.radii.sm;
+    let size = tokens.sizes.slot_size;
     let entity = ctx.spawn_node((
         Node {
-            width: Val::Px(SLOT_SIZE),
-            height: Val::Px(SLOT_SIZE),
+            width: Val::Px(size),
+            height: Val::Px(size),
             border: UiRect::all(Val::Px(BORDER_WIDTH)),
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
@@ -336,7 +343,9 @@ pub fn spawn_slot_grid(
     tags: &Tags,
     role: SemanticRole,
 ) -> Entity {
-    let gap = ctx.tokens().spacing.sm;
+    let tokens = ctx.tokens();
+    let gap = tokens.slot_gap();
+    let size = tokens.sizes.slot_size;
     let mut tags = tags.clone();
     // The region tag defaults to the inventory index, so a locator can always
     // name a grid even when the screen author set no tags at all.
@@ -347,8 +356,8 @@ pub fn spawn_slot_grid(
     let entity = ctx.spawn_node((
         Node {
             display: Display::Grid,
-            grid_template_columns: vec![RepeatedGridTrack::px(cols, SLOT_SIZE)],
-            grid_template_rows: vec![RepeatedGridTrack::px(rows, SLOT_SIZE)],
+            grid_template_columns: vec![RepeatedGridTrack::px(cols, size)],
+            grid_template_rows: vec![RepeatedGridTrack::px(rows, size)],
             row_gap: Val::Px(gap),
             column_gap: Val::Px(gap),
             ..default()
@@ -1120,8 +1129,12 @@ pub fn slot_state_roles(
 
 /// `SlottedUiSet::Input`: digit keys 1-9 while a slot is hovered swap that
 /// slot with the matching hotbar slot.
+///
+/// Inert while a text field has the keyboard, so typing a digit into the
+/// browser's search box does not also rearrange the hotbar.
 pub fn hotbar_swap_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    text_entry: Res<crate::nav::TextEntryFocused>,
     hovered: Query<(&SlotRef, &Hovered)>,
     mut commands: Commands,
 ) {
@@ -1136,6 +1149,9 @@ pub fn hotbar_swap_keys(
         KeyCode::Digit8,
         KeyCode::Digit9,
     ];
+    if text_entry.0 {
+        return;
+    }
     let Some(hotbar) = DIGITS.iter().position(|k| keys.just_pressed(*k)) else {
         return;
     };

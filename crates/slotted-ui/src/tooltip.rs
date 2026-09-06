@@ -479,6 +479,8 @@ const TOOLTIP_GAP: f32 = 8.0;
 fn host_rect(
     hosts: &Query<(&ComputedNode, &UiGlobalTransform)>,
     pointers: &Query<(&PointerId, &PointerLocation)>,
+    units: &crate::scale::UiUnits,
+    slot_size: f32,
     host: Entity,
 ) -> Option<Rect> {
     if let Ok((node, tf)) = hosts.get(host) {
@@ -495,8 +497,8 @@ fn host_rect(
         .find(|(id, _)| matches!(id, PointerId::Mouse))
         .and_then(|(_, l)| l.location().map(|l| l.position))?;
     Some(Rect::from_center_size(
-        p,
-        Vec2::splat(crate::widgets::SLOT_SIZE),
+        units.point(p),
+        Vec2::splat(slot_size),
     ))
 }
 
@@ -513,6 +515,8 @@ fn host_rect(
 pub fn place_tooltips(
     windows: Query<&Window, With<PrimaryWindow>>,
     pointers: Query<(&PointerId, &PointerLocation)>,
+    tokens: ThemeTokens,
+    units: crate::scale::UiUnits,
     mut tooltips: Query<
         (
             Entity,
@@ -530,9 +534,12 @@ pub fn place_tooltips(
     let Ok(window) = windows.single() else {
         return;
     };
-    let window_size = Vec2::new(window.width(), window.height());
+    // The window in UI units: a tooltip is clamped against the box its own
+    // `Node` pixels live in, which `UiScale` shrinks.
+    let window_size = units.point(Vec2::new(window.width(), window.height()));
+    let slot_size = tokens.get().sizes.slot_size;
     for (entity, host, tooltip_node, mut node, mut visibility, unplaced) in &mut tooltips {
-        let Some(host_rect) = host_rect(&hosts, &pointers, host.0) else {
+        let Some(host_rect) = host_rect(&hosts, &pointers, &units, slot_size, host.0) else {
             continue;
         };
         let size = tooltip_node.size() * tooltip_node.inverse_scale_factor();

@@ -4,13 +4,120 @@ use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
 use slotted_theme::Themed;
 use slotted_ui::{
-    ScreenClosed, ScreenLayout, ScreenRoot, SemanticRole, Side, SpawnCtx, Tags, TestId, UiNodeDef,
-    zbands,
+    LocKey, Localization, ScreenClosed, ScreenLayout, ScreenRoot, SemanticRole, Side, SpawnCtx,
+    Tags, TestId, UiNodeDef, zbands,
 };
 
 use super::dock::BrowserLayout;
+use super::recipe_view::RecipeViewRoot;
 use super::{panel_def, panel_kind, roles};
 use crate::plugin::{AttachPolicy, BrowserConfig};
+
+// ---------------------------------------------------------------------------
+// The panel's own chrome, localised
+// ---------------------------------------------------------------------------
+
+/// Localisation keys for the strings the browser panel writes itself, as
+/// opposed to the item and category names it reads out of the registries.
+///
+/// Every one is resolved through [`slotted_ui::Localization`] and falls back
+/// to the English literal the panel drew before there was a catalogue, so a
+/// game that installs no [`Localizer`](slotted_ui::Localizer) sees exactly
+/// what it saw before. `assets/locale/en-US.ftl` carries the same English as
+/// the base pack's layer, with the dots written as dashes.
+pub mod keys {
+    /// The grey prompt in the empty search field.
+    pub const SEARCH_PLACEHOLDER: &str = "browser.search.placeholder";
+    /// The search field's screen-reader label.
+    pub const SEARCH_LABEL: &str = "browser.search.label";
+    /// The footer while the index is still building.
+    pub const STATUS_INDEXING: &str = "browser.status.indexing";
+    /// The noun after a result count of one.
+    pub const STATUS_ITEM: &str = "browser.status.item";
+    /// The noun after any other result count.
+    pub const STATUS_ITEMS: &str = "browser.status.items";
+    /// The footer's hotkey hint.
+    pub const STATUS_HINTS: &str = "browser.status.hints";
+    /// The "used in" heading when the list has entries.
+    pub const USES_TITLE: &str = "browser.uses.title";
+    /// The "used in" heading when nothing consumes the item.
+    pub const USES_EMPTY: &str = "browser.uses.empty";
+    /// The transfer pill.
+    pub const BUTTON_TRANSFER: &str = "browser.button.transfer";
+    /// The history-back pill.
+    pub const BUTTON_BACK: &str = "browser.button.back";
+    /// The history-forward pill.
+    pub const BUTTON_FORWARD: &str = "browser.button.forward";
+}
+
+/// A text node whose content is a [`keys`] entry plus the English literal to
+/// draw when nothing resolves it.
+///
+/// [`render_chrome`] repaints every one of these whenever the
+/// [`Localization`] resource is replaced, which is how a language switch at
+/// runtime reaches strings that were written once at spawn time.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct ChromeText {
+    /// The key to resolve.
+    pub key: LocKey,
+    /// What to draw when nothing defines it.
+    pub fallback: String,
+}
+
+impl ChromeText {
+    /// A chrome string.
+    pub fn new(key: &str, fallback: impl Into<String>) -> Self {
+        Self {
+            key: LocKey(key.to_owned()),
+            fallback: fallback.into(),
+        }
+    }
+}
+
+/// `loc`'s text for `key`, else the English literal `fallback`.
+///
+/// Deliberately not [`Localization::text`], which falls back to the key: a
+/// panel that has no catalogue must read as English, not as `browser.status.hints`.
+pub fn chrome(loc: &Localization, key: &str, fallback: &str) -> String {
+    loc.resolve(&LocKey(key.to_owned()))
+        .unwrap_or_else(|| fallback.to_owned())
+}
+
+/// [`chrome`] for spawn code that only has the world, including a world with
+/// no [`Localization`] in it at all.
+pub fn chrome_in(world: &World, key: &str, fallback: &str) -> String {
+    world
+        .get_resource::<Localization>()
+        .map_or_else(|| fallback.to_owned(), |loc| chrome(loc, key, fallback))
+}
+
+/// `BrowserSet::Render`: re-resolve every [`ChromeText`] when it appears and
+/// whenever the catalogue behind [`Localization`] is replaced.
+///
+/// A replaced catalogue also invalidates the recipe view's title and its
+/// "used in" cards, which are drawn from item display names, so the open page
+/// is marked dirty and redrawn on the next pass.
+pub fn render_chrome(
+    loc: Res<Localization>,
+    mut texts: Query<(Ref<ChromeText>, &mut Text)>,
+    mut views: Query<&mut RecipeViewRoot>,
+) {
+    let relocalised = loc.is_changed() && !loc.is_added();
+    for (chrome_text, mut text) in &mut texts {
+        if !relocalised && !chrome_text.is_added() {
+            continue;
+        }
+        let want = chrome(&loc, &chrome_text.key.0, &chrome_text.fallback);
+        if text.0 != want {
+            text.0 = want;
+        }
+    }
+    if relocalised {
+        for mut view in &mut views {
+            view.dirty = true;
+        }
+    }
+}
 
 /// On a panel root: which screen it belongs to.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]

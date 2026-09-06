@@ -74,6 +74,17 @@ pub enum ModError {
         /// How many were dropped.
         count: u32,
     },
+    /// After a reload a component key inside a stack's `ComponentPatch` no
+    /// longer exists. The override is dropped; the stack itself survives.
+    #[error(
+        "`{component}` dropped from a stack of `{item}`: the component no longer exists after reload"
+    )]
+    ComponentVanished {
+        /// The old component key.
+        component: String,
+        /// The item whose patch carried it.
+        item: String,
+    },
     /// Reading a file outside the registry path.
     #[error("{path}: {message}")]
     Io {

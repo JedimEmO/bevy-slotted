@@ -19,6 +19,8 @@ pub mod plugins;
 
 #[cfg(feature = "script-luaur")]
 pub use plugins::LuaurHostPlugin;
+#[cfg(feature = "net")]
+pub use plugins::{ClientTransport, SlottedNetPlugin};
 pub use plugins::{HeadlessBevyPlugins, HeadlessRenderAssets, SlottedPlugins};
 
 pub use slotted_ecs as ecs;
@@ -29,6 +31,8 @@ pub use slotted_registry as registry;
 pub use slotted_browser as browser;
 #[cfg(feature = "ui")]
 pub use slotted_icons as icons;
+#[cfg(feature = "net")]
+pub use slotted_net as net;
 #[cfg(feature = "packs")]
 pub use slotted_packs as packs;
 #[cfg(feature = "packs")]
@@ -43,6 +47,8 @@ pub use slotted_ui as ui;
 /// The common names.
 pub mod prelude {
     pub use crate::SlottedPlugins;
+    #[cfg(feature = "net")]
+    pub use crate::{ClientTransport, SlottedNetPlugin};
     #[cfg(feature = "browser")]
     pub use slotted_browser::prelude::*;
     pub use slotted_ecs::prelude::*;

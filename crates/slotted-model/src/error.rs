@@ -42,4 +42,15 @@ pub enum ClickError {
     /// `Inventories` do not have.
     #[error("menu definition does not match the inventories")]
     MenuMismatch,
+    /// The action created or destroyed items, and
+    /// [`ValidationLevel::Always`](crate::click::ValidationLevel::Always) was
+    /// in force.
+    ///
+    /// Unlike every other variant this one is raised *after* the action ran,
+    /// so the inventories and the state it was given are no longer
+    /// trustworthy. A caller at this validation level applies to a scratch
+    /// copy and keeps it only on `Ok`; that is what
+    /// `slotted_net::MenuServer` does.
+    #[error("action violated item conservation")]
+    Conservation,
 }

@@ -13,6 +13,7 @@ use slotted_registry::Value;
 use slotted_theme::Themed;
 use slotted_ui::{SemanticRole, SpawnCtx, UiNodeDef, Widget};
 
+use super::panel::{ChromeText, chrome_in, keys};
 use super::roles;
 use crate::events::SearchChanged;
 use crate::runtime::BrowserRuntime;
@@ -31,6 +32,7 @@ pub struct SearchFieldWidget;
 
 impl Widget for SearchFieldWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, _params: &Value, _children: &[UiNodeDef]) -> Entity {
+        let label = chrome_in(ctx.world, keys::SEARCH_LABEL, "Search");
         let field = ctx.spawn_node((
             Node {
                 width: percent(100),
@@ -44,17 +46,19 @@ impl Widget for SearchFieldWidget {
             TabIndex(0),
             Themed(roles::SEARCH),
             SemanticRole::TextField,
-            slotted_ui::SemanticLabel("Search".to_owned()),
+            slotted_ui::SemanticLabel(label),
             SearchField::default(),
         ));
+        let placeholder = chrome_in(ctx.world, keys::SEARCH_PLACEHOLDER, PLACEHOLDER);
         ctx.world.spawn((
             Node {
                 position_type: PositionType::Absolute,
                 left: px(10),
                 ..default()
             },
-            Text::new("Search items"),
+            Text::new(placeholder),
             Themed(super::roles::HINT),
+            ChromeText::new(keys::SEARCH_PLACEHOLDER, PLACEHOLDER),
             SearchPlaceholder,
             Pickable::IGNORE,
             ChildOf(field),
@@ -62,6 +66,9 @@ impl Widget for SearchFieldWidget {
         field
     }
 }
+
+/// The English the placeholder falls back to.
+const PLACEHOLDER: &str = "Search items";
 
 /// The grey prompt shown while the field is empty.
 #[derive(Component, Debug, Default, Clone, Copy)]

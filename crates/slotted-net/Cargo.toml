@@ -1,0 +1,30 @@
+[package]
+name = "slotted-net"
+description = "Transport-agnostic networked authority for slotted: click messages, a predicting client and an authoritative menu server."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-net"
+homepage.workspace = true
+keywords = ["bevy", "inventory", "networking", "gamedev", "multiplayer"]
+categories = ["game-development", "network-programming"]
+
+[features]
+default = []
+
+[dependencies]
+slotted-model = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+ron = { workspace = true }
+
+[lints]
+workspace = true

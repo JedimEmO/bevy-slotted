@@ -13,3 +13,21 @@ machine-redstone-high = Run with a signal
 machine-face-none = Face: closed
 machine-face-input = Face: input
 machine-face-output = Face: output
+
+# The item browser's own chrome. `slotted-browser` resolves each of these
+# through `slotted_ui::Localization` and falls back to the same English when
+# no catalogue is loaded, so a game with no locale files is unchanged.
+# Category chips and recipe tabs are not here: they resolve the category's own
+# `RecipeTypeDef::title_key`, or `category-<ns>-<path>` when it declares none.
+
+browser-search-placeholder = Search items
+browser-search-label = Search
+browser-status-indexing = indexing…
+browser-status-item = item
+browser-status-items = items
+browser-status-hints = R recipes / U uses / A bookmark
+browser-uses-title = Used in:
+browser-uses-empty = Used in: nothing yet
+browser-button-transfer = +
+browser-button-back = <
+browser-button-forward = >

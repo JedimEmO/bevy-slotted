@@ -55,6 +55,7 @@ fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout {
@@ -77,6 +78,7 @@ fn machine_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(MACHINE),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout {

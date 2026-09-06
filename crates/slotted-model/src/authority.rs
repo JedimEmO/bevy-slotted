@@ -44,6 +44,20 @@ pub enum AuthorityEvent {
         /// The authoritative content.
         snapshot: MenuSnapshot,
     },
+    /// One slot of the menu now holds something else.
+    ///
+    /// The cheap half of a resync: an authority that knows exactly what
+    /// changed sends these rather than a whole snapshot. Nobody asked for it,
+    /// so it settles no round trip. A `Ghost` or `Filter` slot carries its
+    /// hint here; every other slot carries a real stack.
+    Slot {
+        /// Which menu.
+        menu: MenuId,
+        /// Which slot of it.
+        slot: crate::menu::SlotIx,
+        /// The new content.
+        stack: Option<crate::stack::ItemStack>,
+    },
     /// A synced property changed.
     Property {
         /// Which menu.
@@ -69,6 +83,21 @@ pub enum AuthorityError {
     Disconnected,
 }
 
+/// What came of asking an authority for a full snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ResyncRequest {
+    /// The request is on its way. An
+    /// [`AuthorityEvent::Resync`] for this menu will arrive from a later
+    /// [`Authority::poll`], so the caller counts it as a round trip in
+    /// flight.
+    Pending,
+    /// This authority cannot produce a snapshot, and no event will follow.
+    /// A single-player [`LocalAuthority`](crate::Authority) is the case: it
+    /// holds no second copy of the world to resynchronise from, so the
+    /// caller falls back to redrawing from its own state.
+    Unsupported,
+}
+
 /// The boundary between prediction and truth.
 pub trait Authority: Send + Sync {
     /// Submits an action with the client's predicted outcome.
@@ -81,4 +110,32 @@ pub trait Authority: Send + Sync {
 
     /// Drains pending events.
     fn poll(&self) -> Vec<AuthorityEvent>;
+
+    /// Asks for a full snapshot of `menu`.
+    ///
+    /// The client calls this when it can no longer trust its own copy: a
+    /// [`submit`](Self::submit) came back `Err`, or an ack arrived for a
+    /// state id the client never predicted. The answer, when there is one,
+    /// comes back through [`poll`](Self::poll) as
+    /// [`AuthorityEvent::Resync`] rather than from this call, so a transport
+    /// with latency behaves the same as one without.
+    ///
+    /// The default implementation answers
+    /// [`ResyncRequest::Unsupported`], which is right for any authority that
+    /// is itself the client's state.
+    fn request_resync(&self, menu: MenuId) -> Result<ResyncRequest, AuthorityError> {
+        let _ = menu;
+        Ok(ResyncRequest::Unsupported)
+    }
+
+    /// How hard this authority wants clicks validated before they are
+    /// believed. See [`ValidationLevel`](crate::ValidationLevel).
+    ///
+    /// A client asks its authority rather than deciding for itself, so that
+    /// wiring in a server-backed authority also turns on the checking that
+    /// server expects. The default is
+    /// [`ValidationLevel::Debug`](crate::ValidationLevel::Debug).
+    fn validation(&self) -> crate::ValidationLevel {
+        crate::ValidationLevel::Debug
+    }
 }

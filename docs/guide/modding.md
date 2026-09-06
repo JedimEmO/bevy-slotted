@@ -95,12 +95,27 @@ slotted.register_recipe("copper_chest", {
 
 An item's `icon` is one of three things: a path string for a texture you ship, a
 table with a `shape` key for a lit primitive the icon bake renders, or a table
-with a `model` key for a glTF file, which parses and warns until the loader
-lands. The shapes are `cube`, `slab`, `ingot`, `gem`, `rod` and `sphere`; each
-takes `color`, an optional `accent` and `metallic` and `roughness` in `0..=1`.
+with a `model` key for a glTF file the bake loads and lights under the same rig.
+The shapes are `cube`, `slab`, `ingot`, `gem`, `rod` and `sphere`; each takes
+`color`, an optional `accent` and `metallic` and `roughness` in `0..=1`.
 An item with no `icon` still gets a cube in a colour derived from its id, so a
 mod never shows a grid of missing textures. See
 [screens](screens.md) for the whole table.
+
+Write the shape fields beside `model` and they become its stand-in:
+
+```lua
+icon = {
+    model = "models/pickaxe.gltf",
+    shape = "rod", color = "#6b4c33", accent = "#d0d6dd",
+},
+```
+
+The stand-in is what a headless run draws, what the first frames draw while the
+glTF loads, and what a build without the `gltf-icons` feature draws instead of
+the model. Its `shape` also decides the angle and the size the model itself is
+rendered at, so declaring one that matches keeps the two readings the same. A
+model with no stand-in gets a box in a colour hashed from its path.
 
 A leading `#` means "this is a tag, not an item", so the recipe accepts any
 ingot any mod put in `c:ingots`.

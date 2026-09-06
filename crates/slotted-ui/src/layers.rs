@@ -34,6 +34,19 @@ pub struct CarriedLayer;
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct TooltipLayer;
 
+/// Marks a node whose rect is animation rather than layout.
+///
+/// A looping decoration (the recipe view's progress arrow) never stops
+/// moving, so a test harness that waits for layout to hold still would wait
+/// for ever. `UiHarness::settle` leaves a `Decorative` node and its
+/// descendants out of the fingerprint it watches, which is what lets the
+/// arrow sweep from its left edge instead of growing about its centre.
+///
+/// Put it on nodes nothing else measures. A node that carries real content
+/// must not have it, or a test will read a rect that was still moving.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct Decorative;
+
 /// Marks a node whose rect other overlays (browser, HUD) must stay out of.
 /// Injected nodes get it when `Injection::exclusion` is set.
 #[derive(Component, Debug, Default, Clone, Copy)]
@@ -96,6 +109,8 @@ pub fn update_carried_layer(
     screens: Query<&crate::semantic::ScreenRoot>,
     menus: Query<&slotted_ecs::Carried>,
     ghost: Res<crate::preview::DragGhost>,
+    tokens: crate::tooltip::ThemeTokens,
+    units: crate::scale::UiUnits,
     mut carried: Query<(&mut crate::item::ItemView, &mut Node, &mut Visibility), With<CarriedItem>>,
 ) {
     let stack = screens
@@ -126,8 +141,19 @@ pub fn update_carried_layer(
         if *visibility != wanted {
             *visibility = wanted;
         }
+        // The carried stack is a slot that follows the pointer, so it is the
+        // theme's slot size, and the pointer's window pixels become UI units
+        // before they are written as `Node` pixels.
+        let size = Val::Px(tokens.get().sizes.slot_size);
+        if node.width != size {
+            node.width = size;
+        }
+        if node.height != size {
+            node.height = size;
+        }
         if let Some(p) = position {
-            let half = crate::widgets::SLOT_SIZE * 0.5;
+            let p = units.point(p);
+            let half = tokens.get().sizes.slot_size * 0.5;
             let (left, top) = (Val::Px(p.x - half), Val::Px(p.y - half));
             if node.left != left {
                 node.left = left;

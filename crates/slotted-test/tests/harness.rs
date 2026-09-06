@@ -238,6 +238,7 @@ fn open_screen_spawns_a_screen_root_bound_to_a_menu() {
     h.world_mut().resource_mut::<Screens>().register(ScreenDef {
         kind: kind.clone(),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: slotted_ui::Layout::default(),
@@ -291,6 +292,7 @@ fn assert_conserved_catches_a_vanished_stack() {
         ScreenDef {
             kind,
             inherits: None,
+            remove: vec![],
             root: UiNodeDef::Panel {
                 role: slotted_theme::roles::PANEL,
                 layout: slotted_ui::Layout::default(),

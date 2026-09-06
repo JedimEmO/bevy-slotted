@@ -1,6 +1,13 @@
 // `slotted:damage` and `slotted:max_damage` have to appear in some item's
 // component map for the freeze to intern them; the item renderer reads them
 // off a stack's patch to draw the durability bar.
+//
+// The one item in the demo data drawn from a glTF rather than from a
+// primitive, so the shipped examples exercise `IconDef::Model`. The shape
+// fields beside `model:` are the stand-in: they are what the CPU bake draws
+// where there is no renderer and no glTF loader, and they are also what
+// decides the view angle and the cell fill the model itself is rendered at.
+// They describe the same pickaxe, so the two readings agree.
 (
     name: "minecraft:iron_pickaxe",
     display_name: Some("Iron Pickaxe"),
@@ -11,5 +18,12 @@
         "slotted:damage": 0,
         "slotted:max_damage": 250,
     },
-    icon: Some((shape: "rod", color: "#6b4c33", accent: "#d0d6dd", metallic: 0.6, roughness: 0.4)),
+    icon: Some((
+        model: "models/pickaxe.gltf",
+        shape: "rod",
+        color: "#6b4c33",
+        accent: "#d0d6dd",
+        metallic: 0.6,
+        roughness: 0.4,
+    )),
 )

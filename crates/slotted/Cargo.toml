@@ -36,14 +36,25 @@ viewport = ["ui", "gpu-icons", "slotted-ui/viewport"]
 # default; the bake falls back to the CPU at runtime when there is no
 # renderer, so a headless app pays nothing but compile time.
 gpu-icons = ["ui", "slotted-icons/gpu"]
+# `IconDef::Model`: item icons baked from a glTF scene rather than from a
+# primitive. Off by default, because `bevy_gltf` and `bevy_scene` are module
+# size a game with no item models should not pay; without it a model draws
+# the stand-in shape its data file declared.
+gltf-icons = ["gpu-icons", "slotted-icons/gltf"]
 # A turning 3D item behind the hovered slot's tooltip and the browser detail
 # pane, instead of a flat atlas cell.
 live-icons = ["viewport", "slotted-ui/live"]
+# Client-server play: `slotted-net`'s `RemoteAuthority` replaces
+# `LocalAuthority` when the app has inserted a `ClientTransport` resource. Off
+# by default, because a single-player game should not compile a protocol it
+# never speaks.
+net = ["dep:slotted-net"]
 
 [dependencies]
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true, features = ["std-fs"] }
 slotted-ecs = { workspace = true }
+slotted-net = { workspace = true, optional = true }
 slotted-theme = { workspace = true, optional = true }
 slotted-ui = { workspace = true, optional = true }
 slotted-icons = { workspace = true, optional = true }

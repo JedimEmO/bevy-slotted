@@ -34,8 +34,14 @@ gen-docs-check:
     cargo run -p xtask -- gen-docs --check
     cargo run -p xtask -- luau-stubs --check
 
+# Licences, advisories, banned crates and sources. Needs `cargo install
+# cargo-deny`. Part of `ci` so an advisory shows up on the branch that
+# introduced it rather than months later.
+deny:
+    cargo deny check
+
 # What CI runs.
-ci: fmt-check lint test gen-docs-check
+ci: fmt-check lint test gen-docs-check deny
 
 # The chest example in a window: the glass chest screen over a 3D scene.
 run-chest:
@@ -48,6 +54,20 @@ shot-chest:
     cargo run -p chest -- --shot examples/chest/shots/chest-browser.png
     cargo run -p chest -- --recipe minecraft:coal --shot examples/chest/shots/chest-recipe.png
     cargo run -p chest -- --paint --shot examples/chest/shots/chest-paint.png
+    just shot-check
+
+# Are the icons actually in the captures?
+#
+# The GPU bake draws into the atlas the UI samples, so a bake that has not
+# drawn leaves every icon transparent while the layout, the panel and the
+# stack counts are all still correct. Nothing but the pixels can see that,
+# which is what this measures. Run it after any recapture.
+shot-check:
+    python3 tools/check-shot.py examples/chest/shots/chest.png \
+        examples/chest/shots/chest-hover.png \
+        examples/chest/shots/chest-browser.png \
+        examples/chest/shots/chest-recipe.png \
+        examples/chest/shots/chest-paint.png
 
 # The chest screen and its browser in the paper and neon themes (Phase 7).
 shot-chest-themes:
@@ -88,6 +108,7 @@ wasm-check:
     cargo check --target wasm32-unknown-unknown -p slotted-script-luaur
     cargo check --target wasm32-unknown-unknown -p slotted-registry --no-default-features
     cargo check --target wasm32-unknown-unknown -p slotted-ecs
+    cargo check --target wasm32-unknown-unknown -p slotted-net
     cargo check --target wasm32-unknown-unknown -p slotted-theme
     cargo check --target wasm32-unknown-unknown -p slotted-icons --all-features
     cargo check --target wasm32-unknown-unknown -p slotted-test --no-default-features --features script

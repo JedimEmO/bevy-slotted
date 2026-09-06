@@ -48,15 +48,194 @@ impl Screens {
     }
 
     /// `def` with its `inherits` chain flattened: the ancestor's tree with
-    /// this screen's anchors kept. Cycles and unknown ancestors fall back to
-    /// `def` itself.
-    // Phase 2 screens do not inherit; see docs/design/phase2-notes-B.md item 11
-    // for what has to be decided before this can be implemented.
+    /// this screen's overrides merged onto it.
+    ///
+    /// The merge identity is [`UiNodeDef::id`] -- a node's `test_id` tag, or
+    /// an anchor's id. Walking the child's tree:
+    ///
+    /// * a node whose id names a node anywhere in the ancestor's tree
+    ///   *replaces* that node, subtree and all (this is how a child fills an
+    ///   ancestor's `anchor`);
+    /// * a node with an unseen id, or with no id at all, is *appended* under
+    ///   the ancestor node its own parent corresponds to;
+    /// * the child's root always wins on shape (role, layout, tags), and its
+    ///   children merge onto the ancestor root's children;
+    /// * ids listed in the child's [`ScreenDef::remove`] are deleted from the
+    ///   merged tree afterwards.
+    ///
+    /// `kind` is always the child's. `listring` is the child's when it is
+    /// non-empty, otherwise the ancestor's.
+    ///
+    /// A cycle, an ancestor no one registered, or a chain longer than
+    /// [`MAX_INHERIT_DEPTH`] logs one error naming the kinds and falls back to
+    /// `def` itself, so a broken data file costs a plain screen rather than a
+    /// panic.
     pub fn resolve(&self, def: &ScreenDef) -> ScreenDef {
-        if def.inherits.is_some() {
-            tracing::warn!(kind = ?def.kind, "screen inheritance is not implemented yet");
+        if def.inherits.is_none() {
+            return def.clone();
         }
-        def.clone()
+        // Leaf first; the fold below walks it back down.
+        let mut chain: Vec<ScreenDef> = vec![def.clone()];
+        let mut seen: Vec<ScreenKind> = vec![def.kind.clone()];
+        let mut next = def.inherits.clone();
+        while let Some(kind) = next.take() {
+            if seen.contains(&kind) {
+                tracing::error!(
+                    screen = %def.kind.0,
+                    ancestor = %kind.0,
+                    chain = %kinds(&seen),
+                    "screen inheritance cycle; using the screen's own tree"
+                );
+                return def.clone();
+            }
+            let Some(parent) = self.get(&kind) else {
+                tracing::error!(
+                    screen = %def.kind.0,
+                    ancestor = %kind.0,
+                    chain = %kinds(&seen),
+                    "screen inherits a kind no one registered; using the screen's own tree"
+                );
+                return def.clone();
+            };
+            seen.push(kind);
+            chain.push((**parent).clone());
+            if chain.len() > MAX_INHERIT_DEPTH {
+                tracing::error!(
+                    screen = %def.kind.0,
+                    limit = MAX_INHERIT_DEPTH,
+                    chain = %kinds(&seen),
+                    "screen inheritance is deeper than the limit; using the screen's own tree"
+                );
+                return def.clone();
+            }
+            next.clone_from(&parent.inherits);
+        }
+        let mut resolved = chain.pop().expect("the chain holds at least `def`");
+        while let Some(child) = chain.pop() {
+            resolved = merge_screens(&resolved, &child);
+        }
+        resolved
+    }
+}
+
+/// How many `inherits` links [`Screens::resolve`] follows before it treats the
+/// chain as a data error.
+pub const MAX_INHERIT_DEPTH: usize = 8;
+
+fn kinds(chain: &[ScreenKind]) -> String {
+    chain
+        .iter()
+        .map(|k| k.0.to_string())
+        .collect::<Vec<_>>()
+        .join(" -> ")
+}
+
+/// One inheritance step: `child`'s overrides onto `base`'s tree.
+fn merge_screens(base: &ScreenDef, child: &ScreenDef) -> ScreenDef {
+    let mut root = merge_nodes(&base.root, &child.root);
+    for id in &child.remove {
+        if !remove_node(&mut root, id) {
+            tracing::warn!(
+                screen = %child.kind.0,
+                node = %id,
+                "screen `remove` names a node the inherited tree does not have"
+            );
+        }
+    }
+    ScreenDef {
+        kind: child.kind.clone(),
+        // Flattened: the result must not be resolved a second time.
+        inherits: None,
+        root,
+        listring: if child.listring.is_empty() {
+            base.listring.clone()
+        } else {
+            child.listring.clone()
+        },
+        remove: Vec::new(),
+    }
+}
+
+/// `over`'s shape with `base`'s children underneath it, `over`'s own children
+/// merged in by id.
+fn merge_nodes(base: &UiNodeDef, over: &UiNodeDef) -> UiNodeDef {
+    let mut merged = over.clone();
+    let mut children = base.children().to_vec();
+    for node in over.children() {
+        let replaced = node
+            .id()
+            .is_some_and(|id| replace_node(&mut children, id, node));
+        if !replaced {
+            children.push(node.clone());
+        }
+    }
+    if let Some(slot) = merged.children_mut() {
+        *slot = children;
+    }
+    merged
+}
+
+/// Replaces the first node in `list` (at any depth) whose id is `id`.
+fn replace_node(list: &mut [UiNodeDef], id: &str, node: &UiNodeDef) -> bool {
+    for existing in list.iter_mut() {
+        if existing.id() == Some(id) {
+            *existing = node.clone();
+            return true;
+        }
+        if let Some(children) = existing.children_mut()
+            && replace_node(children, id, node)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Deletes every node under `root` whose id is `id`. The root itself is never
+/// removed: a screen with no tree is not a screen.
+fn remove_node(root: &mut UiNodeDef, id: &str) -> bool {
+    let Some(children) = root.children_mut() else {
+        return false;
+    };
+    let before = children.len();
+    children.retain(|c| c.id() != Some(id));
+    let mut found = children.len() != before;
+    for child in children.iter_mut() {
+        found |= remove_node(child, id);
+    }
+    found
+}
+
+/// Closes and re-opens every screen of a kind in `changed`, on the same menu
+/// entity, so its slots re-seed without an inventory write.
+///
+/// Contract 2.6 step 4, lifted out of `slotted-packs` so it is reachable from
+/// this crate: [`crate::screen_asset::apply_screen_assets`] calls it after a
+/// `*.screen.ron` changed on disk, and `slotted_packs`'s own `respawn_screens`
+/// (still its private copy) does the same after a mod reload.
+/// [`Screens`] must already hold the new definition.
+pub fn respawn_open_screens(world: &mut World, changed: &[ScreenKind]) {
+    if changed.is_empty() {
+        return;
+    }
+    let roots: Vec<(Entity, ScreenKind, Option<Entity>)> = world
+        .query::<(Entity, &ScreenRoot)>()
+        .iter(world)
+        .filter(|(_, root)| changed.contains(&root.kind))
+        .map(|(entity, root)| (entity, root.kind.clone(), root.menu))
+        .collect();
+    if roots.is_empty() {
+        return;
+    }
+    let screens = world.resource::<Screens>().clone();
+    for (root, kind, menu) in roots {
+        let Some(def) = screens.get(&kind).cloned() else {
+            continue;
+        };
+        let mut commands = world.commands();
+        close_screen(&mut commands, root);
+        spawn_screen(&mut commands, def, menu);
+        world.flush();
     }
 }
 
@@ -115,22 +294,29 @@ pub struct SpawnCtx<'w> {
     pub parent: Entity,
 }
 
+/// The theme's token table as seen from a `&World`, or the defaults when no
+/// theme has loaded.
+///
+/// The `&World` form of [`SpawnCtx::tokens`], for the exclusive systems that
+/// spawn or resize nodes outside a spawn context.
+pub fn active_tokens(world: &World) -> Tokens {
+    world
+        .get_resource::<ActiveTheme>()
+        .map(|a| a.0.clone())
+        .and_then(|h| {
+            world
+                .get_resource::<Assets<Theme>>()
+                .and_then(|assets| assets.get(&h).map(|t| t.tokens.clone()))
+        })
+        .unwrap_or_default()
+}
+
 impl SpawnCtx<'_> {
     /// The theme's token table, or the defaults when no theme has loaded.
     /// Widgets read spacing and radii from here; colours are never their
     /// business.
     pub fn tokens(&self) -> Tokens {
-        let handle = self
-            .world
-            .get_resource::<ActiveTheme>()
-            .map(|a| a.0.clone());
-        handle
-            .and_then(|h| {
-                self.world
-                    .get_resource::<Assets<Theme>>()
-                    .and_then(|assets| assets.get(&h).map(|t| t.tokens.clone()))
-            })
-            .unwrap_or_default()
+        active_tokens(self.world)
     }
 
     /// Spawns one entity as a child of `self.parent`. The way every widget
@@ -466,11 +652,17 @@ fn report_unmatched_injections(world: &mut World, root: Entity, kind: &ScreenKin
     }
     let mut present: Vec<AnchorId> = Vec::new();
     collect_anchors(world, root, &mut present);
-    let mut missing: Vec<AnchorId> = wanted
-        .into_iter()
-        .filter(|anchor| !present.contains(anchor))
-        .collect();
-    missing.dedup();
+    // Deduplicated by `contains` rather than by `Vec::dedup`, which only
+    // collapses *adjacent* equal entries: two mods aiming at the same missing
+    // anchor with a third injection registered between them would otherwise be
+    // recorded twice and logged twice. Registration order is kept, because it
+    // is the order the author will read the log in.
+    let mut missing: Vec<AnchorId> = Vec::new();
+    for anchor in wanted {
+        if !present.contains(&anchor) && !missing.contains(&anchor) {
+            missing.push(anchor);
+        }
+    }
     if missing.is_empty() {
         return;
     }
@@ -540,4 +732,195 @@ pub fn spawn_screen(commands: &mut Commands, def: Arc<ScreenDef>, menu: Option<E
 pub fn close_screen(commands: &mut Commands, root: Entity) {
     commands.trigger(ScreenClosed { entity: root });
     commands.entity(root).despawn();
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use crate::def::{LocKey, TextRole};
+    use pretty_assertions::assert_eq;
+    use slotted_theme::roles;
+
+    /// A text node whose `test_id` is its own text, so the merged tree reads
+    /// as a list of ids.
+    fn node(id: &str) -> UiNodeDef {
+        UiNodeDef::Text {
+            key: LocKey(id.to_owned()),
+            style: TextRole::Body,
+            tags: Tags::new().with(Tags::TEST_ID, id),
+        }
+    }
+
+    fn panel(id: &str, children: Vec<UiNodeDef>) -> UiNodeDef {
+        UiNodeDef::Panel {
+            role: roles::PANEL,
+            layout: crate::def::Layout::default(),
+            children,
+            tags: Tags::new().with(Tags::TEST_ID, id),
+        }
+    }
+
+    fn screen(kind: &str, inherits: Option<&str>, root: UiNodeDef) -> ScreenDef {
+        ScreenDef {
+            kind: ScreenKind::new(kind),
+            inherits: inherits.map(ScreenKind::new),
+            root,
+            listring: vec![],
+            remove: vec![],
+        }
+    }
+
+    /// Ids of a tree, depth first, so an assertion reads as a shape.
+    fn ids(def: &ScreenDef) -> Vec<String> {
+        let mut out = Vec::new();
+        def.root.walk(&mut |n| {
+            if let Some(id) = n.id() {
+                out.push(id.to_owned());
+            }
+        });
+        out
+    }
+
+    fn registered(defs: Vec<ScreenDef>) -> Screens {
+        let mut screens = Screens::default();
+        for def in defs {
+            screens.register(def);
+        }
+        screens
+    }
+
+    #[test]
+    fn a_three_deep_chain_accumulates_every_ancestors_children() {
+        let screens = registered(vec![
+            screen("demo:base", None, panel("root", vec![node("from_base")])),
+            screen(
+                "demo:middle",
+                Some("demo:base"),
+                panel("root", vec![node("from_middle")]),
+            ),
+            screen(
+                "demo:leaf",
+                Some("demo:middle"),
+                panel("root", vec![node("from_leaf")]),
+            ),
+        ]);
+        let leaf = screens.get(&ScreenKind::new("demo:leaf")).unwrap();
+        let resolved = screens.resolve(leaf);
+
+        assert_eq!(resolved.kind, ScreenKind::new("demo:leaf"));
+        assert_eq!(resolved.inherits, None);
+        assert_eq!(
+            ids(&resolved),
+            ["root", "from_base", "from_middle", "from_leaf"]
+        );
+    }
+
+    #[test]
+    fn a_child_node_replaces_the_ancestor_node_of_the_same_id_in_place() {
+        let screens = registered(vec![
+            screen(
+                "demo:base",
+                None,
+                panel(
+                    "root",
+                    vec![
+                        node("before"),
+                        panel(
+                            "box",
+                            vec![UiNodeDef::Anchor {
+                                id: AnchorId::new("rail"),
+                            }],
+                        ),
+                        node("after"),
+                    ],
+                ),
+            ),
+            screen(
+                "demo:leaf",
+                Some("demo:base"),
+                panel("root", vec![panel("rail", vec![node("rail_button")])]),
+            ),
+        ]);
+        let leaf = screens.get(&ScreenKind::new("demo:leaf")).unwrap();
+        let resolved = screens.resolve(leaf);
+
+        // The anchor kept its place two levels down; nothing was appended.
+        assert_eq!(
+            ids(&resolved),
+            ["root", "before", "box", "rail", "rail_button", "after"]
+        );
+    }
+
+    #[test]
+    fn remove_deletes_an_inherited_node_at_any_depth() {
+        let mut leaf = screen("demo:leaf", Some("demo:base"), panel("root", vec![]));
+        leaf.remove = vec!["unwanted".to_owned()];
+        let screens = registered(vec![
+            screen(
+                "demo:base",
+                None,
+                panel(
+                    "root",
+                    vec![panel("box", vec![node("unwanted"), node("kept")])],
+                ),
+            ),
+            leaf,
+        ]);
+        let leaf = screens.get(&ScreenKind::new("demo:leaf")).unwrap();
+        let resolved = screens.resolve(leaf);
+
+        assert_eq!(ids(&resolved), ["root", "box", "kept"]);
+    }
+
+    #[test]
+    fn a_cycle_falls_back_to_the_screens_own_tree() {
+        let screens = registered(vec![
+            screen("demo:a", Some("demo:b"), panel("a_root", vec![node("a")])),
+            screen("demo:b", Some("demo:a"), panel("b_root", vec![node("b")])),
+        ]);
+        let a = screens.get(&ScreenKind::new("demo:a")).unwrap();
+        let resolved = screens.resolve(a);
+
+        assert_eq!(resolved, **a, "a cycle is a data error, not a panic");
+    }
+
+    #[test]
+    fn an_unknown_ancestor_falls_back_to_the_screens_own_tree() {
+        let screens = registered(vec![screen(
+            "demo:leaf",
+            Some("demo:missing"),
+            panel("root", vec![node("own")]),
+        )]);
+        let leaf = screens.get(&ScreenKind::new("demo:leaf")).unwrap();
+
+        assert_eq!(screens.resolve(leaf), **leaf);
+    }
+
+    #[test]
+    fn the_child_wins_on_kind_and_on_a_non_empty_listring() {
+        let mut base = screen("demo:base", None, panel("root", vec![]));
+        base.listring = vec![
+            slotted_model::InventoryRef::new(0),
+            slotted_model::InventoryRef::new(1),
+        ];
+        let leaf = screen("demo:leaf", Some("demo:base"), panel("root", vec![]));
+        let mut overriding = screen("demo:other", Some("demo:base"), panel("root", vec![]));
+        overriding.listring = vec![slotted_model::InventoryRef::new(2)];
+        let screens = registered(vec![base, leaf, overriding]);
+
+        let leaf = screens.resolve(screens.get(&ScreenKind::new("demo:leaf")).unwrap());
+        assert_eq!(
+            leaf.listring,
+            vec![
+                slotted_model::InventoryRef::new(0),
+                slotted_model::InventoryRef::new(1)
+            ]
+        );
+
+        let other = screens.resolve(screens.get(&ScreenKind::new("demo:other")).unwrap());
+        assert_eq!(other.kind, ScreenKind::new("demo:other"));
+        assert_eq!(other.listring, vec![slotted_model::InventoryRef::new(2)]);
+    }
 }

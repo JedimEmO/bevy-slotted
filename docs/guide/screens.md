@@ -30,14 +30,15 @@ screen the engine has never heard of without a rebuild.
 )
 ```
 
-`ScreenDef` has four fields.
+`ScreenDef` has five fields.
 
 | Field | Type | Default | |
 |---|---|---|---|
 | `kind` | `"namespace:path"` | required | The screen's id. A mod injects by naming it. |
 | `root` | `UiNodeDef` | required | The tree. |
-| `inherits` | `"namespace:path"` | none | A base screen to start from. **Not implemented yet**: `Screens::resolve` logs and clones instead. |
+| `inherits` | `"namespace:path"` | none | A base screen to start from; see [Inheritance](#inheritance). |
 | `listring` | array of inventory indices | `[]` | The order quick-move walks. Mirrors `MenuDef::listring`. |
+| `remove` | array of node ids | `[]` | Nodes to delete from the inherited tree. Only meaningful with `inherits`. |
 
 `ScreenDef::from_ron` parses through the untyped `Value` form, so `Option` fields
 accept both `Some(x)` and a bare `x`. Files conventionally start with
@@ -271,17 +272,81 @@ slotted.inject("slotted:any", {
 publishes the node's rectangle as an exclusion zone, so the item browser docks
 clear of it rather than under it.
 
-## Loading one
+## Inheritance
 
-Today a screen is read with `std::fs` and `ScreenDef::from_ron`, then registered:
+A screen that names another in `inherits` starts from that screen's tree.
+`Screens::resolve` flattens the chain when the screen spawns, so nothing else
+in the crate has to know inheritance exists.
 
-```rust
-let def = std::fs::read_to_string("assets/screens/demo_chest.screen.ron")?;
-screens.register(ScreenDef::from_ron(&def)?);
+```ron
+(
+    kind: "copper:chest",
+    inherits: "demo:chest",
+    remove: ["hint"],
+    root: (
+        type: "panel", role: "panel", tags: {"test_id": "copper_panel"},
+        children: [
+            // Fills the ancestor's `(type: "anchor", id: "title_end")`,
+            // wherever in its tree that anchor stands.
+            (type: "text", key: "copper.badge", style: "muted",
+             tags: {"test_id": "title_end"}),
+            // A new id, so it is appended after the ancestor's children.
+            (type: "text", key: "copper.footer", style: "muted",
+             tags: {"test_id": "footer"}),
+        ],
+    ),
+)
 ```
 
-There is no `ScreenLoader` asset loader yet, which costs a screen file hot
-reload through the `AssetServer`. It is tracked in
-[`docs/FOLLOWUPS.md`](../FOLLOWUPS.md). Screens registered by a mod's `data.lua`
-do hot reload, because the whole data stage re-runs; see
+The merge identity is a node's **id**: its `test_id` tag, or, for an `anchor`,
+the anchor's own id. One namespace on purpose -- that is what lets a child fill
+an ancestor's anchor by naming it. The rules:
+
+- A child node whose id names a node **anywhere** in the ancestor's tree
+  replaces that node, subtree and all, in place.
+- A child node with an id the ancestor does not have, or with no id at all, is
+  appended under the ancestor node its own parent corresponds to.
+- The child's root always wins on shape (role, layout, tags); its children merge
+  onto the ancestor root's children.
+- Ids in `remove` are deleted from the merged tree afterwards, at any depth.
+- `kind` is always the child's. `listring` is the child's when non-empty,
+  otherwise the ancestor's.
+
+Chains are followed up to `MAX_INHERIT_DEPTH` (8). A cycle, an ancestor nobody
+registered, or a chain past the limit logs one error naming the kinds involved
+and falls back to the screen's own tree -- a broken data file costs you a plain
+screen, never a panic.
+
+Injections are still matched against the kind that opened, so an injection aimed
+at `demo:chest` does not follow the tree into `copper:chest`; target
+`slotted:any` to reach every screen with the anchor.
+
+## Loading one
+
+A screen can be registered directly:
+
+```rust
+screens.register(ScreenDef::from_ron(&text)?);
+```
+
+but the usual way is the `*.screen.ron` asset loader, which is what gives a
+screen file hot reload:
+
+```rust
+fn setup(assets: Res<AssetServer>, mut screens: ResMut<ScreenAssets>) {
+    screens.load(&assets, "screens/demo_chest.screen.ron");
+}
+```
+
+`ScreenAssets` is a list of handles and nothing more; holding the handle is what
+keeps the file loaded and watched. `apply_screen_assets` does the rest: every
+`Added` or `Modified` event registers the definition in `Screens` and, if a
+screen of that kind is open right now, closes and re-opens it on the same menu
+entity -- the same respawn path `slotted-packs` takes after a mod reload, so the
+slots re-seed without an inventory write. A file that stops parsing leaves the
+last good definition registered and the open screen alone.
+
+Hot reload needs Bevy's watcher (`bevy/file_watcher`) enabled in the binary;
+without it the assets still load, they just do not re-read on a save. Screens
+registered by a mod's `data.lua` reload through the data stage instead; see
 [hot-reload.md](hot-reload.md).

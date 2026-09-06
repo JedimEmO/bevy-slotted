@@ -31,6 +31,7 @@ fn bare_chest() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout::default(),
@@ -181,6 +182,7 @@ fn tabbed_chest() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(TABBED),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout {

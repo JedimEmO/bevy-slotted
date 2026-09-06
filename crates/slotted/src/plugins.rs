@@ -52,8 +52,81 @@ impl PluginGroup for SlottedPlugins {
         {
             group = group.add(slotted_packs::SlottedPacksPlugin::default());
         }
+        #[cfg(feature = "net")]
+        {
+            group = group.add(SlottedNetPlugin);
+        }
         group
     }
+}
+
+/// The client end of a connection to a `slotted_net::MenuServer`, waiting to
+/// be turned into an [`Authority`](slotted_ecs::Authority).
+///
+/// Insert one of these before adding [`SlottedPlugins`] and the group wires a
+/// `RemoteAuthority` over it. Insert nothing and the group leaves the default
+/// `LocalAuthority` alone, so the same binary plays single-player by simply
+/// not connecting.
+///
+/// The transport is taken out on the first frame, which is why it sits behind
+/// an `Option`: a `Transport` is not `Clone` in general, and building the
+/// authority needs to own it.
+#[cfg(feature = "net")]
+#[derive(Resource)]
+pub struct ClientTransport(pub std::sync::Mutex<Option<slotted_net::BoxedClientTransport>>);
+
+#[cfg(feature = "net")]
+impl ClientTransport {
+    /// Wraps a transport ready for [`SlottedNetPlugin`] to take.
+    pub fn new(
+        transport: impl slotted_net::Transport<
+            Out = slotted_net::ClientMessage,
+            In = slotted_net::ServerMessage,
+        > + 'static,
+    ) -> Self {
+        Self(std::sync::Mutex::new(Some(Box::new(transport))))
+    }
+}
+
+/// Swaps `LocalAuthority` for a `slotted_net::RemoteAuthority` when a
+/// [`ClientTransport`] resource is present.
+///
+/// It runs in `PreStartup`, before `slotted-ecs` inserts its default, so the
+/// prediction loop never sees a local authority it would have to unlearn.
+#[cfg(feature = "net")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SlottedNetPlugin;
+
+#[cfg(feature = "net")]
+impl Plugin for SlottedNetPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PreStartup, wire_remote_authority);
+    }
+}
+
+#[cfg(feature = "net")]
+fn wire_remote_authority(
+    mut commands: Commands,
+    transport: Option<ResMut<ClientTransport>>,
+    existing: Option<Res<slotted_ecs::Authority>>,
+) {
+    if existing.is_some() {
+        return;
+    }
+    let Some(transport) = transport else {
+        return;
+    };
+    let taken = transport
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take();
+    let Some(taken) = taken else {
+        return;
+    };
+    commands.insert_resource(slotted_ecs::Authority::new(
+        slotted_net::RemoteAuthority::new(taken),
+    ));
 }
 
 /// [`HeadlessBevyPlugins`] followed by `SlottedPlugins { headless: true }`.

@@ -25,6 +25,7 @@ fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout {
@@ -474,6 +475,7 @@ fn two_open_screens_both_appear_in_the_tree() {
     let second = ScreenDef {
         kind: ScreenKind::new("demo:second"),
         inherits: None,
+        remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout::default(),

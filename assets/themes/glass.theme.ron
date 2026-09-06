@@ -26,6 +26,14 @@
                 FlyToSlot: (duration: 110, easing: Snap),
             },
         ),
+        // Type is Manrope for prose and Barlow Condensed for numerals and
+        // labels, shipped under assets/fonts/ with their OFL.txt. A game that
+        // would rather ask the OS for the family can drop `path:` and set
+        // `system: true`, which needs Bevy's `system_font_discovery` feature.
+        fonts: {
+            "body": (family: "Manrope", path: "fonts/manrope/Manrope-Variable.ttf"),
+            "display": (family: "Barlow Condensed", path: "fonts/barlow-condensed/BarlowCondensed-SemiBold.ttf"),
+        },
         blur: (radius: 4.0, backdrop_divisor: 4),
         palette: {
             "base":     "#0B0E14",
@@ -52,7 +60,7 @@
             radius: 16.0,
             elevation: Some("high"),
         ),
-        "panel.title": Text(color: "$text", size: 15.0),
+        "panel.title": Text(color: "$text", size: 15.0, font: "body"),
 
         "slot": Solid(fill: "#141A24B8", border: "#2A34468C", radius: 8.0),
         "slot.hover": Solid(fill: "#243447E6", border: "#7FD1FFD9", radius: 8.0),
@@ -88,7 +96,7 @@
 
         "tooltip": Solid(fill: "#0B0E14F2", border: None, radius: 12.0, elevation: Some("mid")),
         "tooltip.frame": Solid(fill: "#00000000", border: "$hairline", radius: 12.0),
-        "tooltip.title": Text(color: "$text", size: 14.0),
+        "tooltip.title": Text(color: "$text", size: 14.0, font: "body"),
 
         "button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),
         "button.primary": Gradient(
@@ -99,9 +107,9 @@
         ),
         "button.hover": Solid(fill: "#243447E6", border: "$accent", radius: 8.0),
 
-        "text": Text(color: "$text", size: 13.0),
-        "text.muted": Text(color: "$muted", size: 11.0),
-        "count": Text(color: "$text", size: 11.0, shadow: "#000000BF"),
+        "text": Text(color: "$text", size: 13.0, font: "body"),
+        "text.muted": Text(color: "$muted", size: 11.0, font: "body"),
+        "count": Text(color: "$text", size: 11.0, shadow: "#000000BF", font: "display"),
 
         "rail": Solid(fill: "#0B0E14A6", border: "$hairline", radius: 12.0),
         "rail.button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),
@@ -120,9 +128,9 @@
         // namespace legible on it.
         "browser.card": Solid(fill: "#FFFFFF0D", border: "#FFFFFF14", radius: 8.0),
         "browser.card.hover": Solid(fill: "#FFFFFF1A", border: "$accent", radius: 8.0),
-        "browser.card.name": Text(color: "$text", size: 11.0),
-        "browser.badge": Text(color: "#8A97AD", size: 9.0),
-        "browser.glyph": Text(color: "#8A97AD", size: 22.0),
+        "browser.card.name": Text(color: "$text", size: 11.0, font: "body"),
+        "browser.badge": Text(color: "#8A97AD", size: 9.0, font: "display"),
+        "browser.glyph": Text(color: "#8A97AD", size: 22.0, font: "display"),
 
         // The rarity strip across the top of a card. `common` is transparent,
         // so an ordinary item shows no strip at all.
@@ -136,8 +144,8 @@
         // Chips and tabs are pills; the selected one inverts to the accent.
         "browser.chip": Solid(fill: "#FFFFFF0F", border: "#FFFFFF1A", radius: 999.0),
         "browser.chip.active": Solid(fill: "$accent", border: "$accent", radius: 999.0),
-        "browser.chip.text": Text(color: "#C6D0DD", size: 12.0),
-        "browser.chip.text.active": Text(color: "$base", size: 12.0),
+        "browser.chip.text": Text(color: "#C6D0DD", size: 12.0, font: "body"),
+        "browser.chip.text.active": Text(color: "$base", size: 12.0, font: "body"),
 
         "browser.search": Solid(fill: "#00000059", border: "#FFFFFF1F", radius: 10.0),
         "browser.search.focus": Solid(fill: "#00000073", border: "$accent", radius: 10.0),
@@ -148,14 +156,14 @@
         "browser.bookmark": Solid(fill: "#2A241A99", border: "$warm", radius: 6.0),
 
         // The recipe view's header title and the small pill buttons under it.
-        "browser.title": Text(color: "$text", size: 18.0),
+        "browser.title": Text(color: "$text", size: 18.0, font: "body"),
         "browser.pill": Solid(fill: "#FFFFFF14", border: "#FFFFFF1F", radius: 8.0),
-        "browser.pill.text": Text(color: "$text", size: 12.0),
+        "browser.pill.text": Text(color: "$text", size: 12.0, font: "body"),
 
         // The footer: the result count on the left, the hotkey hint and the
         // "used in" line in the quieter tone.
-        "browser.status": Text(color: "#8A97AD", size: 12.0),
-        "browser.hint": Text(color: "#8A97AD", size: 11.0),
+        "browser.status": Text(color: "#8A97AD", size: 12.0, font: "display"),
+        "browser.hint": Text(color: "#8A97AD", size: 11.0, font: "display"),
 
         // Recipe slots reuse the slot geometry; a slot the transfer could not
         // fill turns the danger colour until the next successful dry run.
@@ -174,7 +182,7 @@
         "tank.fill": Solid(fill: "#3B7DD8B0", radius: 6.0),
         "bar": Solid(fill: "#0B0E14B8", border: "$hairline", radius: 6.0),
         "bar.fill": Solid(fill: "$warm", radius: 5.0),
-        "bar.text": Text(color: "$text", size: 10.0),
+        "bar.text": Text(color: "$text", size: 10.0, font: "display"),
         "progress": Solid(fill: "#FFFFFF14", radius: 4.0),
         "progress.fill": Gradient(angle: 90.0, stops: [(0.0, "#5AAEE0"), (1.0, "$accent")], radius: 4.0),
 

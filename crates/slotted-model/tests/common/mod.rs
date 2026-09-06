@@ -54,10 +54,15 @@ impl Fixture {
         Self::new(MenuDef::player())
     }
 
-    /// Puts `stack` at the inventory position behind menu slot `slot`.
+    /// Puts `stack` where menu slot `slot` reads it from: the backing
+    /// inventory, or the state's hint map for a ghost or filter slot.
     pub fn put(&mut self, slot: u16, stack: ItemStack) {
         let sd = self.def.slot(SlotIx(slot)).unwrap().clone();
-        self.inv[sd.source].set(usize::from(sd.index), Some(stack));
+        if sd.behaviour.is_ghost() {
+            self.state.set_hint(SlotIx(slot), Some(stack));
+        } else {
+            self.inv[sd.source].set(usize::from(sd.index), Some(stack));
+        }
     }
 
     pub fn put_in(&mut self, inventory: InventoryRef, index: usize, stack: ItemStack) {
@@ -68,8 +73,14 @@ impl Fixture {
         self.state.carried = Some(stack);
     }
 
-    /// Content of menu slot `slot`.
+    /// What menu slot `slot` displays, hints included.
     pub fn at(&self, slot: u16) -> Option<&ItemStack> {
+        slotted_model::slot_view(&self.def, &self.inv, &self.state, SlotIx(slot))
+    }
+
+    /// What the backing inventory really holds behind menu slot `slot`,
+    /// ignoring hints. A ghost slot always reads `None` here.
+    pub fn stored_at(&self, slot: u16) -> Option<&ItemStack> {
         let sd = self.def.slot(SlotIx(slot)).unwrap();
         self.inv[sd.source].get(usize::from(sd.index))
     }
