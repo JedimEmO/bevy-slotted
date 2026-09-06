@@ -40,6 +40,7 @@ use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::ui::ui_transform::UiGlobalTransform;
 use bevy::window::{PrimaryWindow, WindowResolution};
 use chest::{ChestBinding, ChestDemoPlugin};
+use showcase::backdrop::{BackdropPlugin as SceneBackdropPlugin, MainCamera};
 use slotted::prelude::*;
 use slotted::theme::blur::{BackdropPlugin, BackdropSource};
 use slotted_model::SlotIx;
@@ -129,16 +130,15 @@ fn main() {
     // the layers is written beside the example rather than into `assets/`,
     // because it is this player's layout and not the game's data.
     .insert_resource(slotted::ui::hud_editor::HudEditKey(KeyCode::F7))
-    .insert_resource(slotted::ui::hud_editor::HudLayoutStore {
-        path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("hud_layout.ron"),
-    })
-    .add_systems(Startup, (setup_scene, setup_screen).chain())
+    .insert_resource(slotted::ui::hud_editor::HudLayoutStore::file(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("hud_layout.ron"),
+    ))
+    .add_plugins(SceneBackdropPlugin)
+    .add_systems(Startup, (setup_screen, mark_backdrop_source))
     .add_systems(
         Update,
         (
             open_chest_when_loaded,
-            orbit_camera,
-            spin_cubes,
             park_pointer,
             park_paint,
             open_recipe_page,
@@ -160,77 +160,15 @@ fn main() {
     app.run();
 }
 
-/// Marks the camera the UI and the backdrop both follow.
-#[derive(Component)]
-struct MainCamera;
-
-/// Rotation speed of a demo cube.
-#[derive(Component)]
-struct Spin(f32);
-
-/// Ground, a ring of coloured cubes, one directional light, one camera.
-fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(60.0, 60.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.10, 0.12, 0.16),
-            perceptual_roughness: 0.9,
-            ..default()
-        })),
-    ));
-
-    let cube = meshes.add(Cuboid::new(1.6, 1.6, 1.6));
-    let palette = [
-        Color::srgb(0.90, 0.32, 0.36),
-        Color::srgb(0.32, 0.72, 0.95),
-        Color::srgb(0.98, 0.75, 0.28),
-        Color::srgb(0.45, 0.88, 0.55),
-        Color::srgb(0.78, 0.45, 0.95),
-        Color::srgb(0.98, 0.55, 0.25),
-    ];
-    #[allow(clippy::cast_precision_loss)]
-    for (i, color) in palette.into_iter().enumerate() {
-        let angle = i as f32 / palette.len() as f32 * std::f32::consts::TAU;
-        commands.spawn((
-            Mesh3d(cube.clone()),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: color,
-                perceptual_roughness: 0.35,
-                metallic: 0.1,
-                ..default()
-            })),
-            Transform::from_xyz(
-                angle.cos() * 5.0,
-                0.8 + (i as f32 * 0.35),
-                angle.sin() * 5.0,
-            )
-            .with_rotation(Quat::from_rotation_y(angle)),
-            Spin(0.4 + i as f32 * 0.1),
-        ));
+/// `Startup`, after [`showcase::backdrop::setup_backdrop`]: the blur pass
+/// copies this camera's transform, so the image behind the panel lines up
+/// with the world around it. The marker lives behind the facade's `blur`
+/// feature, which the shared backdrop crate does not enable, so the example
+/// that wants it says so itself.
+fn mark_backdrop_source(mut commands: Commands, cameras: Query<Entity, With<MainCamera>>) {
+    for camera in &cameras {
+        commands.entity(camera).insert(BackdropSource);
     }
-
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 12_000.0,
-            shadow_maps_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(6.0, 12.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(0.0, 6.0, 14.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
-        MainCamera,
-        // The backdrop camera copies this transform, so the blurred image
-        // behind the panel lines up with the world around it.
-        BackdropSource,
-        IsDefaultUiCamera,
-    ));
 }
 
 /// Loads the theme and the screen, both through the `AssetServer`.
@@ -266,21 +204,6 @@ fn open_chest_when_loaded(
     }
     *opened = true;
     chest::open_chest(&mut commands, &registries, cheat.0);
-}
-
-fn orbit_camera(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainCamera>>) {
-    let t = time.elapsed_secs() * 0.18;
-    for mut transform in &mut cameras {
-        *transform = Transform::from_xyz(t.sin() * 14.0, 6.0, t.cos() * 14.0)
-            .looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y);
-    }
-}
-
-fn spin_cubes(time: Res<Time>, mut cubes: Query<(&mut Transform, &Spin)>) {
-    for (mut transform, spin) in &mut cubes {
-        transform.rotate_y(spin.0 * time.delta_secs());
-        transform.rotate_x(spin.0 * 0.4 * time.delta_secs());
-    }
 }
 
 /// Drives the real picking backend from a synthetic pointer so `--hover` can

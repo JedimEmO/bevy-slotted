@@ -1,10 +1,19 @@
-//! The showcase's scene table, and later the code the examples share.
+//! The showcase's scene table and the code the examples share.
 //!
-//! `docs/design/showcase-contract.md` is the contract. This crate has no
-//! dependencies so the table can be read from the page's bridge, from a native
-//! test and from a build script alike. The lifted example code (the chest's
-//! menu and contents, the machine's simulation and face widget, the backdrop)
-//! lands here as modules under package A; until then the crate is the table.
+//! `docs/design/showcase-contract.md` is the contract. The table is plain data
+//! the page's bridge, a native test and a build script can all read. Beside it
+//! live the modules the native examples and the web playground share: the
+//! chest's menu and contents ([`chest`]), the machine's simulation and face
+//! widget ([`machine`]), the copper chest the Lua mods build ([`mods`]), the
+//! cube ring and orbit every scene sits in front of ([`backdrop`]), and the
+//! two screen files compiled in so a scene switch never waits on an asset
+//! handle ([`screens`]).
+
+pub mod backdrop;
+pub mod chest;
+pub mod machine;
+pub mod mods;
+pub mod screens;
 
 /// One of the eight scenes, in rail order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -40,8 +49,9 @@ impl Scene {
         Scene::Testing,
     ];
 
-    /// The scene the page opens on until every scene is real.
-    pub const DEFAULT: Scene = Scene::Mods;
+    /// The scene the page opens on: the chest, which is the one that shows
+    /// the interaction model the whole project is about.
+    pub const DEFAULT: Scene = Scene::Chest;
 
     /// The id the page and the bridge use: lowercase, one word.
     pub const fn id(self) -> &'static str {
@@ -99,7 +109,7 @@ pub const SCENES: [SceneDef; 8] = [
             "Hold right and drag across empty slots",
             "Hover an item and hold Shift",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Browser,
@@ -110,7 +120,7 @@ pub const SCENES: [SceneDef; 8] = [
             "Press R over a card",
             "Press A to bookmark it",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Machine,
@@ -121,7 +131,7 @@ pub const SCENES: [SceneDef; 8] = [
             "Open the redstone tab",
             "Press Sort",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Themes,
@@ -132,12 +142,12 @@ pub const SCENES: [SceneDef; 8] = [
             "Switch to neon",
             "Open the Machine scene and switch again",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Mods,
         title: "Mods",
-        caption: "Three Lua mods, editable here, hot-reloaded into the running game. The chest keeps its contents across a reload, and a crash restarts the runtime.",
+        caption: "Four Lua mods, editable here, hot-reloaded into the running game. The chest keeps its contents across a reload, and a crash restarts the runtime.",
         tries: [
             "Edit control.lua and press Run",
             "Open Tests and run them",
@@ -154,7 +164,7 @@ pub const SCENES: [SceneDef; 8] = [
             "Drag the clock",
             "Reload the page and find them where you left them",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Multiplayer,
@@ -165,7 +175,7 @@ pub const SCENES: [SceneDef; 8] = [
             "Raise the loss slider and click again",
             "Read the message log",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Testing,
@@ -176,7 +186,7 @@ pub const SCENES: [SceneDef; 8] = [
             "Scrub the recording",
             "Press play",
         ],
-        ready: false,
+        ready: true,
     },
 ];
 
@@ -195,9 +205,9 @@ mod tests {
     }
 
     #[test]
-    fn only_the_existing_playground_is_ready_yet() {
+    fn every_scene_is_ready() {
         let ready: Vec<Scene> = Scene::ALL.into_iter().filter(|s| s.ready()).collect();
-        assert_eq!(ready, [Scene::Mods]);
+        assert_eq!(ready, Scene::ALL);
         assert!(Scene::DEFAULT.ready());
     }
 }

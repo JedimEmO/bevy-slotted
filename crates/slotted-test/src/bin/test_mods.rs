@@ -1,10 +1,11 @@
-//! `test-mods <mods dir> [--filter <mod>]`: run every mod's `tests/*.lua`
+//! `test-mods <mods dir> [--filter <mod>] [--screens <dir>]`: run every mod's `tests/*.lua`
 //! through a headless harness and print a report. Phase 6 contract section
 //! 3.2. `cargo xtask test-mods <dir>` is the front door.
 //!
 //! ```text
-//! cargo xtask test-mods examples/machine/mods
-//! cargo xtask test-mods examples/machine/mods --filter sorter
+//! cargo xtask test-mods examples/modded/mods
+//! cargo xtask test-mods examples/modded/mods --filter sorter
+//! cargo xtask test-mods examples/modded/mods --screens examples/machine/screens
 //! ```
 //!
 //! The harness the tests run against is the shipped one: the workspace
@@ -12,6 +13,12 @@
 //! the real lifecycle, and the game's own screens picked up from a `screens/`
 //! directory beside `mods/` (that is where an example keeps them, and a mod
 //! test that opens a host screen has no other way to reach it).
+//!
+//! `--screens <dir>` adds another such directory, and may be given more than
+//! once. One mod can inject into more than one game: `sorter` puts its button
+//! on the chest and on the furnace, and its two test files want a screen from
+//! each. The mods live in one place and the screens in two, so the second one
+//! is named rather than guessed from the mods directory's parent.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -21,14 +28,19 @@ use slotted_test::prelude::*;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(dir) = args.first().map(PathBuf::from) else {
-        eprintln!("usage: test-mods <mods dir> [--filter <mod>]");
+        eprintln!("usage: test-mods <mods dir> [--filter <mod>] [--screens <dir>]...");
         return ExitCode::FAILURE;
     };
     let filter = args
         .windows(2)
         .find(|w| w[0] == "--filter")
         .map(|w| w[1].clone());
-    match run(&dir, filter.as_deref()) {
+    let extra_screens: Vec<PathBuf> = args
+        .windows(2)
+        .filter(|w| w[0] == "--screens")
+        .map(|w| PathBuf::from(&w[1]))
+        .collect();
+    match run(&dir, filter.as_deref(), &extra_screens) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(message) => {
@@ -40,7 +52,7 @@ fn main() -> ExitCode {
 
 /// Builds the harness, loads the mods, runs the tests. `Ok(true)` when every
 /// test passed.
-fn run(dir: &Path, filter: Option<&str>) -> Result<bool, String> {
+fn run(dir: &Path, filter: Option<&str>, extra_screens: &[PathBuf]) -> Result<bool, String> {
     if !dir.is_dir() {
         return Err(format!("{} is not a directory", dir.display()));
     }
@@ -54,7 +66,13 @@ fn run(dir: &Path, filter: Option<&str>) -> Result<bool, String> {
     // The `chest` alias every mod test may open against: a single chest plus
     // the player's pockets, all empty.
     harness.register_fixture("chest", ChestFixture::empty());
-    for def in host_screens(dir) {
+    let mut screen_dirs: Vec<PathBuf> = dir
+        .parent()
+        .map(|p| p.join("screens"))
+        .into_iter()
+        .collect();
+    screen_dirs.extend(extra_screens.iter().cloned());
+    for def in screen_dirs.iter().flat_map(|dir| screens_in(dir)) {
         harness.world_mut().resource_mut::<Screens>().register(def);
     }
 
@@ -114,16 +132,14 @@ fn run(dir: &Path, filter: Option<&str>) -> Result<bool, String> {
     Ok(failed == 0)
 }
 
-/// `<mods dir>/../screens/*.screen.ron`, parsed.
+/// Every `*.screen.ron` in one directory, parsed.
 ///
 /// A mod's test opens a screen by kind, and a screen the *game* owns is not
-/// in any mod. An example keeps those beside its `mods/`, so that is where
-/// this looks; a directory that has none simply contributes nothing.
-fn host_screens(mods_dir: &Path) -> Vec<ScreenDef> {
-    let Some(dir) = mods_dir.parent().map(|p| p.join("screens")) else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+/// in any mod. An example keeps those beside its `mods/`, which is the
+/// directory the caller derives; `--screens` names any others. A directory
+/// that does not exist simply contributes nothing.
+fn screens_in(dir: &Path) -> Vec<ScreenDef> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut paths: Vec<PathBuf> = entries

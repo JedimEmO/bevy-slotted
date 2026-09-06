@@ -1,0 +1,82 @@
+// Recorded with `cargo run -p chest -- --record examples/showcase/recordings/chest.rec.ron \
+//     --paint --shot /tmp/rec.png` at 1600x900, scale factor 1.
+//
+// What it holds: the pointer parks over the fullest chest slot, left-clicks to
+// pick the stack up, then holds the right button down and drags across three
+// empty slots -- the sweep that paints one item into each. It ends mid-gesture
+// with the button still down, so a replay to the last frame lands on three
+// phantom previews and a cursor that has already counted itself down, which is
+// a state worth scrubbing to and one no single click could produce.
+//
+// One frame of stray gamepad axis noise from the recording machine's joystick
+// was removed by hand, so the file replays the same on a desktop with a
+// controller plugged in and on one without.
+(
+    version: 1,
+    resolution: (1600.0, 900.0),
+    scale_factor: 1.0,
+    frame_delta_us: 16666,
+    frames: [
+        (
+            frame: 2,
+            inputs: [
+                PointerMove(
+                    pos: (1003.0, 763.0),
+                ),
+                PointerMove(
+                    pos: (1003.0, 763.0),
+                ),
+            ],
+        ),
+        (
+            frame: 32,
+            inputs: [
+                PointerMove(
+                    pos: (537.0, 306.0),
+                ),
+            ],
+        ),
+        (
+            frame: 33,
+            inputs: [
+                PointerPress(Primary),
+            ],
+        ),
+        (
+            frame: 34,
+            inputs: [
+                PointerRelease(Primary),
+            ],
+        ),
+        (
+            frame: 35,
+            inputs: [
+                PointerMove(
+                    pos: (687.0, 306.0),
+                ),
+            ],
+        ),
+        (
+            frame: 36,
+            inputs: [
+                PointerPress(Secondary),
+            ],
+        ),
+        (
+            frame: 37,
+            inputs: [
+                PointerMove(
+                    pos: (887.0, 306.0),
+                ),
+            ],
+        ),
+        (
+            frame: 38,
+            inputs: [
+                PointerMove(
+                    pos: (937.0, 306.0),
+                ),
+            ],
+        ),
+    ],
+)

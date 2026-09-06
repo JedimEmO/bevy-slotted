@@ -1,5 +1,10 @@
--- sorter/tests/sort.lua: run by `cargo xtask test-mods examples/machine/mods`
--- and by examples/machine/tests/ui.rs. Phase 6 contract section 3.1.
+-- sorter/tests/sort_machine.lua: the same button on a screen this mod has
+-- never seen. Run by `cargo xtask test-mods examples/modded/mods` and by
+-- `examples/machine/tests/ui.rs`. Phase 6 contract section 3.1.
+--
+-- It lives beside sort.lua rather than inside it because the two need
+-- different screens open, and the playground's Tests tab runs the first file
+-- in the directory against whatever the canvas already shows.
 
 local t = slotted.test
 

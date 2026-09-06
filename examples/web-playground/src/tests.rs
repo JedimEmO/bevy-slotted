@@ -105,6 +105,39 @@ fn call(host: &ScriptHost, script: ScriptId, event: ScriptEvent) -> Result<Scrip
         .ok_or_else(|| "the test file answered with no test command".to_owned())
 }
 
+/// Stops a live test run, if one is in flight.
+///
+/// The runner drives a real screen one op per frame and holds the entities it
+/// found on the way in. Anything that despawns that screen leaves the next op
+/// pointing at an entity that is gone, and on `wasm32-unknown-unknown` that is
+/// a panic, which is an aborted module and a dead canvas rather than an error
+/// line the page can report. The Testing scene hit it by itself: pressing Load
+/// recording rewinds the canvas to the recording's opening chest, and a visitor
+/// who pressed Run a moment earlier still had a runner walking the screen that
+/// rewind tore down.
+///
+/// So the rule is that whatever takes the screen away stops the run first, and
+/// says so. `scenes::teardown` is the one place that happens, which is every
+/// scene switch as well as the rewind.
+pub fn cancel_live_tests(world: &mut World) {
+    let Some(runner) = world.remove_resource::<LiveTestRunner>() else {
+        return;
+    };
+    if let Some(host) = world.get_resource::<ScriptHost>().cloned() {
+        host.lock().unload(runner.script);
+    }
+    if let Some(bus) = world.get_resource::<Bus>() {
+        bus.log(
+            "warn",
+            "test",
+            format!(
+                "{}/{}: the screen it was driving closed, so the run was stopped",
+                runner.mod_id, runner.file
+            ),
+        );
+    }
+}
+
 /// `Update`, exclusive: advance the run by one op, or by one frame of one.
 ///
 /// The runner is taken out of the world for the duration, because performing

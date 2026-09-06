@@ -23,6 +23,7 @@ use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::window::WindowResolution;
 use modded::{ModdedDemoPlugin, layout, mods_dir};
+use showcase::backdrop::MainCamera;
 use slotted::prelude::*;
 use slotted::theme::blur::{BackdropPlugin, BackdropSource};
 use slotted_packs::{PackSourcePlugin, PacksConfig, ReloadMod, SlottedPacksPlugin};
@@ -103,84 +104,25 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.043, 0.055, 0.078)))
         .insert_resource(modded::ConsoleVisible(!cli.no_console))
         .insert_resource(cli)
-        .add_systems(Startup, (setup_scene, setup_theme))
-        .add_systems(
-            Update,
-            (orbit_camera, spin_cubes, reload_once, shot_and_exit),
-        );
-
-    app.run();
+        .insert_resource(showcase::backdrop::BackdropConfig {
+            shadows: true,
+            ..showcase::backdrop::BackdropConfig::web()
+        })
+        .add_plugins(showcase::backdrop::BackdropPlugin)
+        .add_systems(Startup, (setup_theme, mark_backdrop_source))
+        .add_systems(Update, (reload_once, shot_and_exit))
+        .run();
 }
 
-/// Marks the camera the UI and the backdrop both follow.
-#[derive(Component)]
-struct MainCamera;
-
-/// Rotation speed of a demo cube.
-#[derive(Component)]
-struct Spin(f32);
-
-/// Ground, a ring of coloured cubes, one directional light, one camera.
-fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(60.0, 60.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.10, 0.12, 0.16),
-            perceptual_roughness: 0.9,
-            ..default()
-        })),
-    ));
-
-    let cube = meshes.add(Cuboid::new(1.6, 1.6, 1.6));
-    let palette = [
-        Color::srgb(0.90, 0.55, 0.30),
-        Color::srgb(0.32, 0.72, 0.95),
-        Color::srgb(0.98, 0.75, 0.28),
-        Color::srgb(0.45, 0.88, 0.55),
-        Color::srgb(0.78, 0.45, 0.95),
-        Color::srgb(0.98, 0.42, 0.36),
-    ];
-    #[allow(clippy::cast_precision_loss)]
-    for (i, color) in palette.into_iter().enumerate() {
-        let angle = i as f32 / palette.len() as f32 * std::f32::consts::TAU;
-        commands.spawn((
-            Mesh3d(cube.clone()),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: color,
-                perceptual_roughness: 0.35,
-                metallic: 0.1,
-                ..default()
-            })),
-            Transform::from_xyz(
-                angle.cos() * 5.0,
-                0.8 + (i as f32 * 0.35),
-                angle.sin() * 5.0,
-            )
-            .with_rotation(Quat::from_rotation_y(angle)),
-            Spin(0.4 + i as f32 * 0.1),
-        ));
+/// `Startup`, after [`showcase::backdrop::setup_backdrop`]: the blur pass
+/// copies this camera's transform, so the image behind the panel lines up
+/// with the world around it. The marker lives behind the facade's `blur`
+/// feature, which the shared backdrop crate does not enable, so the example
+/// that wants it says so itself.
+fn mark_backdrop_source(mut commands: Commands, cameras: Query<Entity, With<MainCamera>>) {
+    for camera in &cameras {
+        commands.entity(camera).insert(BackdropSource);
     }
-
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 12_000.0,
-            shadow_maps_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(6.0, 12.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(0.0, 6.0, 14.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
-        MainCamera,
-        BackdropSource,
-        IsDefaultUiCamera,
-    ));
 }
 
 /// The theme comes through `pack://`, so a resource pack could replace it.
@@ -188,21 +130,6 @@ fn setup_theme(mut commands: Commands, assets: Res<AssetServer>, cli: Res<Cli>) 
     commands.insert_resource(ActiveTheme(
         assets.load(format!("themes/{}.theme.ron", cli.theme)),
     ));
-}
-
-fn orbit_camera(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainCamera>>) {
-    let t = time.elapsed_secs() * 0.18;
-    for mut transform in &mut cameras {
-        *transform = Transform::from_xyz(t.sin() * 14.0, 6.0, t.cos() * 14.0)
-            .looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y);
-    }
-}
-
-fn spin_cubes(time: Res<Time>, mut cubes: Query<(&mut Transform, &Spin)>) {
-    for (mut transform, spin) in &mut cubes {
-        transform.rotate_y(spin.0 * time.delta_secs());
-        transform.rotate_x(spin.0 * 0.4 * time.delta_secs());
-    }
 }
 
 /// `--reload <mod>`: ask for one reload a second in, so a screenshot taken at

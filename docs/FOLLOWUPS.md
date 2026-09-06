@@ -6,6 +6,48 @@ Entries the gap-closing round closed have been deleted rather than struck
 through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
 and summarised below. What is left here is open.
 
+## Showcase, 2026-09-06
+
+The eight-scene showcase (`docs/design/showcase-contract.md`) landed as two
+packages and was integrated in one pass. What that pass fixed is in the git
+history; what it left open is here.
+
+- **The HUD poll only writes `localStorage` when the layout it read back is
+  non-empty.** `enterHud` in `playground.js` guards on length, so today only
+  Reset can clear the stored key, and Reset clears it directly. That is correct
+  as long as Reset is the only way to empty a layout. Give the scene a second
+  one and the guard becomes wrong: a layout emptied by that route would keep
+  the old RON in storage and come back on the next visit. The guard should then
+  compare what it read against what is stored rather than test its length.
+- **`arrow_and_digit_keys_do_not_overlap` failed once in three workspace runs.**
+  `crates/slotted-ui/tests/review_adversarial.rs`, panicking in
+  `crates/slotted-icons/src/shape.rs:249`, which is `inside()` doing
+  `points.len() - 1` on what must have been an empty polygon: an arithmetic
+  overflow, not an assertion. It has not reproduced since, in that test alone,
+  in that crate with `--all-features`, or in two further full workspace runs, so
+  the trigger is something about a parallel run rather than the test. A guard on
+  the empty slice would turn the panic into a `false`, which is the right answer
+  for "is this point inside nothing"; whoever owns `slotted-icons` should decide
+  whether the empty polygon is itself the bug.
+- **The replay's geometry check is reported in the browser and enforced in a
+  test.** A recording carries pointer positions and no locators, so a canvas of
+  another size lands the clicks elsewhere. `UiHarness::replay_recording`
+  refuses; the page logs a `warn` and plays it anyway, because a visitor's
+  window is whatever size it is and refusing would mean the scrubber never
+  worked. Locators in recordings would close this properly.
+- **The page's scrubber range trails the module by up to a second.**
+  `replay_load` is a request the world applies next frame, so the click's own
+  `replay_status` still reads zero frames and the range input keeps `max="0"`
+  until the one-second poll. A value set in that window is clamped by the
+  browser and the seek goes nowhere. `smoke.mjs` waits for the range to grow;
+  a page that wanted to be exact would re-read the status a frame later.
+- **`test-mods` finds one `screens/` directory by convention and the rest by
+  argument.** `sorter` injects into `slotted:any` and so has test files for two
+  different games, but lives in one directory. The runner still derives
+  `<mods dir>/../screens`, and `--screens` names any others; the `justfile`
+  passes `examples/machine/screens`. A mod that spanned three games would want
+  the manifest to say so rather than the caller.
+
 ## External review round, 2026-09-06
 
 Eight findings from a second, external review, landed as three packages

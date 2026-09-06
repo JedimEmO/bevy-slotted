@@ -30,6 +30,15 @@ pub fn test_mods(args: &[String]) -> Result<(), String> {
                 forwarded.push("--filter".to_owned());
                 forwarded.push(value.clone());
             }
+            // Repeatable: one mod can inject into more than one game, and its
+            // test files then want a screen from each.
+            "--screens" => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| "--screens needs a directory".to_owned())?;
+                forwarded.push("--screens".to_owned());
+                forwarded.push(value.clone());
+            }
             other => return Err(format!("unknown test-mods argument `{other}`")),
         }
     }

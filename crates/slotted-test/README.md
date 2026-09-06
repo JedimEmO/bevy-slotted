@@ -48,11 +48,16 @@ harness.settle();
 ## The `test-mods` binary
 
 ```
-cargo run -p slotted-test --features script-luaur --bin test-mods -- examples/machine/mods
+cargo run -p slotted-test --features script-luaur --bin test-mods -- examples/modded/mods
 ```
 
 Runs every mod's `tests/*.lua` and prints a report. `cargo xtask test-mods <dir>`
 and `just test-mods` are the shorthands.
+
+It registers the game's own screens from a `screens/` directory beside the mods
+directory, so a mod test can open one. `--screens <dir>` adds another, and may
+be repeated: `sorter` injects into `slotted:any` and has a test file for the
+chest and one for the furnace, whose screens live in two different examples.
 
 ## Feature flags
 

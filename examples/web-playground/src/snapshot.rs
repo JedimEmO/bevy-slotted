@@ -34,7 +34,7 @@ pub struct Slot {
 }
 
 /// One inventory: its length and the slots that hold something.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InventorySnapshot {
     /// How many slots it has.
     pub len: usize,
@@ -42,11 +42,65 @@ pub struct InventorySnapshot {
     pub slots: Vec<Slot>,
 }
 
-/// The open menu's inventories, in `OpenMenu::inventories` order.
+/// The Multiplayer scene's authoritative state: the server's, not a client's.
+///
+/// The other seven scenes have one copy of everything, so the open menu's
+/// inventories are the whole world. Multiplayer has three: the server's
+/// [`ContainerStore`](slotted_net::ContainerStore) and each client's local
+/// mirror of it, and they are allowed to disagree, because watching a wrong
+/// guess corrected is the scene. Snapshotting a client therefore captures a
+/// prediction, and restoring it into a rebuilt pair would make the guess
+/// authoritative. The server's copy is the one that is true.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetSnapshot {
+    /// The chest both players share, as the server holds it.
+    pub chest: InventorySnapshot,
+    /// One entry per session, in `NetLink::sessions` order: that peer's
+    /// private inventories, in the order the server bound them after the
+    /// shared chest.
+    pub players: Vec<Vec<InventorySnapshot>>,
+    /// What each session had on the cursor, in the same order.
+    ///
+    /// A stack on the cursor is out of every container, so leaving it out of
+    /// the snapshot would lose it: a restart mid-drag would come back with the
+    /// chest one stack short and no sign of where it went. It is restored the
+    /// way [`MenuServer`](slotted_net::MenuServer) itself returns a carried
+    /// stack when a session closes, which is what a crashed module is.
+    #[serde(default)]
+    pub carried: Vec<Option<Carried>>,
+}
+
+/// A stack on a cursor, named the way [`Slot`] names one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Carried {
+    /// The item's namespaced id, as text.
+    pub item: String,
+    /// How many.
+    pub count: u32,
+}
+
+/// The open menu's inventories, in `OpenMenu::inventories` order, and which
+/// showcase scene they belong to.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Resource)]
 pub struct Snapshot {
     /// One entry per inventory the menu holds.
     pub inventories: Vec<InventorySnapshot>,
+    /// The scene the visitor was in, as a `showcase::Scene` id
+    /// (docs/design/showcase-contract.md section 4).
+    ///
+    /// A restart re-instantiates the module, which comes up on
+    /// `Scene::DEFAULT`; without this the visitor is thrown back to the chest
+    /// from whichever scene the mod raised in. `#[serde(default)]` so a
+    /// snapshot the page kept from before this field still restores its
+    /// inventories.
+    #[serde(default)]
+    pub scene: Option<String>,
+    /// The Multiplayer scene's server state, when that is the scene.
+    ///
+    /// `#[serde(default)]` for the same reason `scene` has it: a snapshot the
+    /// page kept from before this field still restores its inventories.
+    #[serde(default)]
+    pub net: Option<NetSnapshot>,
 }
 
 impl Snapshot {
@@ -75,28 +129,23 @@ impl Snapshot {
         ron::from_str(text)
     }
 
+    /// The scene this snapshot was taken in, when it names one this build
+    /// knows.
+    pub fn scene(&self) -> Option<showcase::Scene> {
+        self.scene.as_deref().and_then(showcase::Scene::from_id)
+    }
+
     /// Captures `inventories`, naming every stack through `registries`.
     pub fn capture<'a>(
         registries: &FrozenRegistries,
         inventories: impl IntoIterator<Item = &'a slotted_model::Inventory>,
     ) -> Self {
         Self {
+            scene: None,
+            net: None,
             inventories: inventories
                 .into_iter()
-                .map(|inventory| InventorySnapshot {
-                    len: inventory.len(),
-                    slots: (0..inventory.len())
-                        .filter_map(|index| {
-                            let stack = inventory.get(index)?;
-                            let name = registries.items.name_of(stack.id)?;
-                            Some(Slot {
-                                index,
-                                item: name.to_string(),
-                                count: stack.count,
-                            })
-                        })
-                        .collect(),
-                })
+                .map(|inventory| capture_inventory(registries, inventory))
                 .collect(),
         }
     }
@@ -117,26 +166,67 @@ impl Snapshot {
         let Some(source) = self.inventories.get(index) else {
             return 0;
         };
-        for slot in 0..inventory.len() {
-            inventory.set(slot, None);
-        }
-        let mut dropped = 0;
-        for slot in &source.slots {
-            if slot.index >= inventory.len() {
-                dropped += 1;
-                continue;
-            }
-            let resolved = Namespaced::parse(&slot.item)
-                .ok()
-                .and_then(|name| registries.item_id(&name));
-            let Some(id) = resolved else {
-                dropped += 1;
-                continue;
-            };
-            inventory.set(slot.index, Some(ItemStack::new(id, slot.count)));
-        }
-        dropped
+        apply_inventory(source, registries, inventory)
     }
+}
+
+/// One inventory, with every stack named through `registries`.
+///
+/// The free function beside the method because the Multiplayer scene captures
+/// inventories the open menu does not hold: they live in the server's store,
+/// and there is no `Snapshot` to hang them off until they are all in hand.
+#[must_use]
+pub fn capture_inventory(
+    registries: &FrozenRegistries,
+    inventory: &slotted_model::Inventory,
+) -> InventorySnapshot {
+    InventorySnapshot {
+        len: inventory.len(),
+        slots: (0..inventory.len())
+            .filter_map(|index| {
+                let stack = inventory.get(index)?;
+                let name = registries.items.name_of(stack.id)?;
+                Some(Slot {
+                    index,
+                    item: name.to_string(),
+                    count: stack.count,
+                })
+            })
+            .collect(),
+    }
+}
+
+/// Writes `source` into `inventory`, clearing whatever was there, and answers
+/// how many stacks were dropped because the current registries have no such
+/// item.
+///
+/// An inventory whose length no longer matches is still restored as far as it
+/// goes: a mod that shrank the chest from three rows to two should not cost
+/// the visitor the two rows that still fit.
+pub fn apply_inventory(
+    source: &InventorySnapshot,
+    registries: &FrozenRegistries,
+    inventory: &mut slotted_model::Inventory,
+) -> usize {
+    for slot in 0..inventory.len() {
+        inventory.set(slot, None);
+    }
+    let mut dropped = 0;
+    for slot in &source.slots {
+        if slot.index >= inventory.len() {
+            dropped += 1;
+            continue;
+        }
+        let resolved = Namespaced::parse(&slot.item)
+            .ok()
+            .and_then(|name| registries.item_id(&name));
+        let Some(id) = resolved else {
+            dropped += 1;
+            continue;
+        };
+        inventory.set(slot.index, Some(ItemStack::new(id, slot.count)));
+    }
+    dropped
 }
 
 #[cfg(test)]
@@ -202,6 +292,8 @@ mod tests {
     fn a_stack_the_new_registries_do_not_know_is_dropped_not_fatal() {
         let registries = registries();
         let snapshot = Snapshot {
+            scene: None,
+            net: None,
             inventories: vec![InventorySnapshot {
                 len: 9,
                 slots: vec![

@@ -13,6 +13,7 @@ publish = false
 # `gltf-icons` for the iron pickaxe, which is the one demo item whose icon is
 # a glTF model rather than a primitive.
 slotted = { workspace = true, features = ["blur", "dev", "live-icons", "gltf-icons"] }
+showcase = { path = "../showcase", features = ["viewport"] }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true, features = ["std-fs"] }
 # A windowed 3D app needs the renderer, winit and PBR, so this is the one

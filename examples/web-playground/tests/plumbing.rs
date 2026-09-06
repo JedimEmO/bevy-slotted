@@ -246,6 +246,9 @@ fn a_bus_request_becomes_a_reload_message() {
         // Phase 5 restart: `Request::Restore` becomes one of these.
         .add_message::<web_playground::RestoreState>()
         .add_message::<web_playground::showcase::SwitchScene>()
+        // The showcase: `Request::SetTheme` and its seven siblings become one
+        // of these (docs/design/showcase-contract.md section 4).
+        .add_message::<web_playground::SceneCommand>()
         .init_resource::<web_playground::scene::ConsoleErrors>()
         .init_resource::<web_playground::scene::ConsoleVisible>()
         .insert_resource(EditableSource::from_bundle())
@@ -290,6 +293,9 @@ fn a_bad_mod_id_from_the_page_is_reported_and_not_a_panic() {
         // Phase 5 restart: `Request::Restore` becomes one of these.
         .add_message::<web_playground::RestoreState>()
         .add_message::<web_playground::showcase::SwitchScene>()
+        // The showcase: `Request::SetTheme` and its seven siblings become one
+        // of these (docs/design/showcase-contract.md section 4).
+        .add_message::<web_playground::SceneCommand>()
         .init_resource::<web_playground::scene::ConsoleErrors>()
         .init_resource::<web_playground::scene::ConsoleVisible>()
         .insert_resource(EditableSource::from_bundle())

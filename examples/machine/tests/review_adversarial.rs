@@ -233,7 +233,7 @@ fn mods_harness() -> UiHarness {
         .plugins(SlottedPlugins::headless())
         .resolution(1600.0, 900.0)
         .theme("glass")
-        .mods_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("mods"))
+        .mods_dir(machine::mods_dir())
         .build();
     harness.register_fixture("chest", ChestFixture::empty());
     // What `test-mods` does with `<mods dir>/../screens/*.screen.ron`: a mod

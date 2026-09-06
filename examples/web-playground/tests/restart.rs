@@ -42,8 +42,8 @@ fn playground_world() -> (UiHarness, Bus) {
     harness.open_mod_screen(
         CHEST,
         (
-            web_playground::scene::menu_def(),
-            web_playground::scene::inventories(&registries),
+            showcase::mods::menu_def(),
+            showcase::mods::inventories(&registries),
         ),
     );
 
@@ -51,6 +51,10 @@ fn playground_world() -> (UiHarness, Bus) {
     let world = harness.world_mut();
     world.insert_resource(bus.clone());
     world.init_resource::<Messages<web_playground::RestoreState>>();
+    // A snapshot names the scene it was taken in, and `apply_restore` writes a
+    // `SwitchScene` for it (showcase contract section 4).
+    world.init_resource::<Messages<web_playground::showcase::SwitchScene>>();
+    world.init_resource::<web_playground::showcase::ActiveScene>();
     world.get_resource_or_init::<Schedules>().add_systems(
         Update,
         (
@@ -196,6 +200,7 @@ fn a_restore_that_arrives_before_the_menu_waits_for_it() {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<Messages<web_playground::RestoreState>>()
+        .init_resource::<Messages<web_playground::showcase::SwitchScene>>()
         .insert_resource(Bus::new());
     let waiting = app.world().resource::<Bus>().clone();
     app.add_systems(Update, web_playground::apply_restore_for_test);

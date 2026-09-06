@@ -13,6 +13,7 @@ publish = false
 slotted = { workspace = true, features = ["blur", "dev", "viewport"] }
 slotted-packs = { workspace = true, features = ["ui"] }
 slotted-script = { workspace = true }
+showcase = { path = "../showcase", features = ["viewport"] }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true, features = ["std-fs"] }
 bevy = { version = "0.19.1", features = ["bevy_ui_widgets", "png"] }

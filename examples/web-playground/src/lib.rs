@@ -21,7 +21,9 @@
 
 pub mod bundle;
 pub mod bus;
+pub mod hud_store;
 pub mod scene;
+pub mod scenes;
 pub mod showcase;
 pub mod snapshot;
 pub mod tests;
@@ -171,26 +173,78 @@ pub fn build_app(bus: Bus) -> App {
             bevy::input_focus::directional_navigation::DirectionalNavigationPlugin,
         ))
         .insert_resource(runtime())
+        // The HUD store goes in before the plugin group, which is the
+        // documented way to replace an adapter: here it is the page's
+        // `localStorage` behind the `HudLayoutStorage` port
+        // (docs/design/showcase-contract.md section 3.5).
+        .insert_resource(slotted::ui::hud_editor::HudLayoutStore::new(
+            hud_store::global(),
+        ))
         .add_plugins(slotted::SlottedPlugins::default().set(SlottedPacksPlugin {
             config: PacksConfig {
-                hud_tick: None,
+                // The HUD scene's `hud_clock` mod writes the time on every
+                // tick, so unlike the plain playground this app asks for one.
+                // Four a second is enough for a clock and cheap enough that
+                // the other seven scenes never notice it.
+                hud_tick: Some(std::time::Duration::from_millis(250)),
                 // Nothing watches files here; a reload is always something
                 // the page asked for.
                 reload_on_change: false,
-                ..PacksConfig::default()
+                // `demo` and `machine` are the base pack loaded as mods, which
+                // is how a browser tab gets content a running game would have
+                // registered itself (see `build.rs`). They register
+                // `minecraft:` and `slotted:` ids, which for a real mod would
+                // be worth a warning and here is the whole job, so those two
+                // namespaces join `c` as shared.
+                shared_namespaces: vec![
+                    slotted_packs::plugin::SHARED_NAMESPACE.to_owned(),
+                    "minecraft".to_owned(),
+                    "slotted".to_owned(),
+                ],
             },
         }))
         .insert_resource(ClearColor(Color::srgb(0.043, 0.055, 0.078)))
         .insert_resource(source)
         .insert_resource(bus)
+        // The furnace simulation, the `machine:face_config` widget and the
+        // `R` binding. Added for the whole app rather than by the Machine
+        // scene: a widget has to be registered before any screen that names it
+        // spawns, and the simulation stops on its own when no furnace is open.
+        .add_plugins(::showcase::machine::MachineDemoPlugin)
+        // `Esc` closes the chest and `E` opens it again, and the header's
+        // title and capacity readout are filled in. Same plugin the windowed
+        // chest example adds, so the two behave alike.
+        .add_plugins(::showcase::chest::ChestDemoPlugin)
         .add_plugins(scene::ScenePlugin)
         .add_plugins(showcase::ShowcasePlugin)
         .add_message::<StartTests>()
         .add_message::<RestoreState>()
+        .add_message::<SceneCommand>()
         .add_systems(PreUpdate, drain_requests)
-        .add_systems(PreUpdate, apply_restore.after(drain_requests))
+        // After the scene switch, not merely after the bus drain. A restore
+        // may ask for a scene, and a Multiplayer restore then has to wait for
+        // that scene's server to exist; with the two unordered the retry could
+        // run before the switch every frame and never converge.
+        .add_systems(
+            PreUpdate,
+            apply_restore
+                .after(drain_requests)
+                .after(showcase::apply_scene_switch),
+        )
+        .add_systems(
+            PreUpdate,
+            apply_scene_commands.after(showcase::apply_scene_switch),
+        )
         .add_systems(Update, (begin_tests, tests::run_live_tests).chain())
-        .add_systems(PostUpdate, (pump_console, publish_snapshot));
+        .add_systems(
+            PostUpdate,
+            (
+                pump_console,
+                publish_snapshot,
+                publish_replay_status,
+                publish_hud_layout,
+            ),
+        );
     app
 }
 
@@ -198,10 +252,12 @@ pub fn build_app(bus: Bus) -> App {
 pub fn publish_snapshot_for_test(
     bus: Res<Bus>,
     registries: Option<Res<slotted::ecs::Registries>>,
+    scene: Option<Res<showcase::ActiveScene>>,
+    net: Option<Res<scenes::multiplayer::NetLink>>,
     menus: Query<&slotted::ecs::menu::OpenMenu>,
     inventories: Query<Ref<slotted::ecs::menu::Inventory>>,
 ) {
-    publish_snapshot(bus, registries, menus, inventories);
+    publish_snapshot(bus, registries, scene, net, menus, inventories);
 }
 
 /// The `Request::Restore` half of `drain_requests`, for a test that has a
@@ -234,6 +290,8 @@ pub fn drain_requests_into(bus: &Bus, world: &mut World) {
 fn publish_snapshot(
     bus: Res<Bus>,
     registries: Option<Res<slotted::ecs::Registries>>,
+    scene: Option<Res<showcase::ActiveScene>>,
+    net: Option<Res<scenes::multiplayer::NetLink>>,
     menus: Query<&slotted::ecs::menu::OpenMenu>,
     inventories: Query<Ref<slotted::ecs::menu::Inventory>>,
 ) {
@@ -254,7 +312,14 @@ fn publish_snapshot(
     if !held.iter().any(|held| held.is_changed() || held.is_added()) {
         return;
     }
-    let snapshot = snapshot::Snapshot::capture(&registries, held.iter().map(|held| &held.0));
+    let mut snapshot = snapshot::Snapshot::capture(&registries, held.iter().map(|held| &held.0));
+    // Which scene the visitor was in, so a restart puts them back there
+    // rather than on the page's default (showcase contract section 4).
+    snapshot.scene = scene.map(|scene| scene.0.id().to_owned());
+    // And in the Multiplayer scene, the server's containers as well as the
+    // client's mirror of them. The inventories above are client A's, which is
+    // a prediction; `net` is what is actually true (contract section 4).
+    snapshot.net = net.and_then(|link| scenes::multiplayer::capture(&link, &registries));
     match snapshot.to_ron() {
         Ok(text) => bus.set_snapshot(text),
         Err(error) => warn!("the snapshot did not serialise: {error}"),
@@ -291,23 +356,38 @@ impl RestoreState {
 }
 
 /// `apply_restore` under a name an integration test can add as a system.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_restore_for_test(
     bus: Res<Bus>,
     pending: MessageReader<RestoreState>,
     held: Local<Option<RestoreState>>,
     registries: Option<Res<slotted::ecs::Registries>>,
+    switch: MessageWriter<showcase::SwitchScene>,
+    net: Option<ResMut<scenes::multiplayer::NetLink>>,
     menus: Query<&slotted::ecs::menu::OpenMenu>,
     inventories: Query<&mut slotted::ecs::menu::Inventory>,
 ) {
-    apply_restore(bus, pending, held, registries, menus, inventories);
+    apply_restore(
+        bus,
+        pending,
+        held,
+        registries,
+        switch,
+        net,
+        menus,
+        inventories,
+    );
 }
 
 /// `PreUpdate`, after `drain_requests`: puts a snapshot back into the menu.
+#[allow(clippy::too_many_arguments)]
 fn apply_restore(
     bus: Res<Bus>,
     mut pending: MessageReader<RestoreState>,
     mut held: Local<Option<RestoreState>>,
     registries: Option<Res<slotted::ecs::Registries>>,
+    mut switch: MessageWriter<showcase::SwitchScene>,
+    mut net: Option<ResMut<scenes::multiplayer::NetLink>>,
     menus: Query<&slotted::ecs::menu::OpenMenu>,
     mut inventories: Query<&mut slotted::ecs::menu::Inventory>,
 ) {
@@ -350,6 +430,74 @@ fn apply_restore(
         }
     };
 
+    // The scene first: it may despawn and respawn the menu the stacks are
+    // about to go into, and the switch is applied next frame's `PreUpdate`, so
+    // the restore below writes into the menu that is open now and the scene
+    // change lands on top of it. A visitor who was in the Chest scene when a
+    // mod raised comes back to the Chest scene.
+    if let Some(scene) = snapshot.scene() {
+        switch.write(showcase::SwitchScene(scene));
+    }
+
+    // A Multiplayer snapshot cannot be applied to the world that is open now:
+    // it names the server's containers, and the server is built by the scene
+    // the line above has only just asked for. So the request is put back and
+    // retried, and lands the frame after the scene has entered, which is what
+    // the retry budget was already there for. The generic path below is
+    // skipped for the same reason: writing a client's mirror into whatever
+    // menu happens to be open would be writing a prediction into a chest.
+    if let Some(wanted) = snapshot.net.as_ref() {
+        let Some(link) = net.as_mut() else {
+            if request.tries > 0 {
+                *held = Some(RestoreState {
+                    tries: request.tries - 1,
+                    ..request
+                });
+            } else {
+                bus.log(
+                    "warn",
+                    "playground",
+                    "the restored state was the Multiplayer scene's, but its server \
+                     never came up",
+                );
+            }
+            return;
+        };
+        let dropped = scenes::multiplayer::restore(link, registries, wanted);
+        // And both clients' local mirrors, from the same snapshot, so the two
+        // screens agree with the server they were just built over rather than
+        // waiting for a correction to tell them.
+        let sessions: Vec<slotted_model::MenuId> =
+            link.sessions.iter().map(|(menu, _)| *menu).collect();
+        for open in &menus {
+            let Some(session) = sessions.iter().position(|menu| *menu == open.id) else {
+                continue;
+            };
+            for (slot, entity) in open.inventories.iter().enumerate() {
+                let source = scenes::multiplayer::inventories_of(wanted, session);
+                let (Some(source), Ok(mut mirror)) =
+                    (source.get(slot).copied(), inventories.get_mut(*entity))
+                else {
+                    continue;
+                };
+                snapshot::apply_inventory(source, registries, &mut mirror.0);
+            }
+        }
+        bus.log(
+            "info",
+            "playground",
+            if dropped == 0 {
+                "restored the server's chest and both players' pockets".to_owned()
+            } else {
+                format!(
+                    "restored the server's chest and both players' pockets; \
+                     {dropped} stack(s) no longer exist and were dropped"
+                )
+            },
+        );
+        return;
+    }
+
     let mut dropped = 0;
     for (index, entity) in menu.inventories.iter().enumerate() {
         if let Ok(mut held) = inventories.get_mut(*entity) {
@@ -373,6 +521,7 @@ pub fn drain_requests_for_test(
     start_tests: MessageWriter<StartTests>,
     restore: MessageWriter<RestoreState>,
     switch: MessageWriter<showcase::SwitchScene>,
+    scenes: MessageWriter<SceneCommand>,
     console: ResMut<scene::ConsoleErrors>,
     visible: ResMut<scene::ConsoleVisible>,
 ) {
@@ -383,6 +532,7 @@ pub fn drain_requests_for_test(
         start_tests,
         restore,
         switch,
+        scenes,
         console,
         visible,
     );
@@ -444,6 +594,7 @@ pub(crate) fn drain_requests(
     mut start_tests: MessageWriter<StartTests>,
     mut restore: MessageWriter<RestoreState>,
     mut switch: MessageWriter<showcase::SwitchScene>,
+    mut scenes: MessageWriter<SceneCommand>,
     mut console: ResMut<scene::ConsoleErrors>,
     mut visible: ResMut<scene::ConsoleVisible>,
 ) {
@@ -461,6 +612,44 @@ pub(crate) fn drain_requests(
                 restore.write(RestoreState::new(state));
             }
             Request::Write { path, contents } => source.write(&path, &contents),
+            // Everything a scene owns needs the whole world -- an asset
+            // server, a `Screens` registry, a replay cursor that respawns a
+            // menu -- and `drain_requests` is a plain system. They become
+            // messages an exclusive system applies a step later, which is the
+            // same shape `Restore` already had and for the same reason.
+            Request::SetTheme { name } => {
+                scenes.write(SceneCommand::SetTheme { name });
+            }
+            Request::BrowserSearch { query } => {
+                scenes.write(SceneCommand::BrowserSearch { query });
+            }
+            Request::Redstone(on) => {
+                scenes.write(SceneCommand::Redstone(on));
+            }
+            Request::HudEdit(on) => {
+                scenes.write(SceneCommand::HudEdit(on));
+            }
+            Request::RestoreHud { ron } => {
+                scenes.write(SceneCommand::RestoreHud { ron });
+            }
+            Request::NetConfig {
+                latency_ms,
+                drop_percent,
+            } => {
+                scenes.write(SceneCommand::NetConfig {
+                    latency_ms,
+                    drop_percent,
+                });
+            }
+            Request::ReplayLoad => {
+                scenes.write(SceneCommand::ReplayLoad);
+            }
+            Request::ReplaySeek { frame } => {
+                scenes.write(SceneCommand::ReplaySeek { frame });
+            }
+            Request::ReplayPlay(on) => {
+                scenes.write(SceneCommand::ReplayPlay(on));
+            }
             Request::Reload { mod_id } => match ModId::new(&mod_id) {
                 Ok(mod_id) => {
                     bus.log("info", "playground", format!("reloading {mod_id}"));
@@ -529,4 +718,144 @@ fn level_name(level: slotted_script::LogLevel) -> &'static str {
         slotted_script::LogLevel::Warn => "warn",
         slotted_script::LogLevel::Error => "error",
     }
+}
+
+// ---------------------------------------------------------------------------
+// Scene commands
+// ---------------------------------------------------------------------------
+
+/// Something one scene's controls asked for, waiting for the whole `World`.
+///
+/// `drain_requests` is a plain system and every one of these needs more than a
+/// plain system can borrow: an `AssetServer` and a resource swap for the theme,
+/// the `Screens` registry and a menu respawn for a replay seek, a `MenuServer`
+/// living in a resource for the link conditions. Turning them into a message
+/// applied by [`apply_scene_commands`] a step later is the same arrangement
+/// [`RestoreState`] already uses.
+#[derive(Message, Debug, Clone, PartialEq, Eq)]
+pub enum SceneCommand {
+    /// Repaint in a bundled theme.
+    SetTheme {
+        /// `glass`, `paper` or `neon`.
+        name: String,
+    },
+    /// A query for the item browser's search field.
+    BrowserSearch {
+        /// The query, in the browser's search grammar.
+        query: String,
+    },
+    /// The machine scene's redstone signal.
+    Redstone(bool),
+    /// Enter or leave the HUD position editor.
+    HudEdit(bool),
+    /// Put a stored HUD layout back.
+    RestoreHud {
+        /// A `slotted_ui::HudLayout` as RON.
+        ron: String,
+    },
+    /// The multiplayer link's latency and loss.
+    NetConfig {
+        /// One-way latency in milliseconds.
+        latency_ms: u32,
+        /// Percentage of messages thrown away.
+        drop_percent: u8,
+    },
+    /// Load the bundled recording.
+    ReplayLoad,
+    /// Move the scrubber.
+    ReplaySeek {
+        /// Recorded frame index.
+        frame: u32,
+    },
+    /// Play or pause.
+    ReplayPlay(bool),
+}
+
+/// `apply_scene_commands` under a name an integration test can add as a system.
+pub fn apply_scene_commands_for_test(world: &mut World) {
+    apply_scene_commands(world);
+}
+
+/// `PreUpdate`, exclusive, after the scene switch: everything the page asked a
+/// scene for.
+///
+/// Every arm reports its own failure on the console and changes nothing else.
+/// A control aimed at a scene that is not open is the ordinary case here, not
+/// an error condition: the page keeps the last scene's URL across a reload, and
+/// a slider dragged a frame after a switch has to be a line on the console
+/// rather than a dead tab.
+pub fn apply_scene_commands(world: &mut World) {
+    let Some(mut messages) = world.get_resource_mut::<Messages<SceneCommand>>() else {
+        return;
+    };
+    let commands: Vec<SceneCommand> = messages.drain().collect();
+    if commands.is_empty() {
+        return;
+    }
+    let bus = world.resource::<Bus>().clone();
+    for command in commands {
+        let outcome = match command {
+            SceneCommand::SetTheme { name } => scenes::themes::apply(world, &name),
+            SceneCommand::BrowserSearch { query } => {
+                scenes::chest::search(world, &query);
+                Ok(())
+            }
+            SceneCommand::Redstone(on) => {
+                world.insert_resource(::showcase::machine::Redstone(on));
+                Ok(())
+            }
+            SceneCommand::HudEdit(on) => {
+                world.insert_resource(slotted::ui::hud_editor::HudEditMode(on));
+                Ok(())
+            }
+            SceneCommand::RestoreHud { ron } => scenes::hud::restore_layout_ron(world, &ron),
+            SceneCommand::NetConfig {
+                latency_ms,
+                drop_percent,
+            } => match world.get_resource::<scenes::multiplayer::NetLink>() {
+                Some(link) => {
+                    link.set_conditions(latency_ms, drop_percent);
+                    Ok(())
+                }
+                None => Err("no link: the Multiplayer scene is not open".to_owned()),
+            },
+            SceneCommand::ReplayLoad => scenes::testing::load(world),
+            SceneCommand::ReplaySeek { frame } => scenes::testing::seek(world, frame as usize),
+            SceneCommand::ReplayPlay(on) => scenes::testing::play(world, on),
+        };
+        if let Err(message) = outcome {
+            bus.log("error", "showcase", message);
+        }
+    }
+}
+
+/// `PostUpdate`: the HUD layout onto the global store, where `hud_layout` can
+/// find it.
+///
+/// The world's store and the global are the same object in the running app, so
+/// this is a no-op there. It exists for the shape: everything else the page
+/// reads is published, and a test that builds its own store gets to keep it to
+/// itself.
+pub fn publish_hud_layout(world: &mut World) {
+    if world
+        .get_resource::<slotted::ui::hud_editor::HudLayoutStore>()
+        .is_none()
+    {
+        return;
+    }
+    if let Ok(ron) = scenes::hud::layout_ron(world) {
+        let global = hud_store::global();
+        if ron.is_empty() {
+            global.set(None);
+        } else {
+            let _ = global.from_ron(&ron);
+        }
+    }
+}
+
+/// `PostUpdate`: the replay scrubber's position onto the bus, where
+/// `replay_status` can find it.
+pub fn publish_replay_status(world: &mut World) {
+    let status = scenes::testing::status(world);
+    world.resource::<Bus>().set_replay_status(status);
 }

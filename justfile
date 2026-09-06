@@ -127,8 +127,12 @@ shot-machine:
     cargo run -p machine -- --tab tab_redstone --shot examples/machine/shots/machine-tab.png
 
 # Run every mod's tests/*.lua through the headless harness (Phase 6).
-test-mods dir="examples/machine/mods":
-    cargo run -p xtask -- test-mods {{dir}}
+# `--screens examples/machine/screens` because `sorter` now injects into both
+# the chest and the furnace from one copy under `examples/modded/mods`, and its
+# `tests/sort_machine.lua` opens `machine:furnace`. The runner finds a
+# `screens/` beside the mods directory on its own; the machine's is elsewhere.
+test-mods dir="examples/modded/mods":
+    cargo run -p xtask -- test-mods {{dir}} --screens examples/machine/screens
 
 # Every crate that has to reach a browser, on wasm32, with the feature set a
 # wasm build actually uses. There is one script runtime and it builds for both
@@ -195,6 +199,16 @@ shot-playground:
         --url http://127.0.0.1:8080/web-playground/index.html \
         --size 1760,900 \
         --wait 12000 --shot ~/snap/chromium/common/slotted-playground.png
+
+# One screenshot per showcase scene, into examples/web-playground/shots/.
+# Opens each scene through its `?scene=` link, checks the head strip against
+# the scene table, and switches through the rail on the way to the next one.
+# Needs `just playground` and `just serve` first.
+shot-showcase:
+    node examples/web-playground/tests/smoke.mjs \
+        --url http://127.0.0.1:8080/web-playground/index.html \
+        --size 1760,900 \
+        --showcase --shots examples/web-playground/shots
 
 # Phase 2 (slotted-icons) enables this.
 # bake-icons:

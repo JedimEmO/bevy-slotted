@@ -29,6 +29,16 @@ import init, {
 } from './web_playground.js';
 
 const MARKER = 'smoke: the edited control chunk ran';
+
+// The editable mods the bundle carries, as `bundle::script_mod_ids()` orders
+// them. Naming them rather than counting them is deliberate: a count drifts
+// silently when a mod is added, and the failure then reads as "3 is not 4"
+// rather than as the name of what changed. `tests/smoke_page.rs` asserts this
+// line against the Rust, so the two cannot disagree.
+const EXPECTED_MODS = ['appleskin_like', 'copper_chest', 'hud_clock', 'sorter'];
+const EXPECTED_FILES = 2;
+const sameMods = (list) =>
+  list.length === EXPECTED_MODS.length && list.every((m, i) => m.id === EXPECTED_MODS[i]);
 const results = [];
 const check = (name, ok, detail = '') => results.push({ name, ok, detail });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -76,7 +86,7 @@ async function main() {
   }
 
   const mods = JSON.parse(list_mods());
-  check('list_mods names the three demo mods', mods.length === 3, JSON.stringify(mods.map((m) => m.id)));
+  check('list_mods names the bundled demo mods', sameMods(mods), JSON.stringify(mods.map((m) => m.id)));
 
   const control = get_mod_file('copper_chest', 'control.lua');
   check('get_mod_file returns the bundled chunk', control.includes('slotted.on("slot_click"'), `${control.length} bytes`);
@@ -113,7 +123,7 @@ async function main() {
   const afterFailures = JSON.parse(list_mods());
   check(
     'list_mods is the same after two failed reloads',
-    afterFailures.length === 3 && afterFailures.every((m) => m.files.length === 2),
+    sameMods(afterFailures) && afterFailures.every((m) => m.files.length === EXPECTED_FILES),
     JSON.stringify(afterFailures.map((m) => m.id)),
   );
 

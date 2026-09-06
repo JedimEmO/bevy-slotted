@@ -1,3 +1,5 @@
+import { THEME_DIFF } from './themes.js';
+
 // The page half of the showcase. Everything that touches the game goes
 // through the wasm exports; nothing here reaches into Bevy.
 //
@@ -41,17 +43,38 @@ const NOT_YET_PREFIX = 'not yet: ';
  * (`examples/showcase/src/lib.rs` is the source; keep the two in step).
  */
 const FALLBACK_SCENES = [
-  { id: 'chest', title: 'Chest', caption: 'The Minecraft interaction model with a modern skin. Seven click modes, a sweep, a phantom preview and a tooltip, all over one list of slots.', tries: ['Left-click a stack, then right-click to split it', 'Hold right and drag across empty slots', 'Hover an item and hold Shift'], ready: false },
-  { id: 'browser', title: 'Browser', caption: 'Every item and recipe in the game, docked beside any screen. Search has a grammar, and a recipe knows whether it can be transferred.', tries: ['Type #ingots, then -iron', 'Press R over a card', 'Press A to bookmark it'], ready: false },
-  { id: 'machine', title: 'Machine', caption: 'A furnace with a tank, an energy bar and two side tabs, driven by menu properties the simulation writes. The Sort button was injected by a mod that has never seen this screen.', tries: ['Put coal in the fuel slot and watch the arrow', 'Open the redstone tab', 'Press Sort'], ready: false },
-  { id: 'themes', title: 'Themes', caption: 'One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open screen in place.', tries: ['Switch to paper', 'Switch to neon', 'Open the Machine scene and switch again'], ready: false },
-  { id: 'mods', title: 'Mods', caption: 'Three Lua mods, editable here, hot-reloaded into the running game. The chest keeps its contents across a reload, and a crash restarts the runtime.', tries: ['Edit control.lua and press Run', 'Open Tests and run them', 'Type error("boom") and watch the restart'], ready: true },
-  { id: 'hud', title: 'HUD', caption: 'Layers anchored to the screen edges, registered from Rust or from a mod, and a position editor a player can use.', tries: ['Press the edit button and drag the hotbar', 'Drag the clock', 'Reload the page and find them where you left them'], ready: false },
-  { id: 'multiplayer', title: 'Multiplayer', caption: 'Two clients and a server in this tab, joined by a lossy loopback link. The left client predicts; the server corrects; both share one chest.', tries: ['Click a stack on the left and watch the right', 'Raise the loss slider and click again', 'Read the message log'], ready: false },
-  { id: 'testing', title: 'Testing', caption: "The mods' tests/*.lua run against the live game, one action per frame, and a recorded session replays through the real input path.", tries: ["Run the sorter's tests", 'Scrub the recording', 'Press play'], ready: false },
+  { id: 'chest', title: 'Chest', caption: 'The Minecraft interaction model with a modern skin. Seven click modes, a sweep, a phantom preview and a tooltip, all over one list of slots.', tries: ['Left-click a stack, then right-click to split it', 'Hold right and drag across empty slots', 'Hover an item and hold Shift'], ready: true },
+  { id: 'browser', title: 'Browser', caption: 'Every item and recipe in the game, docked beside any screen. Search has a grammar, and a recipe knows whether it can be transferred.', tries: ['Type #ingots, then -iron', 'Press R over a card', 'Press A to bookmark it'], ready: true },
+  { id: 'machine', title: 'Machine', caption: 'A furnace with a tank, an energy bar and two side tabs, driven by menu properties the simulation writes. The Sort button was injected by a mod that has never seen this screen.', tries: ['Put coal in the fuel slot and watch the arrow', 'Open the redstone tab', 'Press Sort'], ready: true },
+  { id: 'themes', title: 'Themes', caption: 'One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open screen in place.', tries: ['Switch to paper', 'Switch to neon', 'Open the Machine scene and switch again'], ready: true },
+  { id: 'mods', title: 'Mods', caption: 'Four Lua mods, editable here, hot-reloaded into the running game. The chest keeps its contents across a reload, and a crash restarts the runtime.', tries: ['Edit control.lua and press Run', 'Open Tests and run them', 'Type error("boom") and watch the restart'], ready: true },
+  { id: 'hud', title: 'HUD', caption: 'Layers anchored to the screen edges, registered from Rust or from a mod, and a position editor a player can use.', tries: ['Press the edit button and drag the hotbar', 'Drag the clock', 'Reload the page and find them where you left them'], ready: true },
+  { id: 'multiplayer', title: 'Multiplayer', caption: 'Two clients and a server in this tab, joined by a lossy loopback link. The left client predicts; the server corrects; both share one chest.', tries: ['Click a stack on the left and watch the right', 'Raise the loss slider and click again', 'Read the message log'], ready: true },
+  { id: 'testing', title: 'Testing', caption: "The mods' tests/*.lua run against the live game, one action per frame, and a recorded session replays through the real input path.", tries: ["Run the sorter's tests", 'Scrub the recording', 'Press play'], ready: true },
 ];
 /** The scene the page opens on when the URL names none. */
-const DEFAULT_SCENE = 'mods';
+const DEFAULT_SCENE = 'chest';
+
+/** The three bundled themes, in the order the buttons show them. */
+const THEMES = THEME_DIFF.themes;
+/** Where the HUD scene keeps the layout a visitor dragged into place. */
+const HUD_KEY = 'slotted.showcase.hud';
+/** How often the HUD and Testing scenes ask the world where things are. */
+const POLL_MS = 1000;
+
+/**
+ * The Browser scene's chips. Each one is a whole query, because the grammar's
+ * point is that the parts combine: a tag narrows, a minus excludes, a bare
+ * word matches the name.
+ */
+const BROWSER_EXAMPLES = [
+  ['#ingots', 'everything tagged as an ingot'],
+  ['#ingots -iron', 'the same, without iron'],
+  ['#c:ingots', 'the cross-mod tag, so other mods\u2019 ingots come too'],
+  ['copper', 'a plain name match'],
+  ['@copper_chest', 'everything one mod owns'],
+  ['#tools #c:ingots', 'two tags, both required'],
+];
 
 const el = (id) => document.getElementById(id);
 const statusEl = el('status');
@@ -70,6 +93,14 @@ const state = {
   // The showcase: the scene table and which scene the canvas shows.
   scenes: FALLBACK_SCENES,
   sceneId: DEFAULT_SCENE,
+  theme: THEMES[0],
+  // Exports that answered `not yet`. A name in here is never called again
+  // this session, so a stub cannot fill the console with the same complaint
+  // once a frame.
+  notYet: new Set(),
+  // The per-scene poll (HUD layout, replay position), cleared on the way out.
+  scenePoll: null,
+  replay: { frame: 0, frames: 0, playing: false },
 
   idle: null,
   // Filling the editor is a document change too, and an unguarded idle timer
@@ -81,6 +112,10 @@ const state = {
   restarts: 0,
   restartTimes: [], // when each restart happened, for the spiral guard
   restarting: false,
+  // True between `state.wasm = module` and the end of `module.default()`.
+  // The exports exist on the namespace in that window but the wasm instance
+  // behind them does not, so calling one throws a TypeError out of the glue.
+  booting: false,
   dead: false, // gave up: the page is showing a corpse
   snapshot: '', // the last state the world published
   nextSnapshot: 0, // Date.now() before which we do not ask again
@@ -122,7 +157,7 @@ function isTrap(error) {
  * Returns `fallback` when the module is not up, or when the call trapped.
  */
 function call(name, args = [], fallback = undefined) {
-  if (!state.wasm || state.dead) return fallback;
+  if (!state.wasm || state.dead || state.booting) return fallback;
   try {
     return state.wasm[name](...args);
   } catch (error) {
@@ -146,6 +181,14 @@ async function boot() {
   const module = await import(url);
   // Before `default()`, not after: Bevy's winit loop unwinds out of it by
   // design and never returns, so the exports have to be reachable already.
+  //
+  // Which leaves a window: the names are on the namespace but the instance
+  // behind them is not built yet, and calling one throws a TypeError out of
+  // the glue rather than anything the page can recognise. The page's own
+  // one-second polls run through a restart and land in exactly that window,
+  // so `booting` closes it: an export asked for too early answers with its
+  // fallback, the same as one that is not built at all.
+  state.booting = true;
   state.wasm = module;
   try {
     await module.default();
@@ -153,6 +196,8 @@ async function boot() {
     // Bevy's winit loop on the web unwinds out of `start` by design; anything
     // else is a real failure and belongs on screen.
     if (!String(error).includes('control flow')) throw error;
+  } finally {
+    state.booting = false;
   }
 }
 
@@ -505,8 +550,24 @@ function scheduleIdleRun() {
 // Console
 // ---------------------------------------------------------------------------
 
+/**
+ * The console pane, plus the two panes that take lines off it.
+ *
+ * `who: "net"` is the Multiplayer scene's message log, which the contract
+ * keeps out of the console because the two are read for different reasons.
+ * `who: "test"` is mirrored rather than moved: the Testing scene wants the
+ * pass marks, and every other scene still wants the text.
+ */
 function appendLines(lines) {
   for (const line of lines) {
+    if (line.who === 'net') {
+      appendNet(line);
+      continue;
+    }
+    if (line.who === 'test') appendTestLine(line);
+    if (state.sceneId === 'browser' && /transfer/i.test(line.text)) {
+      el('browser-readout').textContent = line.text;
+    }
     const row = document.createElement('div');
     row.className = 'row';
     const who = document.createElement('span');
@@ -576,7 +637,92 @@ function readHash() {
 
 /** Whether `error` is a stubbed export saying so, rather than a failure. */
 function isNotYet(error) {
-  return String(error?.message ?? error).includes(NOT_YET_PREFIX);
+  const text = String(error?.message ?? error);
+  // Two shapes mean the same thing while package A is landing scene by scene:
+  // an export that exists and refuses (`not yet: ...`), and one that is not in
+  // the module at all, which JavaScript reports as "is not a function".
+  return text.includes(NOT_YET_PREFIX) || /is not a function/.test(text);
+}
+
+/** The control panel for each scene, and the element its note lives in. */
+const PANELS = {
+  chest: 'controls-chest',
+  browser: 'controls-browser',
+  machine: 'controls-machine',
+  themes: 'controls-themes',
+  mods: 'controls-mods',
+  hud: 'controls-hud',
+  multiplayer: 'controls-multiplayer',
+  testing: 'controls-testing',
+};
+const NOTES = {
+  browser: 'browser-soon',
+  machine: 'machine-soon',
+  themes: 'themes-soon',
+  hud: 'hud-soon',
+  multiplayer: 'net-soon',
+  testing: 'testing-soon',
+};
+
+/** The panel showing right now, or the stub when the scene has none. */
+function activePanel() {
+  return el(PANELS[state.sceneId] ?? 'controls-stub');
+}
+
+/**
+ * Says that something here is not built yet, and stops offering it.
+ *
+ * This is the whole of the page's answer to an unfinished export: a control
+ * that cannot do anything says so and stops responding, rather than throwing
+ * into the console every time a visitor presses it.
+ *
+ * With an export name only that control goes quiet, so a scene missing one of
+ * its four exports keeps the other three. Without one the scene itself is
+ * missing and the whole block goes quiet.
+ */
+function comingUp(name = null) {
+  const note = el(NOTES[state.sceneId] ?? '');
+  if (note) note.textContent = name ? `${name} is coming up` : 'coming up';
+  if (!name) {
+    activePanel()?.classList.add('is-soon');
+    return;
+  }
+  for (const node of document.querySelectorAll(`[data-export~="${name}"]`)) {
+    node.classList.add('is-soon');
+    if ('disabled' in node) node.disabled = true;
+  }
+}
+
+function notComingUp() {
+  activePanel()?.classList.remove('is-soon');
+  const note = el(NOTES[state.sceneId] ?? '');
+  if (note) note.textContent = '';
+}
+
+/**
+ * Calls a scene export. Unlike `call`, a stubbed or missing export is a state
+ * the page renders rather than an error it reports: the control greys out and
+ * the panel's note says what is missing.
+ */
+function sceneCall(name, args = [], fallback = undefined) {
+  if (!state.wasm || state.dead || state.booting) return fallback;
+  if (state.notYet.has(name)) {
+    comingUp(name);
+    return fallback;
+  }
+  try {
+    if (typeof state.wasm[name] !== 'function') throw new TypeError(`${name} is not a function`);
+    return state.wasm[name](...args);
+  } catch (error) {
+    if (isNotYet(error)) {
+      state.notYet.add(name);
+      comingUp(name);
+      return fallback;
+    }
+    if (!isTrap(error)) throw error;
+    void restart(error);
+    return fallback;
+  }
 }
 
 /** The rail: one entry per scene, stubs greyed, the active one selected. */
@@ -625,66 +771,389 @@ function renderSceneHead() {
 }
 
 /**
- * The right column: the active scene's control block. Today only Mods has
- * one; every other scene shows the stub note until its exports are real.
- */
-function renderControls() {
-  const scene = state.scenes.find((s) => s.id === state.sceneId);
-  const isMods = state.sceneId === 'mods';
-  el('controls-mods').hidden = !isMods;
-  el('controls-stub').hidden = isMods;
-  if (!isMods) {
-    el('controls-stub-text').textContent = scene?.ready
-      ? `The ${scene.title} scene has no controls yet.`
-      : `The ${scene?.title ?? 'scene'} scene is not built yet. Its controls appear here when it is.`;
-  }
-}
-
-/**
- * Switches the canvas to `id`. A stub scene is refused by the module with a
- * `not yet` error, which the page shows as status rather than as a failure;
- * the rail stays where it was.
+ * Switches the canvas to `id`.
+ *
+ * The head and the controls follow the rail whatever the module says, so a
+ * `?scene=` link lands on the right page even for a scene whose Rust is not
+ * written; only `set_scene` is held back until the scene reports itself ready.
  */
 function selectScene(id) {
   const scene = state.scenes.find((s) => s.id === id);
   if (!scene) return;
-  if (!scene.ready) {
-    setStatus(`the ${scene.title} scene is not built yet`, '');
-    return;
-  }
-  if (state.wasm && !state.dead) {
-    try {
-      state.wasm.set_scene(id);
-    } catch (error) {
-      if (isNotYet(error)) {
-        setStatus(String(error.message ?? error), '');
-        return;
-      }
-      if (!isTrap(error)) throw error;
-      void restart(error);
-      return;
-    }
-  }
   state.sceneId = id;
   renderRail();
   renderSceneHead();
   renderControls();
   writeSceneQuery();
+  if (!scene.ready) {
+    comingUp();
+    setStatus(`the ${scene.title} scene is not built yet`, '');
+    return;
+  }
+  if (!state.wasm || state.dead) return;
+  try {
+    state.wasm.set_scene(id);
+  } catch (error) {
+    if (isNotYet(error)) {
+      // The table said ready and the module disagrees. The module wins.
+      scene.ready = false;
+      renderRail();
+      comingUp();
+      setStatus(`the ${scene.title} scene is not built yet`, '');
+      return;
+    }
+    if (!isTrap(error)) throw error;
+    void restart(error);
+  }
 }
 
-/** `?scene=<id>` in the URL, kept beside the hash the editor uses. */
+/** `?scene=<id>&theme=<name>`, kept beside the hash the editor uses. */
 function writeSceneQuery() {
   const url = new URL(location.href);
   if (state.sceneId === DEFAULT_SCENE) url.searchParams.delete('scene');
   else url.searchParams.set('scene', state.sceneId);
+  if (state.theme === THEMES[0]) url.searchParams.delete('theme');
+  else url.searchParams.set('theme', state.theme);
   history.replaceState(null, '', url);
 }
 
 function readSceneQuery() {
-  const wanted = new URL(location.href).searchParams.get('scene');
-  const scene = state.scenes.find((s) => s.id === wanted);
-  if (scene?.ready) state.sceneId = scene.id;
+  const params = new URL(location.href).searchParams;
+  const scene = state.scenes.find((s) => s.id === params.get('scene'));
+  if (scene) state.sceneId = scene.id;
+  const theme = params.get('theme');
+  if (THEMES.includes(theme)) state.theme = theme;
 }
+
+// ---------------------------------------------------------------------------
+// Scene controls
+//
+// One block per scene in the right column, above the console. Each `enter`
+// hook runs when its scene is selected and each `leave` hook when it is left;
+// between them a scene may keep a poll running, and `renderControls` is what
+// guarantees it is stopped.
+// ---------------------------------------------------------------------------
+
+/** Shows the active scene's block and hides every other one. */
+function renderControls() {
+  if (state.scenePoll) {
+    clearInterval(state.scenePoll);
+    state.scenePoll = null;
+  }
+  const wanted = PANELS[state.sceneId] ?? 'controls-stub';
+  for (const id of [...Object.values(PANELS), 'controls-stub']) {
+    const panel = el(id);
+    if (panel) panel.hidden = id !== wanted;
+  }
+  const scene = state.scenes.find((s) => s.id === state.sceneId);
+  if (wanted === 'controls-stub') {
+    el('controls-stub-text').textContent = `The ${scene?.title ?? 'scene'} scene has no controls.`;
+  }
+  if (scene?.ready) notComingUp();
+  else comingUp();
+  ENTER[state.sceneId]?.();
+}
+
+/** A poll that runs only while its scene is the one on screen. */
+function pollWhileHere(fn) {
+  fn();
+  state.scenePoll = setInterval(fn, POLL_MS);
+}
+
+// --- Browser ---------------------------------------------------------------
+
+function buildBrowserChips() {
+  const host = el('browser-chips');
+  host.replaceChildren();
+  for (const [query, why] of BROWSER_EXAMPLES) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.dataset.export = 'browser_search';
+    chip.textContent = query;
+    chip.title = why;
+    chip.addEventListener('click', () => {
+      sceneCall('browser_search', [query]);
+      el('browser-readout').textContent = `searched ${query}`;
+    });
+    host.appendChild(chip);
+  }
+}
+
+// --- Machine ---------------------------------------------------------------
+
+function setRedstone(on) {
+  sceneCall('machine_redstone', [on]);
+  // The class paints it and `aria-pressed` says it. Both, because the two
+  // buttons are a toggle with a state, and a class alone tells a screen
+  // reader nothing about which of the pair is the one in force.
+  el('redstone-on').classList.toggle('on', on);
+  el('redstone-on').setAttribute('aria-pressed', String(on));
+  el('redstone-off').classList.toggle('on', !on);
+  el('redstone-off').setAttribute('aria-pressed', String(!on));
+}
+
+// --- Themes ----------------------------------------------------------------
+
+function buildThemeButtons() {
+  const host = el('theme-buttons');
+  host.replaceChildren();
+  for (const name of THEMES) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.theme = name;
+    button.dataset.export = 'set_theme';
+    button.textContent = name;
+    button.addEventListener('click', () => setTheme(name));
+    host.appendChild(button);
+  }
+  buildThemeDiff();
+  markTheme();
+}
+
+/** The token table: what actually differs between the three RON files. */
+function buildThemeDiff() {
+  const table = el('theme-diff');
+  table.replaceChildren();
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  headRow.appendChild(document.createElement('th'));
+  for (const name of THEMES) {
+    const cell = document.createElement('th');
+    cell.textContent = name;
+    cell.dataset.theme = name;
+    headRow.appendChild(cell);
+  }
+  head.appendChild(headRow);
+  const body = document.createElement('tbody');
+  for (const row of THEME_DIFF.rows) {
+    const line = document.createElement('tr');
+    const label = document.createElement('th');
+    label.scope = 'row';
+    label.textContent = row.token;
+    label.title = row.note;
+    line.appendChild(label);
+    row.values.forEach((value, index) => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      cell.dataset.theme = THEMES[index];
+      line.appendChild(cell);
+    });
+    body.appendChild(line);
+  }
+  table.append(head, body);
+}
+
+function markTheme() {
+  for (const node of document.querySelectorAll('#theme-diff [data-theme]')) {
+    node.dataset.active = String(node.dataset.theme === state.theme);
+    if (node.tagName === 'TH') node.setAttribute('aria-selected', String(node.dataset.theme === state.theme));
+  }
+  for (const button of document.querySelectorAll('#theme-buttons button')) {
+    const active = button.dataset.theme === state.theme;
+    button.classList.toggle('on', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+}
+
+function setTheme(name) {
+  if (!THEMES.includes(name)) return;
+  sceneCall('set_theme', [name]);
+  state.theme = name;
+  markTheme();
+  writeSceneQuery();
+}
+
+// --- HUD -------------------------------------------------------------------
+
+/** The layout the visitor last dragged into place, or '' when there is none. */
+function storedHud() {
+  try {
+    return localStorage.getItem(HUD_KEY) ?? '';
+  } catch {
+    // A browser with site data switched off. The scene still works; the
+    // layout just does not outlive the tab.
+    return '';
+  }
+}
+
+function storeHud(ron) {
+  try {
+    if (ron) localStorage.setItem(HUD_KEY, ron);
+    else localStorage.removeItem(HUD_KEY);
+  } catch {
+    /* nothing to do: the scene degrades to a layout that lasts one visit */
+  }
+}
+
+function showHudStored() {
+  const ron = storedHud();
+  el('hud-stored').textContent = ron
+    ? `${ron.length} bytes of RON in localStorage under ${HUD_KEY}`
+    : 'nothing stored yet';
+}
+
+function setHudEdit(on) {
+  sceneCall('hud_edit', [on]);
+  const button = el('hud-edit');
+  button.setAttribute('aria-pressed', String(on));
+  button.textContent = on ? 'Done' : 'Edit layout';
+}
+
+function enterHud() {
+  const ron = storedHud();
+  if (ron) sceneCall('restore_hud_layout', [ron]);
+  setHudEdit(false);
+  showHudStored();
+  // The layout is written back on a timer rather than on a drag, because the
+  // page never sees the drag: it happens inside the canvas.
+  pollWhileHere(() => {
+    const ron = sceneCall('hud_layout', [], '');
+    if (typeof ron === 'string' && ron.length > 0 && ron !== storedHud()) {
+      storeHud(ron);
+      showHudStored();
+    }
+  });
+}
+
+function resetHud() {
+  storeHud('');
+  // The empty string is "forget what you were given and use the registered
+  // defaults" (agreed with package A).
+  sceneCall('restore_hud_layout', ['']);
+  setHudEdit(false);
+  showHudStored();
+}
+
+// --- Multiplayer -----------------------------------------------------------
+
+function netConfig() {
+  const latency = Number(el('net-latency').value);
+  const loss = Number(el('net-loss').value);
+  el('net-latency-out').textContent = `${latency} ms`;
+  el('net-loss-out').textContent = `${loss} %`;
+  sceneCall('net_config', [latency, loss]);
+}
+
+/** Which end of the link a log line came from, for the colour. */
+function netPeer(text) {
+  if (/\bserver\b/i.test(text)) return ['server', 'peer-server'];
+  if (/\b(client|peer)\s*2\b/i.test(text)) return ['client 2', 'peer-2'];
+  if (/\b(client|peer)\s*1\b/i.test(text)) return ['client 1', 'peer-1'];
+  return ['link', ''];
+}
+
+/** A `who: "net"` line, which goes here and not into the console pane. */
+function appendNet(line) {
+  const log = el('net-log');
+  const [label, kind] = netPeer(line.text);
+  const row = document.createElement('div');
+  row.className = 'row';
+  const peer = document.createElement('span');
+  peer.className = `peer ${kind}`;
+  peer.textContent = label;
+  const body = document.createElement('span');
+  body.className = 'body';
+  body.textContent = line.text;
+  row.append(peer, body);
+  log.appendChild(row);
+  while (log.childElementCount > MAX_ROWS) log.firstElementChild.remove();
+  log.scrollTop = log.scrollHeight;
+}
+
+// --- Testing ---------------------------------------------------------------
+
+function buildTestMods() {
+  const host = el('test-mods');
+  host.replaceChildren();
+  const withTests = state.mods.filter((mod) => (mod.tests ?? []).length > 0);
+  if (withTests.length === 0) {
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'No bundled mod has tests/*.lua.';
+    host.appendChild(note);
+    return;
+  }
+  for (const mod of withTests) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'primary';
+    button.dataset.export = 'run_tests';
+    button.textContent = `Run ${mod.id}`;
+    button.title = (mod.tests ?? []).map((name) => `tests/${name}`).join('\n');
+    button.addEventListener('click', () => {
+      el('test-results').replaceChildren();
+      appendTestLine({ level: 'info', text: `running ${mod.id}…` });
+      setStatus(`running ${mod.id} tests…`, 'busy');
+      sceneCall('run_tests', [mod.id]);
+    });
+    host.appendChild(button);
+  }
+}
+
+/** A `who: "test"` line, mirrored from the console into the results list. */
+function appendTestLine(line) {
+  const list = el('test-results');
+  if (!list) return;
+  const failed = line.level === 'error' || /\bfail|\berror\b/i.test(line.text);
+  const passed = !failed && /\bok\b|\bpass(ed)?\b/i.test(line.text);
+  const item = document.createElement('li');
+  item.className = failed ? 'fail' : passed ? 'pass' : '';
+  const mark = document.createElement('span');
+  mark.className = 'mark';
+  mark.textContent = failed ? '✕' : passed ? '✓' : '·';
+  const text = document.createElement('span');
+  text.textContent = line.text;
+  item.append(mark, text);
+  list.appendChild(item);
+  list.scrollTop = list.scrollHeight;
+}
+
+function showReplay(status) {
+  const seek = el('replay-seek');
+  const frames = Number(status?.frames ?? 0);
+  const frame = Number(status?.frame ?? 0);
+  const playing = Boolean(status?.playing);
+  state.replay = { frame, frames, playing };
+  seek.max = String(Math.max(0, frames - 1));
+  // Never fight the pointer: while the visitor is dragging the scrubber the
+  // poll leaves it alone.
+  if (document.activeElement !== seek) seek.value = String(frame);
+  el('replay-count').textContent = frames
+    ? `frame ${frame} of ${frames}`
+    : 'no recording loaded';
+  const play = el('replay-play');
+  play.setAttribute('aria-pressed', String(playing));
+  play.textContent = playing ? 'Pause' : 'Play';
+}
+
+function replayStatus() {
+  const raw = sceneCall('replay_status', [], null);
+  if (raw == null) return showReplay(null);
+  try {
+    return showReplay(typeof raw === 'string' ? JSON.parse(raw) : raw);
+  } catch (error) {
+    console.warn('replay_status:', error);
+    return showReplay(null);
+  }
+}
+
+function enterTesting() {
+  buildTestMods();
+  pollWhileHere(replayStatus);
+}
+
+/** What each scene does the moment it becomes the one on screen. */
+const ENTER = {
+  browser: () => {
+    el('browser-readout').textContent = 'nothing yet';
+  },
+  machine: () => setRedstone(false),
+  themes: () => markTheme(),
+  hud: enterHud,
+  multiplayer: () => netConfig(),
+  testing: enterTesting,
+};
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -712,6 +1181,29 @@ function watchForTraps() {
   });
 }
 
+/**
+ * Keeps the rail on screen while the module takes the canvas.
+ *
+ * Bevy focuses the canvas as it comes up, and on a stacked layout the browser
+ * answers a focus by scrolling the element into view, which throws the rail
+ * off the top of the page before the visitor has seen it. Undo that, until
+ * the visitor scrolls somewhere themselves.
+ */
+function keepTheRailInView() {
+  const split = document.querySelector('.split');
+  if (!split) return;
+  let theirs = false;
+  for (const event of ['wheel', 'pointerdown', 'keydown']) {
+    split.addEventListener(event, () => {
+      theirs = true;
+    }, { passive: true });
+  }
+  document.addEventListener('focusin', (event) => {
+    if (!theirs && event.target?.id === 'slotted-canvas') split.scrollTo({ top: 0 });
+  });
+  split.scrollTo({ top: 0 });
+}
+
 async function main() {
   watchForTraps();
   // The rail shows straight away, from the fallback table, so the page has a
@@ -729,9 +1221,11 @@ async function main() {
   }
   el('boot').classList.add('gone');
   setStatus('running', 'ok');
+  keepTheRailInView();
 
   state.mods = JSON.parse(call('list_mods', [], '[]') ?? '[]');
   readHash();
+  buildTestMods();
 
   // The module's own scene table replaces the fallback, and the scene the
   // URL asked for is applied now that there is a world to apply it to.
@@ -761,6 +1255,7 @@ async function main() {
   selectMod(opening?.id ?? null, OPENING_FILE);
   select.value = state.modId ?? '';
 
+  wireSceneControls();
   el('run').addEventListener('click', () => run());
   el('clear').addEventListener('click', () => consoleEl.replaceChildren());
   el('reset').addEventListener('click', () => {
@@ -804,6 +1299,44 @@ async function main() {
   requestAnimationFrame(pollConsole);
 }
 
+/**
+ * Binds every scene control once, at boot. The blocks themselves are in
+ * `index.html`; a hidden one is simply not on screen, so binding them all up
+ * front costs nothing and keeps the scene switch to showing and hiding.
+ */
+function wireSceneControls() {
+  buildBrowserChips();
+  buildThemeButtons();
+  el('redstone-on').addEventListener('click', () => setRedstone(true));
+  el('redstone-off').addEventListener('click', () => setRedstone(false));
+
+  el('hud-edit').addEventListener('click', () => {
+    setHudEdit(el('hud-edit').getAttribute('aria-pressed') !== 'true');
+  });
+  el('hud-reset').addEventListener('click', resetHud);
+
+  el('net-latency').addEventListener('input', netConfig);
+  el('net-loss').addEventListener('input', netConfig);
+  el('net-clear').addEventListener('click', () => el('net-log').replaceChildren());
+
+  el('replay-load').addEventListener('click', () => {
+    sceneCall('replay_load', []);
+    replayStatus();
+  });
+  el('replay-play').addEventListener('click', () => {
+    const playing = el('replay-play').getAttribute('aria-pressed') === 'true';
+    sceneCall('replay_play', [!playing]);
+    replayStatus();
+  });
+  el('replay-seek').addEventListener('input', () => {
+    sceneCall('replay_seek', [Number(el('replay-seek').value)]);
+  });
+  el('replay-seek').addEventListener('change', replayStatus);
+
+  // The theme the URL asked for, applied once the module can hear it.
+  if (state.theme !== THEMES[0]) setTheme(state.theme);
+}
+
 // The smoke test drives these, and so does anyone poking at the page in a
 // devtools console.
 window.slottedPlayground = {
@@ -826,6 +1359,19 @@ window.slottedPlayground = {
   console_history: (...args) => call('console_history', args, '[]'),
   snapshot_state: (...args) => call('snapshot_state', args, ''),
   restore_state: (...args) => call('restore_state', args),
+  // The scene exports, through the guard that turns an unfinished one into a
+  // greyed control rather than an exception.
+  set_theme: setTheme,
+  machine_redstone: setRedstone,
+  browser_search: (...args) => sceneCall('browser_search', args),
+  hud_edit: setHudEdit,
+  hud_layout: (...args) => sceneCall('hud_layout', args, ''),
+  restore_hud_layout: (...args) => sceneCall('restore_hud_layout', args),
+  net_config: (...args) => sceneCall('net_config', args),
+  replay_status: (...args) => sceneCall('replay_status', args, null),
+  replay_seek: (...args) => sceneCall('replay_seek', args),
+  replay_play: (...args) => sceneCall('replay_play', args),
+  replay_load: (...args) => sceneCall('replay_load', args),
 };
 
 main();

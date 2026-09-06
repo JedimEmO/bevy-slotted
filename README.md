@@ -148,7 +148,7 @@ it, which is the trade [ADR 0004](docs/adr/0004-web-runtime-luaur.md) makes.
 | [`chest`](examples/chest) | `just run-chest` | The moodboard screen over a 3D scene: tooltips with a live 3D item, motion, the action rail, the item browser. `--theme paper` and `--theme neon` swap the skin. |
 | [`machine`](examples/machine) | `just run-machine` | A furnace with a tank, an energy bar, progress arrows and side tabs, plus a Lua mod injecting a sort button. |
 | [`modded`](examples/modded) | `just run-modded` | Three mods loaded from `mods/` with hot reload and a script console. |
-| [`web-playground`](examples/web-playground) | `just playground && just serve` | The modded demo in a browser tab with its Lua editable live beside the canvas. |
+| [`web-playground`](examples/web-playground) | `just playground && just serve` | The showcase: one wasm module, eight scenes, everything above in a browser tab. [Live](https://jedimemo.github.io/bevy-slotted/), or see [the guide](docs/guide/showcase.md). |
 
 <p align="center">
   <img src="examples/chest/shots/chest.png" alt="The chest screen" width="32%">
@@ -170,9 +170,31 @@ it, which is the trade [ADR 0004](docs/adr/0004-web-runtime-luaur.md) makes.
 `just shot-machine` recapture them. Every example takes `--theme <name>`, one
 of `glass` (the default), `paper` or `neon`.
 
+## Showcase
+
+<https://jedimemo.github.io/bevy-slotted/>
+
+One Bevy app, one wasm module, one page, eight scenes: the chest's interaction
+model, the item browser, a machine driven by menu properties, the three themes,
+the editable Lua mods, HUD layers, two networked clients over a lossy link, and
+the test runner with a replayed recording. The rail on the left switches
+scenes, the controls for the open one are on the right, and `?scene=<id>` links
+straight to any of them.
+
+<p align="center">
+  <img src="examples/web-playground/shots/showcase-chest.png" alt="The showcase on the Chest scene" width="49%">
+  <img src="examples/web-playground/shots/showcase-themes.png" alt="The showcase on the Themes scene, with the token table" width="49%">
+</p>
+
+[`docs/guide/showcase.md`](docs/guide/showcase.md) says what each scene
+demonstrates and which crate it exercises. `just playground && just serve` runs
+it locally; `just shot-showcase` recaptures the eight screenshots under
+`examples/web-playground/shots/`.
+
 ## Documentation
 
-- [`docs/guide/`](docs/guide/) is the guide: [modding](docs/guide/modding.md),
+- [`docs/guide/`](docs/guide/) is the guide: [the showcase](docs/guide/showcase.md),
+  [modding](docs/guide/modding.md),
   [screens](docs/guide/screens.md), [themes](docs/guide/themes.md),
   [testing](docs/guide/testing.md), [hot reload](docs/guide/hot-reload.md),
   [architecture](docs/guide/architecture.md).
@@ -202,12 +224,14 @@ just wasm-check   # every crate that has to reach a browser, on wasm32
 just playground   # build dist/web-playground/
 just serve        # then open http://127.0.0.1:8080/web-playground/
 just smoke        # drive that page in headless Chromium
+just shot-showcase  # one screenshot per showcase scene
 just test-mods    # run every demo mod's tests/*.lua headless
 ```
 
-The playground is the `modded` example in a browser tab, with the three demo
-mods' Lua editable beside the canvas: edit `control.lua`, press Run, and the mod
-reloads while the chest keeps its contents. `just playground` needs
+The playground is the showcase: eight scenes over one wasm module, with the
+four demo mods' Lua editable beside the canvas on the Mods scene. Edit
+`control.lua`, press Run, and the mod reloads while the chest keeps its
+contents. `just playground` needs
 `cargo install wasm-bindgen-cli` at the version the lockfile pins;
 [binaryen](https://github.com/WebAssembly/binaryen)'s `wasm-opt` is optional and
 halves the module.

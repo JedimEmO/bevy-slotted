@@ -72,8 +72,8 @@ fn the_tests_tab_runs_a_mods_bundled_tests_against_the_live_app() {
     harness.open_mod_screen(
         CHEST,
         (
-            web_playground::scene::menu_def(),
-            web_playground::scene::inventories(&registries),
+            showcase::mods::menu_def(),
+            showcase::mods::inventories(&registries),
         ),
     );
     harness.settle();

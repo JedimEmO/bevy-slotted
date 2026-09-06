@@ -68,6 +68,7 @@ fn harness() -> (App, EditableSource, Bus) {
         // Phase 5 restart: `Request::Restore` becomes one of these.
         .add_message::<web_playground::RestoreState>()
         .add_message::<web_playground::showcase::SwitchScene>()
+        .add_message::<web_playground::SceneCommand>()
         .insert_resource(web_playground::runtime())
         .insert_resource(PackAssets(shared))
         .insert_resource(layout)
@@ -337,9 +338,15 @@ fn a_bad_mod_id_does_not_eat_the_requests_behind_it() {
 fn the_mod_list_is_the_same_after_a_failed_reload() {
     let (mut app, _source, bus) = harness();
     ModLoader::run_all(app.world_mut()).expect("the bundled mods load");
-    let before_ids = web_playground::bundle::mod_ids();
+    // The editable mods, not `mod_ids()`: that also lists the base namespaces
+    // `demo` and `machine`, which ship data and no Lua and are never in the
+    // editor (see `build.rs`).
+    let before_ids = web_playground::bundle::script_mod_ids();
     let before_json = web_playground::bundle::mods_json();
-    assert_eq!(before_ids, ["appleskin_like", COPPER_CHEST, "sorter"]);
+    assert_eq!(
+        before_ids,
+        ["appleskin_like", COPPER_CHEST, "hud_clock", "sorter"]
+    );
 
     press_run(&bus, DATA, "this is not lua ===\n");
     frame(&mut app);
@@ -347,7 +354,7 @@ fn the_mod_list_is_the_same_after_a_failed_reload() {
     frame(&mut app);
 
     assert_eq!(
-        web_playground::bundle::mod_ids(),
+        web_playground::bundle::script_mod_ids(),
         before_ids,
         "a failed reload changed what the editor lists"
     );
@@ -395,7 +402,7 @@ fn the_chest_holds_the_same_items_across_five_reloads() {
     ModLoader::run_all(app.world_mut()).expect("the bundled mods load");
     let bundled_data = source.read_text(DATA).expect("the bundle has data.lua");
 
-    for inventory in web_playground::scene::inventories(&registries(&app)) {
+    for inventory in showcase::mods::inventories(&registries(&app)) {
         app.world_mut()
             .spawn(slotted_ecs::menu::Inventory(inventory));
     }

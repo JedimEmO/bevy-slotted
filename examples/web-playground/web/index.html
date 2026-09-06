@@ -38,14 +38,73 @@
   </section>
 
   <section class="side">
-    <!-- One control block per scene; `renderControls` shows the active one.
-         Only the Mods block is real today; the others are the disabled shape
-         the page will fill as each scene's exports stop saying "not yet". -->
-    <div id="controls-stub" class="panel controls-stub" hidden>
-      <span class="eyebrow">controls</span>
-      <p id="controls-stub-text" class="muted"></p>
+    <!-- One control block per scene; `showControls` shows the active one and
+         hides the rest. A block whose exports are still stubs greys itself
+         out and says so in its `.soon-note`, so the page is complete before
+         the Rust is (docs/design/showcase-contract.md section 9). -->
+    <div id="controls-stub" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">controls</span></div>
+      <div class="ctl-body"><p id="controls-stub-text" class="muted"></p></div>
     </div>
-    <div id="controls-mods" class="panel editor-panel">
+
+    <div id="controls-chest" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">chest</span></div>
+      <div class="ctl-body">
+        <p class="muted">This scene has no page controls on purpose. Everything it
+        shows is in the canvas, under the pointer.</p>
+        <dl class="hint-list">
+          <dt>Sweep</dt><dd>Hold the left button and drag across slots to split a
+          carried stack evenly between them. Hold the right button instead and
+          each slot takes one.</dd>
+          <dt>Phantoms</dt><dd>While a sweep is running the slots it will fill
+          show a dimmed preview of what lands there. Let go and the previews
+          become real; press <kbd>Esc</kbd> and they vanish.</dd>
+          <dt>Tooltip</dt><dd>Rest on an item for the theme&rsquo;s hover delay, then
+          hold <kbd>Shift</kbd> for the long form.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div id="controls-browser" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">browser</span><span class="soon-note" id="browser-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">Search is a grammar, not a substring match. Press a chip to
+        type it into the browser&rsquo;s field.</p>
+        <div id="browser-chips" class="chips"></div>
+        <p class="muted">Over a card: <kbd>R</kbd> opens its recipes, <kbd>A</kbd>
+        bookmarks it, <kbd>Enter</kbd> tries the transfer.</p>
+        <div class="readout"><span class="eyebrow">last transfer</span>
+          <p id="browser-readout" class="mono-line">nothing yet</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="controls-machine" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">machine</span><span class="soon-note" id="machine-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">The furnace runs on menu properties the simulation writes.
+        Redstone stops the cook without emptying it.</p>
+        <div class="row-buttons" role="group" aria-label="redstone">
+          <button id="redstone-on" type="button" aria-pressed="false" data-export="machine_redstone">Redstone on</button>
+          <button id="redstone-off" type="button" aria-pressed="true" data-export="machine_redstone">Redstone off</button>
+        </div>
+        <p class="muted">The <strong>Sort</strong> button in the action rail was
+        injected by the <code>sorter</code> mod, which has never seen this
+        screen. The same mod puts it on the chest in the Mods scene.</p>
+      </div>
+    </div>
+
+    <div id="controls-themes" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">themes</span><span class="soon-note" id="themes-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">The screen tree does not change. Only the tokens and the
+        materials do, and the open screen repaints in place.</p>
+        <div id="theme-buttons" class="row-buttons" role="group" aria-label="themes"></div>
+        <div class="table-wrap"><table id="theme-diff" class="diff"></table></div>
+      </div>
+    </div>
+
+    <div id="controls-mods" class="panel ctl editor-panel" hidden>
       <div class="tabs">
         <label class="pick">
           <span class="eyebrow">mod</span>
@@ -61,6 +120,58 @@
         <label class="toggle"><input id="auto" type="checkbox" checked><span>Run on idle</span></label>
         <span class="spacer"></span>
         <button id="share" type="button">Copy link</button>
+      </div>
+    </div>
+
+    <div id="controls-hud" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">hud</span><span class="soon-note" id="hud-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">Layers are anchored to an edge, not to a screen. The hotbar
+        comes from Rust; the clock comes from a mod.</p>
+        <div class="row-buttons">
+          <button id="hud-edit" type="button" aria-pressed="false" data-export="hud_edit">Edit layout</button>
+          <button id="hud-reset" type="button" data-export="restore_hud_layout">Reset layout</button>
+        </div>
+        <p class="muted">In edit mode every layer grows a handle. Drag it to a
+        corner and the anchor follows.</p>
+        <div class="readout"><span class="eyebrow">stored layout</span>
+          <p id="hud-stored" class="mono-line">nothing stored</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="controls-multiplayer" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">multiplayer</span><span class="soon-note" id="net-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">Two clients and a server share this tab and one chest. The
+        left client applies your click straight away and asks the server; the
+        server answers, and a wrong guess is corrected in front of you.</p>
+        <label class="slider"><span>Latency <output id="net-latency-out">60 ms</output></span>
+          <input id="net-latency" data-export="net_config" type="range" min="0" max="400" step="10" value="60"></label>
+        <label class="slider"><span>Packet loss <output id="net-loss-out">0 %</output></span>
+          <input id="net-loss" data-export="net_config" type="range" min="0" max="50" step="1" value="0"></label>
+        <div class="log-head"><span class="eyebrow">messages</span><button id="net-clear" type="button">Clear</button></div>
+        <div id="net-log" class="net-log"></div>
+      </div>
+    </div>
+
+    <div id="controls-testing" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">testing</span><span class="soon-note" id="testing-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">A mod&rsquo;s <code>tests/*.lua</code> drive the real screen, one
+        action per frame, and assert on what the game did.</p>
+        <div id="test-mods" class="test-mods"></div>
+        <ul id="test-results" class="test-results"></ul>
+        <div class="replay">
+          <div class="log-head"><span class="eyebrow">recording</span><span id="replay-count" class="mono-line">no recording</span></div>
+          <p class="muted">A session captured with <code>chest --record</code>, fed back
+          through the same input path the pointer uses.</p>
+          <div class="row-buttons">
+            <button id="replay-play" type="button" aria-pressed="false" data-export="replay_play">Play</button>
+            <button id="replay-load" type="button" data-export="replay_load">Load recording</button>
+          </div>
+          <input id="replay-seek" data-export="replay_seek" type="range" min="0" max="0" value="0" aria-label="replay frame">
+        </div>
       </div>
     </div>
 

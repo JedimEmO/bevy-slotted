@@ -1,6 +1,7 @@
 //! Dev-mode HUD position editor. Phase 6 contract section 2.2. Feature `dev`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bevy::prelude::*;
 
@@ -23,11 +24,180 @@ impl Default for HudEditKey {
 /// Drag snap in logical pixels.
 pub const SNAP: f32 = 4.0;
 
-/// Where [`HudLayout`] is persisted (RON). Absent: not persisted.
-#[derive(Resource, Debug, Clone, PartialEq, Eq)]
-pub struct HudLayoutStore {
+/// Where a player's HUD layout is kept between sessions.
+///
+/// A port rather than a path, because the two places slotted runs disagree
+/// about what "kept" means: a game writes a RON file beside its save, and a
+/// browser tab has no filesystem at all and has to hand the bytes back to the
+/// page for `localStorage`. Both are the same two calls over the same RON, so
+/// the editor knows about neither.
+///
+/// Absent as a resource: the layout is not persisted, which is the default and
+/// is right for a test.
+pub trait HudLayoutStorage: Send + Sync + 'static {
+    /// The stored layout, or `None` when nothing has been stored yet or the
+    /// stored bytes were unreadable. An adapter reports the second on
+    /// `tracing` and answers `None`: a layout that will not parse is a layer
+    /// in the wrong place, never a reason to refuse to draw the HUD.
+    fn load(&self) -> Option<HudLayout>;
+
+    /// Persists `layout`. Called at most once a frame, and only after the
+    /// layout actually changed.
+    fn save(&self, layout: &HudLayout);
+}
+
+/// Where [`HudLayout`] is persisted. Absent: not persisted.
+///
+/// Insert one before adding the plugins: `HudLayoutStore::file(path)` for a
+/// game with a disk, or `HudLayoutStore::new(..)` over your own
+/// [`HudLayoutStorage`].
+#[derive(Resource, Clone)]
+pub struct HudLayoutStore(pub Arc<dyn HudLayoutStorage>);
+
+impl HudLayoutStore {
+    /// Wraps an adapter.
+    pub fn new(storage: impl HudLayoutStorage) -> Self {
+        Self(Arc::new(storage))
+    }
+
+    /// The RON file adapter, which is what a windowed game wants.
+    pub fn file(path: impl Into<PathBuf>) -> Self {
+        Self::new(FileHudLayout { path: path.into() })
+    }
+}
+
+impl std::fmt::Debug for HudLayoutStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("HudLayoutStore(..)")
+    }
+}
+
+/// [`HudLayoutStorage`] over one RON file.
+///
+/// On `wasm32` both calls do nothing: there is no filesystem to write to, and
+/// a page that wants the layout back asks for the RON through its own bridge
+/// and keeps it in `localStorage`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileHudLayout {
     /// File path.
     pub path: PathBuf,
+}
+
+impl HudLayoutStorage for FileHudLayout {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load(&self) -> Option<HudLayout> {
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(e) => {
+                tracing::warn!(path = %self.path.display(), %e, "reading the HUD layout");
+                return None;
+            }
+        };
+        match ron::from_str::<HudLayout>(&text) {
+            Ok(loaded) => Some(loaded),
+            Err(e) => {
+                tracing::warn!(path = %self.path.display(), %e, "the HUD layout is not RON");
+                None
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn load(&self) -> Option<HudLayout> {
+        None
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn save(&self, layout: &HudLayout) {
+        let text = match ron::ser::to_string_pretty(layout, ron::ser::PrettyConfig::default()) {
+            Ok(text) => text,
+            Err(e) => {
+                tracing::warn!(%e, "serialising the HUD layout");
+                return;
+            }
+        };
+        if let Some(dir) = self.path.parent()
+            && let Err(e) = std::fs::create_dir_all(dir)
+        {
+            tracing::warn!(path = %dir.display(), %e, "creating the HUD layout directory");
+            return;
+        }
+        if let Err(e) = std::fs::write(&self.path, text) {
+            tracing::warn!(path = %self.path.display(), %e, "writing the HUD layout");
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn save(&self, layout: &HudLayout) {
+        let _ = layout;
+    }
+}
+
+/// [`HudLayoutStorage`] over a value in memory.
+///
+/// The web playground's adapter: the world saves into it and the page reads the
+/// RON back out through `hud_layout()`, which is the whole of "persist to
+/// `localStorage`" as far as the library is concerned. Also the easy way for a
+/// test to prove a layout survives a round trip without touching a disk.
+#[derive(Debug, Default, Clone)]
+pub struct MemoryHudLayout(Arc<std::sync::Mutex<Option<HudLayout>>>);
+
+impl MemoryHudLayout {
+    /// An empty store.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// What is stored, as RON, or an empty string when nothing is.
+    ///
+    /// # Errors
+    ///
+    /// A layout that will not serialise, which cannot happen for the
+    /// `BTreeMap` of plain numbers [`HudLayout`] is.
+    pub fn to_ron(&self) -> Result<String, ron::Error> {
+        match self.get() {
+            Some(layout) => ron::ser::to_string(&layout),
+            None => Ok(String::new()),
+        }
+    }
+
+    /// Replaces what is stored with `text`.
+    ///
+    /// # Errors
+    ///
+    /// `text` is not a [`HudLayout`].
+    pub fn from_ron(&self, text: &str) -> Result<(), ron::error::SpannedError> {
+        let layout: HudLayout = ron::from_str(text)?;
+        self.set(Some(layout));
+        Ok(())
+    }
+
+    /// The stored layout.
+    pub fn get(&self) -> Option<HudLayout> {
+        self.lock().clone()
+    }
+
+    /// Replaces the stored layout.
+    pub fn set(&self, layout: Option<HudLayout>) {
+        *self.lock() = layout;
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<HudLayout>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+impl HudLayoutStorage for MemoryHudLayout {
+    fn load(&self) -> Option<HudLayout> {
+        self.get()
+    }
+
+    fn save(&self, layout: &HudLayout) {
+        self.set(Some(layout.clone()));
+    }
 }
 
 /// Marks the outline child drawn around a wrapper in edit mode.
@@ -184,28 +354,14 @@ fn snap(v: Vec2) -> Vec2 {
     (v / SNAP).round() * SNAP
 }
 
-/// `Startup`: reads [`HudLayoutStore`] into [`HudLayout`] when the file exists.
+/// `Startup`: reads [`HudLayoutStore`] into [`HudLayout`] when it holds one.
 pub fn load_hud_layout(store: Option<Res<HudLayoutStore>>, mut layout: ResMut<HudLayout>) {
     let Some(store) = store else {
         return;
     };
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let text = match std::fs::read_to_string(&store.path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
-            Err(e) => {
-                tracing::warn!(path = %store.path.display(), %e, "reading the HUD layout");
-                return;
-            }
-        };
-        match ron::from_str::<HudLayout>(&text) {
-            Ok(loaded) => *layout = loaded,
-            Err(e) => tracing::warn!(path = %store.path.display(), %e, "the HUD layout is not RON"),
-        }
+    if let Some(loaded) = store.0.load() {
+        *layout = loaded;
     }
-    #[cfg(target_arch = "wasm32")]
-    let _ = (store, &mut layout);
 }
 
 /// On `DragEnd` and `AppExit`: writes [`HudLayout`] to [`HudLayoutStore`].
@@ -216,25 +372,40 @@ pub fn save_hud_layout(store: Option<Res<HudLayoutStore>>, layout: Res<HudLayout
     if !layout.is_changed() || layout.anchors.is_empty() {
         return;
     }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let text = match ron::ser::to_string_pretty(&*layout, ron::ser::PrettyConfig::default()) {
-            Ok(text) => text,
-            Err(e) => {
-                tracing::warn!(%e, "serialising the HUD layout");
-                return;
-            }
-        };
-        if let Some(dir) = store.path.parent()
-            && let Err(e) = std::fs::create_dir_all(dir)
-        {
-            tracing::warn!(path = %dir.display(), %e, "creating the HUD layout directory");
-            return;
-        }
-        if let Err(e) = std::fs::write(&store.path, text) {
-            tracing::warn!(path = %store.path.display(), %e, "writing the HUD layout");
-        }
+    store.0.save(&layout);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hud::{HudAnchor, HudLayerId};
+
+    #[test]
+    fn the_memory_adapter_round_trips_a_layout_through_ron() {
+        let store = MemoryHudLayout::new();
+        assert!(store.load().is_none());
+        assert_eq!(store.to_ron().expect("an empty store serialises"), "");
+
+        let mut layout = HudLayout::default();
+        layout.anchors.insert(
+            HudLayerId::new("slotted:hotbar"),
+            HudAnchor {
+                offset: Vec2::new(12.0, -40.0),
+                ..HudAnchor::default()
+            },
+        );
+        store.save(&layout);
+        let text = store.to_ron().expect("a layout serialises");
+
+        let second = MemoryHudLayout::new();
+        second.from_ron(&text).expect("the RON parses back");
+        assert_eq!(second.load(), Some(layout));
     }
-    #[cfg(target_arch = "wasm32")]
-    let _ = store;
+
+    #[test]
+    fn a_layout_that_is_not_ron_is_an_error_and_leaves_the_store_alone() {
+        let store = MemoryHudLayout::new();
+        assert!(store.from_ron("not ron at all").is_err());
+        assert!(store.load().is_none());
+    }
 }

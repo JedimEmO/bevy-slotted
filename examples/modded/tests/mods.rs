@@ -304,7 +304,7 @@ fn activating_the_injected_button_sorts_the_chest() {
         "sorting left gaps; occupied: {after:?}"
     );
     assert!(
-        h.script_logs_containing("sorting the container")
+        h.script_logs_containing("sorting inventory 0")
             .iter()
             .any(|entry| entry.mod_id.as_ref().map(ModId::as_str) == Some("sorter")),
         "the sorter script logged nothing"

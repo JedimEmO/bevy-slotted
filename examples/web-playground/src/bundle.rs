@@ -26,6 +26,21 @@ pub fn mod_ids() -> Vec<String> {
     ids
 }
 
+/// The mod ids that ship Lua, which is what the editor and the Tests tab
+/// list.
+///
+/// The bundle also carries the base namespaces `demo` and `machine` as mods,
+/// because that is how a browser tab gets the content a running game would
+/// have registered itself (see `build.rs`). Those have data files and no
+/// scripts, so an editor tab for them would be an empty buffer that reloads
+/// nothing, and they are left out here.
+pub fn script_mod_ids() -> Vec<String> {
+    mod_ids()
+        .into_iter()
+        .filter(|id| !script_files(id).is_empty())
+        .collect()
+}
+
 /// A mod's bundled `tests/*.lua` as `(name, logical path)`, sorted.
 ///
 /// The name is the file's own (`sort.lua`); the path is what the loader
@@ -93,7 +108,7 @@ pub fn script_files(mod_id: &str) -> Vec<(String, String)> {
 /// It lives here rather than in `bridge` so a native test can assert the shape
 /// the page parses; the `wasm-bindgen` export is one line over it.
 pub fn mods_json() -> String {
-    let mods: Vec<String> = mod_ids()
+    let mods: Vec<String> = script_mod_ids()
         .into_iter()
         .map(|id| {
             let files: Vec<String> = script_files(&id)
@@ -200,16 +215,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_bundle_carries_the_three_demo_mods() {
-        assert_eq!(mod_ids(), ["appleskin_like", "copper_chest", "sorter"]);
+    fn the_bundle_carries_the_demo_mods_and_the_base_namespaces() {
+        assert_eq!(
+            mod_ids(),
+            [
+                "appleskin_like",
+                "copper_chest",
+                "demo",
+                "hud_clock",
+                "machine",
+                "sorter"
+            ]
+        );
+        // `demo` and `machine` are the base pack, not editable mods.
+        assert_eq!(
+            script_mod_ids(),
+            ["appleskin_like", "copper_chest", "hud_clock", "sorter"]
+        );
     }
 
     #[test]
-    fn every_mod_ships_a_data_and_a_control_chunk() {
-        for id in mod_ids() {
+    fn every_scripted_mod_ships_a_data_and_a_control_chunk() {
+        for id in script_mod_ids() {
             let names: Vec<String> = script_files(&id).into_iter().map(|(n, _)| n).collect();
             assert_eq!(names, ["data.lua", "control.lua"], "mod {id}");
         }
+    }
+
+    /// The base namespaces are what make `demo:` and `machine:` items exist in
+    /// a browser tab, and a scene that fills a chest with them has nothing to
+    /// draw without.
+    #[test]
+    fn the_base_namespaces_carry_their_data_and_no_scripts() {
+        let source = EditableSource::from_bundle();
+        assert!(source.read_text("mods/demo/mod.toml").is_some());
+        assert!(
+            source
+                .read_text("data/demo/items/cobblestone.ron")
+                .is_some()
+        );
+        assert!(script_files("demo").is_empty());
     }
 
     #[test]

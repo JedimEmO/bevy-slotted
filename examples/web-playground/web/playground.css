@@ -36,12 +36,6 @@ code,kbd,.mono,.console,.cm-editor{font-family:"JetBrains Mono",ui-monospace,Men
    never drops below 960 px because the item browser docks inside the canvas,
    beside the chest, and needs a clear strip to appear at all. */
 .split{flex:1;min-height:0;display:grid;grid-template-columns:var(--rail-w) minmax(960px,1fr) minmax(360px,var(--side-w));gap:14px;padding:14px;overflow:auto}
-@media (max-width:1280px){.split{--rail-w:44px;--side-w:340px}.rail-list li .rail-title,.rail-list li .rail-caption{display:none}}
-@media (max-width:1080px){
-  .split{grid-template-columns:1fr;grid-template-rows:auto auto minmax(240px,56vh) 1fr;--rail-w:auto}
-  .rail-list{flex-direction:row;overflow-x:auto}
-  .rail-list li .rail-title{display:inline}
-}
 .stage-col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
 
 /* the scene rail */
@@ -59,14 +53,39 @@ code,kbd,.mono,.console,.cm-editor{font-family:"JetBrains Mono",ui-monospace,Men
 .rail-title{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:19px;font-weight:600;line-height:1.1}
 .rail-soon{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-2)}
 
+/* The three columns need 200 + 960 + 400 plus the gaps and the padding, so
+   they fit from about 1620 px. Between 1400 and there the rail keeps only its
+   numbers and the controls give up 60 px, which buys the canvas its 960. */
+@media (max-width:1620px){
+  .split{grid-template-columns:44px minmax(960px,1fr) 340px}
+  .rail-list li{align-items:center;padding:8px 4px}
+  .rail-list li .rail-title,.rail-list li .rail-soon{display:none}
+}
+/* Below 1400 the canvas can no longer keep 960 px beside anything, and a page
+   that scrolls sideways is worse than one that stacks: the rail becomes a row
+   of chips, the canvas takes a slice of the viewport, and the controls and the
+   console go under it. */
+@media (max-width:1400px){
+  /* `max-content` and not `auto`: the three rows together are taller than the
+     column, and an `auto` track whose item may shrink to nothing (the rail
+     carries `min-height:0` for the desktop layout) collapses to 0 px. */
+  .split{grid-template-columns:1fr;grid-template-rows:max-content 52vh minmax(320px,auto)}
+  .rail{overflow:visible;min-height:max-content}
+  .rail-list{flex-direction:row;overflow-x:auto;padding-bottom:4px}
+  .rail-list li{flex:0 0 auto;flex-direction:row;align-items:baseline;gap:7px;padding:7px 11px}
+  .rail-list li .rail-title,.rail-list li .rail-soon{display:inline}
+  .stage-col{min-height:0}
+  .side{grid-template-rows:minmax(260px,1fr) minmax(140px,.4fr)}
+}
+
 /* the caption strip over the canvas */
-.scene-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;padding:0 4px}
+.scene-head{display:grid;grid-template-columns:auto minmax(42ch,1fr) auto;align-items:center;gap:16px;padding:0 4px}
 .scene-title{display:flex;align-items:baseline;gap:8px}
 .scene-title h2{font-size:26px;font-weight:700;line-height:1}
 .scene-caption{margin:0;color:var(--muted);font-size:13px;max-width:70ch}
-.scene-tries{list-style:none;margin:0;padding:0;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.scene-tries{list-style:none;margin:0;padding:0;min-width:0;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .scene-tries li{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel-2);white-space:nowrap}
-@media (max-width:1280px){.scene-head{grid-template-columns:auto 1fr}.scene-tries{grid-column:1/-1;justify-content:flex-start}}
+@media (max-width:1620px){.scene-head{grid-template-columns:auto minmax(0,1fr)}.scene-tries{grid-column:1/-1;justify-content:flex-start}}
 
 .controls-stub{padding:14px;gap:8px}
 .muted{color:var(--muted);font-size:13px;margin:0}
@@ -122,3 +141,74 @@ kbd{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radi
 .console .warn{color:var(--warn)}
 .console .error{color:var(--bad)}
 .console .debug,.console .trace{color:var(--muted)}
+
+/* ---------------------------------------------------------------------------
+   Scene controls (showcase contract section 5)
+
+   One `.ctl` panel per scene, all but the active one hidden. A panel whose
+   exports are still stubs gets `.is-soon`: its controls stop responding and
+   the head says why, which is what lets the page ship ahead of the Rust.
+   --------------------------------------------------------------------------- */
+.ctl-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.ctl-body{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.ctl-body>p{margin:0}
+.soon-note{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-2);text-align:right}
+/* A scene whose Rust has not landed at all: the whole block goes quiet. */
+.ctl.is-soon .ctl-body{opacity:.55}
+.ctl.is-soon .ctl-body button,.ctl.is-soon .ctl-body input,.ctl.is-soon .ctl-body .chip{pointer-events:none}
+/* One export missing out of several: only the controls that need it. The
+   rest of the block still works, which is the difference between a scene
+   half-built and a scene not built. */
+.ctl-body [data-export].is-soon{opacity:.45;pointer-events:none}
+
+.hint-list{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12.5px}
+.hint-list dt{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:15px;font-weight:600;color:var(--ink)}
+.hint-list dd{margin:0;color:var(--muted)}
+
+.row-buttons{display:flex;flex-wrap:wrap;gap:8px}
+.row-buttons button[aria-pressed="true"],.row-buttons button.on{background:var(--accent-soft);border-color:#1d3f57;color:var(--accent);font-weight:600}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:"JetBrains Mono",monospace;font-size:11.5px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer}
+.chip:hover{border-color:#33415a;color:var(--accent)}
+
+.readout{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px}
+.mono-line{margin:0;font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--muted);word-break:break-word}
+
+/* the theme token table */
+/* `flex:0 0 auto` so the table keeps its full height and the panel body
+   scrolls, rather than the table growing a scrollbar of its own. */
+.table-wrap{flex:0 0 auto;overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.diff{border-collapse:collapse;width:100%;font-size:10.5px}
+.diff th,.diff td{padding:4px 6px;text-align:left;border-bottom:1px solid var(--line)}
+.diff td{white-space:nowrap}
+.diff tr:last-child th,.diff tr:last-child td{border-bottom:0}
+.diff thead th{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--panel-2)}
+.diff thead th[aria-selected="true"]{color:var(--accent)}
+.diff tbody th{font-weight:500;color:var(--muted);font-size:10.5px;line-height:1.3}
+.diff td{font-family:"JetBrains Mono",monospace;color:var(--ink)}
+.diff td[data-active="true"]{color:var(--accent)}
+
+/* multiplayer */
+.slider{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
+.slider output{color:var(--ink);font-family:"JetBrains Mono",monospace;font-size:11.5px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.log-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.log-head button{padding:2px 8px;font-size:11.5px}
+.net-log{flex:1 1 auto;min-height:120px;max-height:260px;overflow:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:"JetBrains Mono",monospace;font-size:11px;line-height:1.6}
+.net-log .row{display:flex;gap:6px}
+.net-log .peer{flex:0 0 auto}
+.net-log .peer-1{color:var(--accent)}
+.net-log .peer-2{color:var(--accent-2)}
+.net-log .peer-server{color:var(--good)}
+.net-log .body{color:#c3cad8;word-break:break-word}
+
+/* testing */
+.test-mods{display:flex;flex-wrap:wrap;gap:8px}
+.test-results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;font-family:"JetBrains Mono",monospace;font-size:11.5px;max-height:200px;overflow:auto}
+.test-results li{display:flex;gap:8px}
+.test-results .mark{flex:0 0 auto;width:1em}
+.test-results .pass .mark{color:var(--good)}
+.test-results .fail .mark{color:var(--bad)}
+.test-results .fail{color:var(--bad)}
+.replay{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}

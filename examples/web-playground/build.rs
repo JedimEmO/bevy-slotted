@@ -1,6 +1,6 @@
 //! Bakes the demo mods and the shared assets into the binary.
 //!
-//! `examples/modded/mods/` stays the one copy of the three demo mods: this
+//! `examples/modded/mods/` stays the one copy of the demo mods: this
 //! writes a table of `(logical path, include_str!(absolute path))` pairs, so
 //! editing a mod on disk rebuilds the playground with the edit and there is
 //! never a second copy to drift.
@@ -51,10 +51,36 @@ fn main() {
 
     // The base pack: whatever `assets/data/` holds, at the same logical paths
     // the layered source would serve.
+    //
+    // A running game registers its own content before any mod does. A browser
+    // tab has no game underneath, so the base namespaces are given synthetic
+    // manifests and loaded as mods -- exactly what
+    // `UiHarness::mod_layout_with_base` does natively, and what the showcase
+    // contract (section 1) asks for, so that `demo:` and `machine:` items
+    // exist for the Chest, Browser and Machine scenes.
+    let generated = PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets this"));
     let base_data = assets.join("data");
     if base_data.is_dir() {
         for (path, relative) in walk(&base_data) {
             files.push((format!("data/{relative}"), path));
+        }
+        let mut namespaces: Vec<String> = std::fs::read_dir(&base_data)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_dir())
+            .filter_map(|entry| entry.file_name().to_str().map(ToOwned::to_owned))
+            .filter(|id| !mod_dirs.iter().any(|dir| dir.ends_with(id)))
+            .collect();
+        namespaces.sort();
+        for id in namespaces {
+            let manifest = generated.join(format!("{id}.mod.toml"));
+            let text = format!(
+                "id = \"{id}\"\nname = \"{id} (base pack)\"\nversion = \"0.0.0\"\napi_version = 1\n"
+            );
+            std::fs::write(&manifest, text)
+                .unwrap_or_else(|e| panic!("writing {}: {e}", manifest.display()));
+            files.push((format!("mods/{id}/mod.toml"), manifest));
         }
     }
     let base_locale = assets.join("locale");

@@ -1,20 +1,21 @@
-//! The 3D scene, the chest screen and the in-canvas console.
+//! The 3D backdrop, the theme, and the in-canvas console.
 //!
-//! The same demo `examples/modded` shows in a window: a ring of spinning
-//! cubes under an orbiting camera, the copper chest screen the `copper_chest`
-//! mod registered, the `Sort` button `sorter` injected into it, and the
-//! tooltip line `appleskin_like` adds. Nothing here registers an item, a
-//! recipe or a screen; all of it comes out of the bundled mods' Lua.
-
-use std::sync::Arc;
+//! What is left here after the showcase: the page furniture every scene shares.
+//! The ring of spinning cubes under an orbiting camera is
+//! [`showcase::backdrop`]'s, spawned once and never torn down, so the orbit
+//! carries on across a scene switch and it is visible that the page did not
+//! reload. The console overlay is this crate's own, because it belongs to the
+//! page rather than to any scene.
+//!
+//! What used to be here -- the copper chest's menu, its contents table and the
+//! `Startup` system that opened it -- moved to `showcase::mods` and
+//! `scenes::mods`, which is where a scene's screen belongs now that there are
+//! eight of them (docs/design/showcase-contract.md section 3.4).
 
 use bevy::prelude::*;
-use slotted::browser::{BrowserPhase, DefaultScreenHandler, ScreenHandlers};
-use slotted::ecs::MenuIdAllocator;
+use slotted::browser::BrowserPhase;
 use slotted::prelude::*;
-use slotted_model::{Inventory, ItemStack, MenuDef, Namespaced};
 use slotted_packs::{LogEntry, ModFailed, ScriptLogs};
-use slotted_registry::FrozenRegistries;
 use slotted_script::LogLevel;
 
 /// The screen kind `copper_chest/data.lua` registers.
@@ -31,216 +32,42 @@ impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ConsoleVisible>()
             .init_resource::<ConsoleErrors>()
-            .add_systems(Startup, (setup_scene, setup_theme))
+            .insert_resource(showcase::backdrop::BackdropConfig::web())
+            .add_plugins(showcase::backdrop::BackdropPlugin)
             .add_systems(
                 Startup,
-                register_browser_handler.in_set(BrowserPhase::ScreenHandlers),
+                (
+                    setup_theme,
+                    register_bundled_screens.before(BrowserPhase::ScreenHandlers),
+                ),
             )
-            .add_systems(Startup, open_chest.after(register_browser_handler))
             .add_systems(
                 Update,
-                (
-                    orbit_camera,
-                    spin_cubes,
-                    (collect_mod_errors, toggle_console, rebuild_console).chain(),
-                ),
+                (collect_mod_errors, toggle_console, rebuild_console).chain(),
             );
     }
 }
 
-/// Marks the camera the UI follows.
-#[derive(Component)]
-struct MainCamera;
-
-/// Rotation speed of a demo cube.
-#[derive(Component)]
-struct Spin(f32);
-
-fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(60.0, 60.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.10, 0.12, 0.16),
-            perceptual_roughness: 0.9,
-            ..default()
-        })),
-    ));
-
-    let cube = meshes.add(Cuboid::new(1.6, 1.6, 1.6));
-    let palette = [
-        Color::srgb(0.90, 0.55, 0.30),
-        Color::srgb(0.32, 0.72, 0.95),
-        Color::srgb(0.98, 0.75, 0.28),
-        Color::srgb(0.45, 0.88, 0.55),
-        Color::srgb(0.78, 0.45, 0.95),
-        Color::srgb(0.98, 0.42, 0.36),
-    ];
-    #[allow(clippy::cast_precision_loss)]
-    for (i, color) in palette.into_iter().enumerate() {
-        let angle = i as f32 / palette.len() as f32 * std::f32::consts::TAU;
-        commands.spawn((
-            Mesh3d(cube.clone()),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: color,
-                perceptual_roughness: 0.35,
-                metallic: 0.1,
-                ..default()
-            })),
-            Transform::from_xyz(
-                angle.cos() * 5.0,
-                0.8 + (i as f32 * 0.35),
-                angle.sin() * 5.0,
-            )
-            .with_rotation(Quat::from_rotation_y(angle)),
-            Spin(0.4 + i as f32 * 0.1),
-        ));
-    }
-
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 12_000.0,
-            // Shadow maps are the first thing to cost real time on WebGL2 and
-            // the demo reads the same without them.
-            shadow_maps_enabled: false,
-            ..default()
-        },
-        Transform::from_xyz(6.0, 12.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(0.0, 6.0, 14.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
-        MainCamera,
-        IsDefaultUiCamera,
-    ));
+/// `Startup`, before the browser validates its handlers: the two screens this
+/// crate compiles in.
+///
+/// They are registered for the app's life rather than by the scene that opens
+/// them, because a `ScreenHandler` may not name a screen kind the registry has
+/// never heard of -- `slotted-browser` validates that and, in a debug build,
+/// panics on it. `ChestDemoPlugin` registers such a handler at `Startup`, long
+/// before the Browser scene is entered, so the definitions have to be there
+/// first. A scene still re-registers on `enter`, which is what picks up a mod
+/// reload that replaced one.
+fn register_bundled_screens(mut screens: ResMut<Screens>) {
+    screens.register(showcase::chest::screen());
+    screens.register(showcase::machine::screen());
 }
 
 /// The theme comes from the shared `assets/`, fetched over HTTP beside the
-/// page rather than through `pack://`.
+/// page rather than through `pack://`. The Themes scene replaces this
+/// resource; `glass` is what the page opens on.
 fn setup_theme(mut commands: Commands, assets: Res<AssetServer>) {
     commands.insert_resource(ActiveTheme(assets.load("themes/glass.theme.ron")));
-}
-
-fn orbit_camera(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainCamera>>) {
-    let t = time.elapsed_secs() * 0.18;
-    for mut transform in &mut cameras {
-        *transform = Transform::from_xyz(t.sin() * 14.0, 6.0, t.cos() * 14.0)
-            .looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y);
-    }
-}
-
-fn spin_cubes(time: Res<Time>, mut cubes: Query<(&mut Transform, &Spin)>) {
-    for (mut transform, spin) in &mut cubes {
-        transform.rotate_y(spin.0 * time.delta_secs());
-        transform.rotate_x(spin.0 * 0.4 * time.delta_secs());
-    }
-}
-
-// ---------------------------------------------------------------------------
-// The menu
-// ---------------------------------------------------------------------------
-
-/// The menu behind the screen: container, player main, hotbar.
-pub fn menu_def() -> Arc<MenuDef> {
-    Arc::new(MenuDef::chest(ROWS))
-}
-
-struct Row {
-    inventory: usize,
-    slot: usize,
-    item: &'static str,
-    count: u32,
-}
-
-const fn row(inventory: usize, slot: usize, item: &'static str, count: u32) -> Row {
-    Row {
-        inventory,
-        slot,
-        item,
-        count,
-    }
-}
-
-const CONTAINER: usize = 0;
-const MAIN: usize = 1;
-const HOTBAR: usize = 2;
-
-/// What the chest starts with. Every id was registered by a mod's `data.lua`.
-const CONTENTS: &[Row] = &[
-    row(CONTAINER, 0, "copper_chest:copper_chest", 4),
-    row(CONTAINER, 1, "copper_chest:copper_ingot", 64),
-    row(CONTAINER, 2, "copper_chest:copper_ingot", 31),
-    row(CONTAINER, 5, "appleskin_like:apple", 12),
-    row(CONTAINER, 11, "copper_chest:copper_chest", 1),
-    row(MAIN, 0, "copper_chest:copper_ingot", 8),
-    row(MAIN, 7, "appleskin_like:apple", 3),
-    row(HOTBAR, 0, "copper_chest:copper_chest", 2),
-    row(HOTBAR, 2, "appleskin_like:apple", 16),
-];
-
-/// The demo's inventories. Rows naming an unregistered id are skipped with a
-/// warning rather than a panic: in a browser tab a panic is a blank canvas and
-/// no way to find out why.
-pub fn inventories(registries: &FrozenRegistries) -> Vec<Inventory> {
-    let mut out: Vec<Inventory> = menu_def()
-        .inventory_sizes()
-        .into_iter()
-        .map(Inventory::new)
-        .collect();
-    for row in CONTENTS {
-        let Ok(name) = Namespaced::parse(row.item) else {
-            warn!("bad id {:?} in the demo table", row.item);
-            continue;
-        };
-        let Some(id) = registries.item_id(&name) else {
-            warn!("{name} was not registered by any mod");
-            continue;
-        };
-        out[row.inventory].set(row.slot, Some(ItemStack::new(id, row.count)));
-    }
-    out
-}
-
-fn register_browser_handler(mut handlers: ResMut<ScreenHandlers>) {
-    handlers.register(
-        ScreenKind::new(CHEST_SCREEN),
-        Arc::new(DefaultScreenHandler),
-    );
-}
-
-/// `Startup`: spawn the inventories, open the menu, spawn the mod's screen.
-fn open_chest(
-    mut commands: Commands,
-    mut ids: ResMut<MenuIdAllocator>,
-    registries: Option<Res<Registries>>,
-    screens: Res<Screens>,
-) {
-    let Some(registries) = registries else { return };
-    let kind = ScreenKind::new(CHEST_SCREEN);
-    let Some(def) = screens.get(&kind).cloned() else {
-        error!("{CHEST_SCREEN} is not registered: did the bundled data.lua run?");
-        return;
-    };
-    let entities: Vec<Entity> = inventories(&registries)
-        .into_iter()
-        .map(|inventory| {
-            commands
-                .spawn(slotted::ecs::menu::Inventory(inventory))
-                .id()
-        })
-        .collect();
-    let menu = open_menu(
-        &mut commands,
-        &mut ids,
-        menu_def(),
-        entities,
-        slotted_model::Actor::SURVIVAL,
-    );
-    spawn_screen(&mut commands, def, Some(menu));
 }
 
 // ---------------------------------------------------------------------------

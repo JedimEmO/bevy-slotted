@@ -20,6 +20,7 @@
 
 pub mod actions;
 pub mod browser;
+pub mod cursor;
 pub mod fixture;
 pub mod fixtures;
 pub mod harness;
@@ -35,6 +36,7 @@ pub mod replay;
 pub mod tree;
 
 pub use browser::Browser;
+pub use cursor::{ReplayCursor, ReplayStatus};
 pub use fixture::{MenuFixture, Opened, ScreenSource};
 pub use fixtures::{ChestFixture, PlayerFixture, TestRegistries};
 pub use harness::{SettleTimeout, UiHarness, UiHarnessBuilder};

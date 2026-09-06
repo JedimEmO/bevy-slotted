@@ -2,24 +2,44 @@
 //!
 //! `docs/design/showcase-contract.md` section 1. A scene is a set of entities
 //! toggled inside the one app, never a restart. [`SceneRegistry`] holds one
-//! [`SceneHandler`] per scene that is real; [`apply_scene_switch`] calls the
-//! old one's `leave` and the new one's `enter` in `PreUpdate`, after the bus
-//! is drained. Until package A lands the other seven, only [`Scene::Mods`] is
-//! registered and it is what `scene::ScenePlugin` already opens at `Startup`,
-//! so its hooks do nothing.
+//! [`SceneHandler`] per scene; [`apply_scene_switch`] calls the old one's
+//! `leave` and the new one's `enter` in `PreUpdate`, after the bus is drained.
+//! The 3D backdrop is spawned once by `scene::ScenePlugin` and shared, so the
+//! orbit carries on across a switch and the page visibly did not reload.
+//!
+//! There are two "current scenes" because one entry in the rail is not a scene
+//! on the canvas. [`ActiveScene`] is what the rail highlights; [`CanvasScene`]
+//! is what is actually spawned. Themes is the difference: selecting it swaps
+//! the controls column and leaves whatever screen was open exactly where it
+//! was, which is the only way "one screen tree, three skins" is worth looking
+//! at. Every other scene moves both.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 pub use showcase::{SCENES, Scene, SceneDef};
+use slotted::browser::BrowserPhase;
 
 use crate::bus::{Bus, quote};
 
-/// The scene the canvas is showing.
+/// The scene the rail highlights, and the one the page's controls follow.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActiveScene(pub Scene);
 
 impl Default for ActiveScene {
+    fn default() -> Self {
+        Self(Scene::DEFAULT)
+    }
+}
+
+/// The scene whose entities are on the canvas.
+///
+/// The same as [`ActiveScene`] except while Themes is selected, when it is
+/// whatever was open before.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanvasScene(pub Scene);
+
+impl Default for CanvasScene {
     fn default() -> Self {
         Self(Scene::DEFAULT)
     }
@@ -35,8 +55,31 @@ pub struct SwitchScene(pub Scene);
 pub trait SceneHandler: Send + Sync + 'static {
     /// Spawn the scene's entities. The backdrop is already there.
     fn enter(&self, world: &mut World);
+
     /// Despawn everything `enter` made. Nothing of the scene may survive.
     fn leave(&self, world: &mut World);
+
+    /// Whether the item browser docks beside this scene's `demo:chest`.
+    ///
+    /// True for exactly one scene, Browser. It is asked on every entry rather
+    /// than left to the scene's own `enter`, because the answer is a
+    /// registration in a resource that outlives the scene that made it: the
+    /// Browser scene used to register the `demo:chest` handler and nothing
+    /// took it away again, so the Multiplayer scene, which opens two
+    /// `demo:chest` screens of its own, docked a panel over each of them for
+    /// anyone who had visited Browser first.
+    fn docks_the_item_browser(&self) -> bool {
+        false
+    }
+
+    /// Whether selecting this scene leaves the canvas alone.
+    ///
+    /// True for exactly one scene, Themes, and the reason is in this module's
+    /// documentation. A handler that says true has its `enter` and `leave`
+    /// called for the rail's sake and must not spawn anything.
+    fn overlays_current(&self) -> bool {
+        false
+    }
 }
 
 /// The scenes that are real. A scene missing here is a stub the page greys
@@ -48,6 +91,13 @@ pub struct SceneRegistry {
 }
 
 impl SceneRegistry {
+    /// Every scene the playground can switch to.
+    pub fn with_all_scenes() -> Self {
+        let mut registry = Self::default();
+        crate::scenes::register_all(&mut registry);
+        registry
+    }
+
     /// Registers `handler` for `scene`, replacing any earlier one.
     pub fn register(&mut self, scene: Scene, handler: impl SceneHandler) {
         self.handlers.insert(scene, Box::new(handler));
@@ -65,16 +115,12 @@ impl SceneRegistry {
             .filter(|scene| self.has(*scene))
             .collect()
     }
-}
 
-/// The scene the playground has always shown: `scene::ScenePlugin` opens the
-/// copper chest at `Startup`, so there is nothing to enter or leave until a
-/// second scene exists and the chest has to come and go with this one.
-struct ModsScene;
-
-impl SceneHandler for ModsScene {
-    fn enter(&self, _world: &mut World) {}
-    fn leave(&self, _world: &mut World) {}
+    fn overlays(&self, scene: Scene) -> bool {
+        self.handlers
+            .get(&scene)
+            .is_some_and(|handler| handler.overlays_current())
+    }
 }
 
 /// Registers the real scenes and the switch.
@@ -83,14 +129,52 @@ pub struct ShowcasePlugin;
 
 impl Plugin for ShowcasePlugin {
     fn build(&self, app: &mut App) {
-        let mut registry = SceneRegistry::default();
-        registry.register(Scene::Mods, ModsScene);
         app.init_resource::<ActiveScene>()
-            .insert_resource(registry)
+            .init_resource::<CanvasScene>()
+            .insert_resource(SceneRegistry::with_all_scenes())
             .add_message::<SwitchScene>()
+            // After the browser's own `Startup` registrations. Both this and
+            // `showcase::chest::register_browser_handler` run in `Startup`,
+            // and with nothing between them Bevy is free to run them in
+            // either order. In the wrong one the Chest scene removes the
+            // `demo:chest` handler and the browser plugin puts it straight
+            // back, so scene 1 boots with the panel scene 2 is about docked
+            // beside it. The native tests never saw it because they switch
+            // scenes after startup; a browser tab lands on it every time.
+            .add_systems(
+                Startup,
+                enter_first_scene.after(BrowserPhase::ScreenHandlers),
+            )
             .add_systems(PreUpdate, apply_scene_switch.after(crate::drain_requests))
-            .add_systems(PostUpdate, publish_scene);
+            .add_systems(
+                PostUpdate,
+                (
+                    publish_scene,
+                    crate::scenes::multiplayer::pump_link,
+                    crate::scenes::multiplayer::fit_client_screens,
+                    crate::scenes::testing::advance_replay,
+                ),
+            );
     }
+}
+
+/// `Startup`, after the mods have loaded: opens [`Scene::DEFAULT`].
+///
+/// The mods load in `PreStartup` (`SlottedPacksPlugin::initial_load`), so by
+/// the time this runs the registries and the mod-registered screens are there,
+/// which is what every scene's `enter` needs.
+///
+/// It is ordered after [`BrowserPhase::ScreenHandlers`] as well, because a
+/// scene's `enter` may take a screen handler away and the browser plugin
+/// registers them in the same schedule.
+pub fn enter_first_scene(world: &mut World) {
+    let wanted = world.resource::<ActiveScene>().0;
+    let registry = world.remove_resource::<SceneRegistry>().unwrap_or_default();
+    if let Some(handler) = registry.handlers.get(&wanted) {
+        crate::scenes::chest::set_browser_attached(world, handler.docks_the_item_browser());
+        handler.enter(world);
+    }
+    world.insert_resource(registry);
 }
 
 /// `PreUpdate`, exclusive: the last `SwitchScene` of the frame wins. A scene
@@ -102,9 +186,9 @@ pub fn apply_scene_switch(world: &mut World) {
     let Some(SwitchScene(wanted)) = messages.drain().last() else {
         return;
     };
-    let current = world.resource::<ActiveScene>().0;
+    let active = world.resource::<ActiveScene>().0;
     let bus = world.resource::<Bus>().clone();
-    if wanted == current {
+    if wanted == active {
         return;
     }
     if !world.resource::<SceneRegistry>().has(wanted) {
@@ -118,11 +202,21 @@ pub fn apply_scene_switch(world: &mut World) {
     // The handlers are taken out of the registry for the call: `enter` and
     // `leave` want `&mut World`, and the registry lives in it.
     let registry = world.remove_resource::<SceneRegistry>().unwrap_or_default();
-    if let Some(old) = registry.handlers.get(&current) {
-        old.leave(world);
-    }
-    if let Some(new) = registry.handlers.get(&wanted) {
-        new.enter(world);
+    let overlay = registry.overlays(wanted);
+    if !overlay {
+        let canvas = world.resource::<CanvasScene>().0;
+        // Leaving Themes is leaving nothing: it never entered the canvas, so
+        // whatever it was shown over is still there and stays.
+        if !registry.overlays(canvas)
+            && let Some(old) = registry.handlers.get(&canvas)
+        {
+            old.leave(world);
+        }
+        if let Some(new) = registry.handlers.get(&wanted) {
+            crate::scenes::chest::set_browser_attached(world, new.docks_the_item_browser());
+            new.enter(world);
+        }
+        world.resource_mut::<CanvasScene>().0 = wanted;
     }
     world.insert_resource(registry);
     world.resource_mut::<ActiveScene>().0 = wanted;
@@ -143,7 +237,7 @@ fn publish_scene(bus: Res<Bus>, active: Res<ActiveScene>) {
 /// The scene table as the JSON the rail renders.
 ///
 /// ```json
-/// [{"id":"chest","title":"Chest","caption":"..","tries":["..","..",".."],"ready":false}]
+/// [{"id":"chest","title":"Chest","caption":"..","tries":["..","..",".."],"ready":true}]
 /// ```
 ///
 /// Here rather than in `bridge` so a native test can assert the shape the
@@ -181,5 +275,21 @@ mod tests {
             at += found;
         }
         assert!(json.contains("\"ready\":true"));
+    }
+
+    #[test]
+    fn every_scene_in_the_table_has_a_handler() {
+        let registry = SceneRegistry::with_all_scenes();
+        assert_eq!(registry.registered(), Scene::ALL);
+    }
+
+    #[test]
+    fn themes_is_the_only_scene_that_leaves_the_canvas_alone() {
+        let registry = SceneRegistry::with_all_scenes();
+        let overlays: Vec<Scene> = Scene::ALL
+            .into_iter()
+            .filter(|scene| registry.overlays(*scene))
+            .collect();
+        assert_eq!(overlays, [Scene::Themes]);
     }
 }

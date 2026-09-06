@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::bundle;
 use crate::bus::{Bus, Line, Request};
+use crate::scenes::themes as showcase_themes;
 use crate::showcase::{self, Scene};
 
 /// Starts the app. `wasm-bindgen`'s generated `default()` calls this.
@@ -178,15 +179,12 @@ pub fn list_scenes() -> JsValue {
 ///
 /// # Errors
 ///
-/// An unknown id, or a scene that is still a stub (`not yet: ...`), as a
-/// `TypeError`. The page renders the second as a disabled rail entry rather
-/// than a failure.
+/// An unknown id, as a `TypeError`. Every scene in the table is real, so there
+/// is no second failure any more; `list_scenes` still reports `ready` for a
+/// page that greys entries out.
 #[wasm_bindgen]
 pub fn set_scene(id: &str) -> Result<(), JsValue> {
     let scene = Scene::from_id(id).ok_or_else(|| not_a_scene(id))?;
-    if !scene.ready() {
-        return Err(not_yet(&format!("the {} scene", scene.def().title)));
-    }
     Bus::global().request(Request::SetScene(scene));
     Ok(())
 }
@@ -200,115 +198,150 @@ pub fn current_scene() -> JsValue {
 
 /// Applies a theme to the open scene: `glass`, `paper` or `neon`.
 ///
+/// The screen is not respawned: the theme system resolves tokens and materials
+/// per frame from whatever handle `ActiveTheme` holds, so the panel repaints
+/// under an open cursor, a focus ring and a half-finished drag.
+///
 /// # Errors
 ///
-/// Always, until the Themes scene lands: `not yet`.
+/// A name that is not one of the three bundled themes.
 #[wasm_bindgen]
 pub fn set_theme(name: &str) -> Result<(), JsValue> {
-    Err(not_yet(&format!("set_theme({name})")))
+    if showcase_themes::path_of(name).is_none() {
+        return Err(js_sys::TypeError::new(&format!(
+            "`{name}` is not a bundled theme; the page has {}",
+            showcase_themes::THEMES.join(", ")
+        ))
+        .into());
+    }
+    Bus::global().request(Request::SetTheme {
+        name: name.to_owned(),
+    });
+    Ok(())
+}
+
+/// Puts a query into the item browser's search field, the same way a category
+/// chip does: the field shows it and a visitor can carry on typing from there.
+///
+/// Outside the Browser scene it does nothing rather than failing. The page
+/// keeps the last scene in its URL and offers the search chips as a control
+/// block, so a chip pressed a frame after a switch is ordinary and not an
+/// error.
+#[wasm_bindgen]
+pub fn browser_search(query: &str) {
+    Bus::global().request(Request::BrowserSearch {
+        query: query.to_owned(),
+    });
 }
 
 /// Turns the machine's redstone signal on or off.
 ///
-/// # Errors
-///
-/// Always, until the Machine scene lands: `not yet`.
+/// It writes the resource whichever scene is open, because the machine's
+/// simulation is the only thing that reads it and it only runs while the
+/// Machine scene has a furnace. Pressing the toggle elsewhere is harmless and
+/// the setting is there when the visitor comes back.
 #[wasm_bindgen]
-pub fn machine_redstone(on: bool) -> Result<(), JsValue> {
-    Err(not_yet(&format!("machine_redstone({on})")))
+pub fn machine_redstone(on: bool) {
+    Bus::global().request(Request::Redstone(on));
 }
 
 /// Enters or leaves the HUD position editor.
 ///
-/// # Errors
-///
-/// Always, until the HUD scene lands: `not yet`.
+/// While it is on, every HUD layer is pickable and draggable and wears an
+/// outline. Leaving the HUD scene turns it off again.
 #[wasm_bindgen]
-pub fn hud_edit(on: bool) -> Result<(), JsValue> {
-    Err(not_yet(&format!("hud_edit({on})")))
+pub fn hud_edit(on: bool) {
+    Bus::global().request(Request::HudEdit(on));
 }
 
 /// The HUD layout as RON, for the page to keep in `localStorage`.
 ///
+/// An empty string means the visitor has not moved a layer, and the page
+/// should leave whatever it had stored alone.
+///
 /// # Errors
 ///
-/// Always, until the HUD scene lands: `not yet`.
+/// A layout that will not serialise, which for a map of names to numbers means
+/// something is very wrong.
 #[wasm_bindgen]
 pub fn hud_layout() -> Result<String, JsValue> {
-    Err(not_yet("hud_layout()"))
+    crate::hud_store::global().to_ron().map_err(|e| {
+        js_sys::TypeError::new(&format!("the HUD layout did not serialise: {e}")).into()
+    })
 }
 
-/// Puts a [`hud_layout`] value back.
+/// Puts a [`hud_layout`] value back, or resets the layout when `ron` is empty.
+///
+/// Called once at boot with whatever `localStorage` held. It takes effect the
+/// next time the HUD scene is entered, and immediately if it is already open.
+///
+/// An empty string is the Reset button: it forgets the stored layout and puts
+/// every layer back where its own definition asked for it, so the next
+/// `hud_layout()` comes back empty and the page can clear its key. That is a
+/// separate meaning from a parse failure, which is what an empty string would
+/// otherwise be.
 ///
 /// # Errors
 ///
-/// Always, until the HUD scene lands: `not yet`.
+/// The text is neither empty nor a HUD layout.
 #[wasm_bindgen]
-pub fn restore_hud_layout(_ron: &str) -> Result<(), JsValue> {
-    Err(not_yet("restore_hud_layout(..)"))
+pub fn restore_hud_layout(ron: &str) -> Result<(), JsValue> {
+    Bus::global().request(Request::RestoreHud {
+        ron: ron.to_owned(),
+    });
+    Ok(())
 }
 
-/// Sets the loopback link's latency and loss.
+/// Sets the loopback link's one-way latency in milliseconds and the percentage
+/// of messages it throws away.
 ///
-/// # Errors
-///
-/// Always, until the Multiplayer scene lands: `not yet`.
+/// Both sliders take effect on the next message; anything already in flight
+/// keeps the delivery time it was given, which is what a real link does when
+/// the network changes under it.
 #[wasm_bindgen]
-pub fn net_config(latency_ms: u32, drop_percent: u8) -> Result<(), JsValue> {
-    Err(not_yet(&format!(
-        "net_config({latency_ms}, {drop_percent})"
-    )))
+pub fn net_config(latency_ms: u32, drop_percent: u8) {
+    Bus::global().request(Request::NetConfig {
+        latency_ms,
+        drop_percent,
+    });
 }
 
-/// Loads the bundled recording into the Testing scene.
-///
-/// # Errors
-///
-/// Always, until the Testing scene lands: `not yet`.
+/// Loads the bundled recording into the Testing scene and opens the chest it
+/// was made over.
 #[wasm_bindgen]
-pub fn replay_load() -> Result<(), JsValue> {
-    Err(not_yet("replay_load()"))
+pub fn replay_load() {
+    Bus::global().request(Request::ReplayLoad);
 }
 
 /// Seeks the loaded recording to `frame`.
 ///
-/// # Errors
-///
-/// Always, until the Testing scene lands: `not yet`.
+/// Seeking backwards reopens the chest and re-feeds every frame from the
+/// start, because an input stream does not run in reverse.
 #[wasm_bindgen]
-pub fn replay_seek(frame: u32) -> Result<(), JsValue> {
-    Err(not_yet(&format!("replay_seek({frame})")))
+pub fn replay_seek(frame: u32) {
+    Bus::global().request(Request::ReplaySeek { frame });
 }
 
-/// Plays or pauses the loaded recording.
-///
-/// # Errors
-///
-/// Always, until the Testing scene lands: `not yet`.
+/// Plays or pauses the loaded recording. Pressing play at the end starts over.
 #[wasm_bindgen]
-pub fn replay_play(on: bool) -> Result<(), JsValue> {
-    Err(not_yet(&format!("replay_play({on})")))
+pub fn replay_play(on: bool) {
+    Bus::global().request(Request::ReplayPlay(on));
 }
 
 /// `{"frame":n,"frames":n,"playing":bool}` for the scrubber.
 ///
-/// # Errors
-///
-/// Always, until the Testing scene lands: `not yet`.
+/// Published by the world once a frame, the same push-pull the snapshot uses:
+/// a zero-length recording is what comes back before anything is loaded.
 #[wasm_bindgen]
-pub fn replay_status() -> Result<String, JsValue> {
-    Err(not_yet("replay_status()"))
+pub fn replay_status() -> JsValue {
+    JsValue::from_str(&Bus::global().replay_status())
 }
 
-/// What every stubbed export throws. The page tests for the prefix.
+/// What a stubbed export used to throw. Every scene is real now, so nothing
+/// throws it any more; the constant stays because `web/playground.js` and
+/// `smoke.html` test for the prefix and a page built against the stubs must
+/// keep working against the finished module.
 pub const NOT_YET_PREFIX: &str = "not yet: ";
-
-fn not_yet(what: &str) -> JsValue {
-    js_sys::TypeError::new(&format!(
-        "{NOT_YET_PREFIX}{what} is a stub until its scene lands"
-    ))
-    .into()
-}
 
 fn not_a_scene(id: &str) -> JsValue {
     js_sys::TypeError::new(&format!("`{id}` is not a showcase scene")).into()

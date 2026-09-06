@@ -64,6 +64,43 @@ pub enum Request {
     /// Switch the canvas to another showcase scene
     /// (docs/design/showcase-contract.md section 1).
     SetScene(showcase::Scene),
+    /// Repaint the open screen in another bundled theme: `glass`, `paper` or
+    /// `neon` (showcase contract section 3.3).
+    SetTheme {
+        /// The theme name.
+        name: String,
+    },
+    /// Put a query into the item browser's search field, the way a category
+    /// chip does. Browser scene only; a no-op anywhere else.
+    BrowserSearch {
+        /// The query, in the browser's search grammar.
+        query: String,
+    },
+    /// Turn the machine scene's redstone signal on or off.
+    Redstone(bool),
+    /// Enter or leave the HUD position editor.
+    HudEdit(bool),
+    /// Put a HUD layout the page kept in `localStorage` back.
+    RestoreHud {
+        /// A `slotted_ui::HudLayout` as RON.
+        ron: String,
+    },
+    /// Set the multiplayer scene's loopback conditions.
+    NetConfig {
+        /// One-way latency in milliseconds.
+        latency_ms: u32,
+        /// Percentage of messages the link throws away.
+        drop_percent: u8,
+    },
+    /// Load the bundled recording into the Testing scene.
+    ReplayLoad,
+    /// Move the Testing scene's scrubber to a recorded frame.
+    ReplaySeek {
+        /// Recorded frame index.
+        frame: u32,
+    },
+    /// Play or pause the loaded recording.
+    ReplayPlay(bool),
 }
 
 /// One line the console shows.
@@ -126,6 +163,10 @@ struct Inner {
     /// The scene the world is showing, for `current_scene`. Same push-pull
     /// arrangement as the snapshot.
     scene: Option<showcase::Scene>,
+    /// The replay scrubber's position, as the JSON `replay_status` returns.
+    /// Same push-pull arrangement again: the export is a free function and
+    /// cannot reach into the `World` to ask.
+    replay_status: String,
 }
 
 /// The shared queue, held by the page side and by the world alike.
@@ -209,6 +250,22 @@ impl Bus {
         self.lock().scene
     }
 
+    /// Publishes the replay scrubber's position, as JSON.
+    pub fn set_replay_status(&self, status: impl Into<String>) {
+        self.lock().replay_status = status.into();
+    }
+
+    /// The last published scrubber position, or an empty recording before the
+    /// Testing scene has published one.
+    pub fn replay_status(&self) -> String {
+        let status = self.lock().replay_status.clone();
+        if status.is_empty() {
+            "{\"frame\":0,\"frames\":0,\"playing\":false}".to_owned()
+        } else {
+            status
+        }
+    }
+
     /// Takes the lines written since the last call.
     pub fn drain_console(&self) -> Vec<Line> {
         self.lock().pending.drain(..).collect()
@@ -250,8 +307,17 @@ mod tests {
             .map(|r| match r {
                 Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
                 Request::Write { path, .. } | Request::Restore { state: path } => path,
-                Request::CanvasConsole(on) => on.to_string(),
+                Request::SetTheme { name } => name,
+                Request::BrowserSearch { query } => query,
+                Request::RestoreHud { ron } => ron,
+                Request::CanvasConsole(on)
+                | Request::Redstone(on)
+                | Request::HudEdit(on)
+                | Request::ReplayPlay(on) => on.to_string(),
                 Request::SetScene(scene) => scene.id().to_owned(),
+                Request::NetConfig { latency_ms, .. } => latency_ms.to_string(),
+                Request::ReplayLoad => "load".to_owned(),
+                Request::ReplaySeek { frame } => frame.to_string(),
             })
             .collect();
         assert_eq!(ids, ["a", "b"]);
@@ -272,8 +338,17 @@ mod tests {
             .map(|r| match r {
                 Request::Reload { mod_id } | Request::RunTests { mod_id } => mod_id,
                 Request::Write { path, .. } | Request::Restore { state: path } => path,
-                Request::CanvasConsole(on) => on.to_string(),
+                Request::SetTheme { name } => name,
+                Request::BrowserSearch { query } => query,
+                Request::RestoreHud { ron } => ron,
+                Request::CanvasConsole(on)
+                | Request::Redstone(on)
+                | Request::HudEdit(on)
+                | Request::ReplayPlay(on) => on.to_string(),
                 Request::SetScene(scene) => scene.id().to_owned(),
+                Request::NetConfig { latency_ms, .. } => latency_ms.to_string(),
+                Request::ReplayLoad => "load".to_owned(),
+                Request::ReplaySeek { frame } => frame.to_string(),
             })
             .collect();
         assert_eq!(ids, ["a", "b", "c"]);

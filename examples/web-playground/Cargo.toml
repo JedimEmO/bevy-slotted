@@ -22,7 +22,8 @@ blur = ["slotted/blur"]
 # this page does not want. A path dependency rather than the workspace one,
 # because a workspace dependency cannot be inherited with
 # `default-features = false`. The runtime comes in below, inserted directly.
-slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "packs", "dev"] }
+slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "packs", "dev", "net"] }
+slotted-net = { workspace = true }
 slotted-packs = { workspace = true, features = ["ui"] }
 slotted-script = { workspace = true }
 slotted-script-luaur = { path = "../../crates/slotted-script-luaur", version = "0.1.0" }
@@ -85,6 +86,8 @@ slotted-testutils = { workspace = true }
 slotted-browser = { workspace = true }
 slotted-ecs = { workspace = true }
 slotted-ui = { workspace = true }
+slotted-theme = { workspace = true }
+slotted-net = { workspace = true }
 pretty_assertions = { workspace = true }
 
 [lints]
