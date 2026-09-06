@@ -68,10 +68,10 @@ pub struct Durations {
 }
 
 /// The hover delay a theme gets when it names none: long enough that a
-/// pointer crossing a grid does not trail tooltips, short enough that a
+/// pointer sweeping a grid does not trail tooltips, short enough that a
 /// deliberate hover feels answered.
 const fn default_hover_delay() -> u32 {
-    120
+    60
 }
 
 /// Where a text role's glyphs come from.

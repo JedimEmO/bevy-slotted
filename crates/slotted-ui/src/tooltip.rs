@@ -415,6 +415,12 @@ pub fn show_tooltip(request: On<TooltipRequest>, mut commands: Commands) {
         if !world.entities().contains(entity) {
             return;
         }
+        // Nothing to say (an empty slot, a widget with no parts): no tooltip.
+        // Recording empty content would make the host look like it has one.
+        if composed.is_empty() {
+            world.entity_mut(entity).remove::<TooltipContent>();
+            return;
+        }
         world.entity_mut(entity).insert(TooltipContent {
             tier,
             parts: composed.clone(),
