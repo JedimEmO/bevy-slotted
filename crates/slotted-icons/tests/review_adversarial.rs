@@ -151,11 +151,11 @@ fn no_out_of_range_parameter_can_blow_out_a_channel() {
             // pixel to white, which is what an unclamped shade does.
             let data = pixels_of(&icon, 16);
             assert!(
-                data.chunks_exact(4).any(|px| px[3] > 0),
+                data.as_chunks::<4>().0.iter().any(|px| px[3] > 0),
                 "{kind:?} at metallic {metallic} roughness {roughness} drew nothing"
             );
             assert!(
-                data.chunks_exact(4)
+                data.as_chunks::<4>().0.iter()
                     .filter(|px| px[3] > 0)
                     .any(|px| px[0] < 255 || px[1] < 255 || px[2] < 255),
                 "{kind:?} at metallic {metallic} roughness {roughness} is a white square"
