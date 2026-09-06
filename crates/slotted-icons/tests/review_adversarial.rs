@@ -155,7 +155,9 @@ fn no_out_of_range_parameter_can_blow_out_a_channel() {
                 "{kind:?} at metallic {metallic} roughness {roughness} drew nothing"
             );
             assert!(
-                data.as_chunks::<4>().0.iter()
+                data.as_chunks::<4>()
+                    .0
+                    .iter()
                     .filter(|px| px[3] > 0)
                     .any(|px| px[0] < 255 || px[1] < 255 || px[2] < 255),
                 "{kind:?} at metallic {metallic} roughness {roughness} is a white square"
