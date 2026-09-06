@@ -11,40 +11,165 @@ use slotted_registry::Value;
 use slotted_theme::{ActiveTheme, Theme, Tokens};
 
 use crate::def::{AnchorId, ScreenDef, ScreenKind, Tags, UiNodeDef, WidgetKind};
+use crate::invalidate::{Owner, Reconciled};
 use crate::layers::zbands;
 use crate::semantic::{ScreenRoot, SemanticRole, TestId, WidgetNode};
 use crate::widgets;
 
-/// Every screen the app knows, by kind. Filled from Rust with
-/// [`Screens::register`] and from the frozen registries' `screens` payloads
-/// by the plugin at startup ([`Screens::load_from_registry`]).
+/// Every screen the app knows, by kind, and who registered each one.
+///
+/// Filled from Rust with [`Screens::register`], from `*.screen.ron` assets,
+/// and from the frozen registries' `screens` payloads by the pack loader
+/// ([`Screens::load_from_registry`]).
+///
+/// Each entry carries an [`Owner`], which is what lets a mod reload take its
+/// own screens back out again -- see [`Screens::reconcile_mods`]. Entries the
+/// game registered itself are never removed on a mod's behalf.
 #[derive(Resource, Default, Debug, Clone)]
-pub struct Screens(pub HashMap<ScreenKind, Arc<ScreenDef>>);
+pub struct Screens {
+    defs: HashMap<ScreenKind, Arc<ScreenDef>>,
+    owners: HashMap<ScreenKind, Owner>,
+    /// Game-owned definitions a mod took over, kept so removing the mod's
+    /// registration restores the game's rather than leaving the kind unknown.
+    shadowed: HashMap<ScreenKind, Arc<ScreenDef>>,
+}
 
 impl Screens {
-    /// Register or replace.
+    /// Register or replace, as the game's own ([`Owner::Game`]).
     pub fn register(&mut self, def: ScreenDef) -> Arc<ScreenDef> {
+        self.register_owned(def, Owner::Game)
+    }
+
+    /// Register or replace, recording who registered it.
+    pub fn register_owned(&mut self, def: ScreenDef, owner: Owner) -> Arc<ScreenDef> {
         let def = Arc::new(def);
-        self.0.insert(def.kind.clone(), def.clone());
+        self.insert_arc(def.clone(), owner);
         def
+    }
+
+    fn insert_arc(&mut self, def: Arc<ScreenDef>, owner: Owner) {
+        let kind = def.kind.clone();
+        if owner.is_mod()
+            && self.owners.get(&kind) == Some(&Owner::Game)
+            && let Some(previous) = self.defs.get(&kind)
+        {
+            self.shadowed.insert(kind.clone(), previous.clone());
+        }
+        if !owner.is_mod() {
+            self.shadowed.remove(&kind);
+        }
+        self.owners.insert(kind.clone(), owner);
+        self.defs.insert(kind, def);
     }
 
     /// Lookup.
     pub fn get(&self, kind: &ScreenKind) -> Option<&Arc<ScreenDef>> {
-        self.0.get(kind)
+        self.defs.get(kind)
+    }
+
+    /// Who registered `kind`.
+    pub fn owner(&self, kind: &ScreenKind) -> Option<&Owner> {
+        self.owners.get(kind)
+    }
+
+    /// Every registered screen.
+    pub fn iter(&self) -> impl Iterator<Item = (&ScreenKind, &Arc<ScreenDef>)> {
+        self.defs.iter()
+    }
+
+    /// Every registered kind.
+    pub fn kinds(&self) -> impl Iterator<Item = &ScreenKind> {
+        self.defs.keys()
+    }
+
+    /// How many screens are registered.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.defs.len()
+    }
+
+    /// Whether nothing is registered.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.defs.is_empty()
+    }
+
+    /// Unregisters `kind`, whoever owns it. Returns what was there.
+    ///
+    /// This does not touch anything already on screen; run the removal
+    /// through [`crate::invalidate_and_respawn`] to close it.
+    pub fn remove(&mut self, kind: &ScreenKind) -> Option<Arc<ScreenDef>> {
+        self.owners.remove(kind);
+        self.shadowed.remove(kind);
+        self.defs.remove(kind)
+    }
+
+    /// Replaces exactly the mod-owned set with `defs`, leaving every
+    /// [`Owner::Game`] and [`Owner::Asset`] entry alone.
+    ///
+    /// This is the reload path. A kind a mod registered last time and does not
+    /// register now is removed -- or, when a game registration was shadowed by
+    /// it, restored to the game's definition. The result names the kinds whose
+    /// definition actually moved and the kinds that went away, which is what a
+    /// [`ChangeSet`](crate::ChangeSet) wants.
+    pub fn reconcile_mods(&mut self, defs: Vec<(Owner, ScreenDef)>) -> Reconciled<ScreenKind> {
+        let previous: HashMap<ScreenKind, Arc<ScreenDef>> = self
+            .owners
+            .iter()
+            .filter(|(_, owner)| owner.is_mod())
+            .filter_map(|(kind, _)| Some((kind.clone(), self.defs.get(kind)?.clone())))
+            .collect();
+        let mut changed = Vec::new();
+        let mut seen: Vec<ScreenKind> = Vec::new();
+        for (owner, def) in defs {
+            let kind = def.kind.clone();
+            let differs = self.defs.get(&kind).is_none_or(|old| **old != def);
+            self.insert_arc(Arc::new(def), owner);
+            seen.push(kind.clone());
+            if differs {
+                changed.push(kind);
+            }
+        }
+        let mut removed = Vec::new();
+        for kind in previous.keys() {
+            if seen.contains(kind) {
+                continue;
+            }
+            if let Some(game) = self.shadowed.remove(kind) {
+                self.owners.insert(kind.clone(), Owner::Game);
+                self.defs.insert(kind.clone(), game);
+                changed.push(kind.clone());
+            } else {
+                self.owners.remove(kind);
+                self.defs.remove(kind);
+                removed.push(kind.clone());
+            }
+        }
+        changed.sort_by_key(|kind| kind.0.to_string());
+        removed.sort_by_key(|kind| kind.0.to_string());
+        Reconciled { changed, removed }
     }
 
     /// Deserialises every `screens/*.ron` payload the registry kept as an
-    /// untyped value. Malformed entries are logged and skipped.
-    pub fn load_from_registry(&mut self, registries: &slotted_registry::FrozenRegistries) {
+    /// untyped value, as the owning mod's. Malformed entries are logged and
+    /// skipped, and the mod-owned set is reconciled, so a screen a mod stopped
+    /// shipping is unregistered rather than left behind.
+    pub fn load_from_registry(
+        &mut self,
+        registries: &slotted_registry::FrozenRegistries,
+    ) -> Reconciled<ScreenKind> {
+        // The frozen entry does not record which mod wrote it, but a
+        // registry name is namespaced and the namespace *is* the mod id in
+        // every case a mod is allowed to register under (the data stage warns
+        // about the others), so that is the owner.
+        let mut defs = Vec::new();
         for (_, name, raw) in registries.screens.iter() {
             match ScreenDef::from_value(raw.payload.clone()) {
-                Ok(def) => {
-                    self.register(def);
-                }
+                Ok(def) => defs.push((Owner::Mod(name.namespace().to_owned()), def)),
                 Err(e) => tracing::warn!(%name, %e, "screen payload is not a ScreenDef"),
             }
         }
+        self.reconcile_mods(defs)
     }
 
     /// `def` with its `inherits` chain flattened: the ancestor's tree with
@@ -206,39 +331,6 @@ fn remove_node(root: &mut UiNodeDef, id: &str) -> bool {
     found
 }
 
-/// Closes and re-opens every screen of a kind in `changed`, on the same menu
-/// entity, so its slots re-seed without an inventory write.
-///
-/// Contract 2.6 step 4, lifted out of `slotted-packs` so it is reachable from
-/// this crate: [`crate::screen_asset::apply_screen_assets`] calls it after a
-/// `*.screen.ron` changed on disk, and `slotted_packs`'s own `respawn_screens`
-/// (still its private copy) does the same after a mod reload.
-/// [`Screens`] must already hold the new definition.
-pub fn respawn_open_screens(world: &mut World, changed: &[ScreenKind]) {
-    if changed.is_empty() {
-        return;
-    }
-    let roots: Vec<(Entity, ScreenKind, Option<Entity>)> = world
-        .query::<(Entity, &ScreenRoot)>()
-        .iter(world)
-        .filter(|(_, root)| changed.contains(&root.kind))
-        .map(|(entity, root)| (entity, root.kind.clone(), root.menu))
-        .collect();
-    if roots.is_empty() {
-        return;
-    }
-    let screens = world.resource::<Screens>().clone();
-    for (root, kind, menu) in roots {
-        let Some(def) = screens.get(&kind).cloned() else {
-            continue;
-        };
-        let mut commands = world.commands();
-        close_screen(&mut commands, root);
-        spawn_screen(&mut commands, def, menu);
-        world.flush();
-    }
-}
-
 /// A node another mod or crate adds to a screen it does not own.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Injection {
@@ -250,6 +342,9 @@ pub struct Injection {
     pub node: UiNodeDef,
     /// Mark the spawned node as an [`crate::ExclusionZone`].
     pub exclusion: bool,
+    /// Who registered it. A reload replaces exactly the mod-owned
+    /// injections; see [`crate::reconcile_mod_injections`].
+    pub owner: Owner,
 }
 
 /// All registered injections. Consulted by [`spawn_screen`]; changing it
@@ -536,19 +631,87 @@ pub trait Widget: Send + Sync {
     fn tooltip(&self, _entity: Entity, _world: &World, _out: &mut Vec<UiNodeDef>) {}
 }
 
-/// Kind to implementation. Built-ins are registered by the plugin.
+/// Kind to implementation, and who registered each. Built-ins are registered
+/// by the plugin as [`Owner::Game`].
+///
+/// A mod's `RegisterWidget` puts a template here under [`Owner::Mod`]; the
+/// reload path replaces exactly that set, so a template a mod stopped
+/// shipping stops resolving instead of outliving it.
 #[derive(Resource, Default, Clone)]
-pub struct WidgetRegistry(pub HashMap<WidgetKind, Arc<dyn Widget>>);
+pub struct WidgetRegistry {
+    widgets: HashMap<WidgetKind, Arc<dyn Widget>>,
+    owners: HashMap<WidgetKind, Owner>,
+}
 
 impl WidgetRegistry {
-    /// Register or replace.
+    /// Register or replace, as the game's own.
     pub fn register(&mut self, kind: WidgetKind, widget: impl Widget + 'static) {
-        self.0.insert(kind, Arc::new(widget));
+        self.register_owned(kind, widget, Owner::Game);
+    }
+
+    /// Register or replace, recording who registered it.
+    pub fn register_owned(
+        &mut self,
+        kind: WidgetKind,
+        widget: impl Widget + 'static,
+        owner: Owner,
+    ) {
+        self.owners.insert(kind.clone(), owner);
+        self.widgets.insert(kind, Arc::new(widget));
     }
 
     /// Lookup.
     pub fn get(&self, kind: &WidgetKind) -> Option<&Arc<dyn Widget>> {
-        self.0.get(kind)
+        self.widgets.get(kind)
+    }
+
+    /// Who registered `kind`.
+    pub fn owner(&self, kind: &WidgetKind) -> Option<&Owner> {
+        self.owners.get(kind)
+    }
+
+    /// Every registered kind.
+    pub fn kinds(&self) -> impl Iterator<Item = &WidgetKind> {
+        self.widgets.keys()
+    }
+
+    /// Unregisters `kind`.
+    pub fn remove(&mut self, kind: &WidgetKind) {
+        self.owners.remove(kind);
+        self.widgets.remove(kind);
+    }
+
+    /// Replaces exactly the mod-owned templates with `next`, leaving the
+    /// built-ins and the game's own registrations alone. The result names the
+    /// kinds a screen using them has to be respawned for.
+    pub fn reconcile_mods(
+        &mut self,
+        next: Vec<(WidgetKind, Arc<dyn Widget>, Owner)>,
+    ) -> Reconciled<WidgetKind> {
+        let before: Vec<WidgetKind> = self
+            .owners
+            .iter()
+            .filter(|(_, owner)| owner.is_mod())
+            .map(|(kind, _)| kind.clone())
+            .collect();
+        let mut changed = Vec::new();
+        for (kind, widget, owner) in next {
+            self.owners.insert(kind.clone(), owner);
+            self.widgets.insert(kind.clone(), widget);
+            changed.push(kind);
+        }
+        let mut removed = Vec::new();
+        for kind in before {
+            if changed.contains(&kind) {
+                continue;
+            }
+            self.owners.remove(&kind);
+            self.widgets.remove(&kind);
+            removed.push(kind);
+        }
+        changed.sort_by_key(|kind| kind.0.to_string());
+        removed.sort_by_key(|kind| kind.0.to_string());
+        Reconciled { changed, removed }
     }
 }
 

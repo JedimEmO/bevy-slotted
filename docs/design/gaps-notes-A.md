@@ -133,8 +133,11 @@ in-flight click, and an ack for a submission it does not recognise is still
 reported before a resync is asked for, both so that the caller's round-trip
 count cannot get stuck above zero.
 
-**Server.** `MenuServer` holds def, inventories, state, actor and viewers per
-menu. Every click is applied to a scratch copy at `ValidationLevel::Always`
+**Server.** *(Superseded by `docs/design/review-notes-A.md`, which replaces
+the per-menu viewer list with a container store and per-peer sessions, adds
+the `Access` port, and records each click's answer so a retransmission repeats
+its kind. The paragraph below describes the first cut.)* `MenuServer` holds
+def, inventories, state, actor and viewers per menu. Every click is applied to a scratch copy at `ValidationLevel::Always`
 and committed only on `Ok`. The clicking client gets an ack when its
 prediction matched exactly *and* its `state_id` agreed; otherwise it gets the
 container. Other viewers get `SetSlot` per changed slot, and the changed set

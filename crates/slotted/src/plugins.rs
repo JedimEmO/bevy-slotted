@@ -1,6 +1,11 @@
 //! Plugin groups.
 
 use bevy::app::{PluginGroup, PluginGroupBuilder};
+// `App`, `Plugin`, `Resource` and friends, all of them behind `ui` or `net`.
+// A `--no-default-features` build of the facade uses none of them, and the
+// alternative to this is a `cfg(any(..))` that has to be edited every time a
+// feature gains a plugin.
+#[allow(unused_imports)]
 use bevy::prelude::*;
 
 /// Everything slotted, wired with the defaults: `LocalAuthority`, the
@@ -19,8 +24,26 @@ pub struct SlottedPlugins {
 impl SlottedPlugins {
     /// The headless stack: [`HeadlessBevyPlugins`] plus this group with
     /// `headless: true`. Add nothing else from Bevy.
+    ///
+    /// This is a *UI* stack without a renderer: `bevy_ui` still lays out, and
+    /// picking, focus and keyboard still work, which is what makes it the
+    /// thing `slotted-test` drives. A dedicated server wants
+    /// [`SlottedPlugins::server`] instead, which compiles none of that.
+    #[cfg(feature = "ui")]
     pub fn headless() -> HeadlessStack {
         HeadlessStack
+    }
+
+    /// The dedicated-server stack: [`ServerBevyPlugins`] plus this group.
+    ///
+    /// Pair it with `default-features = false, features = ["server"]`, and
+    /// Bevy's UI stack is not in the dependency graph at all: no `bevy_ui`,
+    /// `bevy_text`, `bevy_picking`, `bevy_window`, `bevy_scene` or
+    /// `bevy_render`. Mods load, the data stage runs, control scripts answer
+    /// events and `slotted-net`'s `MenuServer` is authoritative over the
+    /// clients that do have a screen.
+    pub fn server() -> ServerStack {
+        ServerStack
     }
 }
 
@@ -129,10 +152,49 @@ fn wire_remote_authority(
     ));
 }
 
+/// [`ServerBevyPlugins`] followed by [`SlottedPlugins`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ServerStack;
+
+impl PluginGroup for ServerStack {
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add_group(ServerBevyPlugins)
+            .add_group(SlottedPlugins { headless: true })
+    }
+}
+
+/// The Bevy plugins a dedicated server needs and nothing more: a task pool, a
+/// clock, states, the asset server and a runner.
+///
+/// No window, no input, no accessibility, no layout, no renderer. Every one of
+/// those lives behind a Bevy feature the `ui` feature of this crate turns on,
+/// so with `--no-default-features --features server` they are not compiled.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ServerBevyPlugins;
+
+impl PluginGroup for ServerBevyPlugins {
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add(bevy::app::TaskPoolPlugin::default())
+            .add(bevy::diagnostic::FrameCountPlugin)
+            .add(bevy::time::TimePlugin)
+            // `slotted-packs` records its lifecycle in a `States` enum.
+            .add(bevy::state::app::StatesPlugin)
+            .add(bevy::app::ScheduleRunnerPlugin::run_loop(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ))
+            .add(bevy::transform::TransformPlugin)
+            .add(bevy::asset::AssetPlugin::default())
+    }
+}
+
 /// [`HeadlessBevyPlugins`] followed by `SlottedPlugins { headless: true }`.
+#[cfg(feature = "ui")]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HeadlessStack;
 
+#[cfg(feature = "ui")]
 impl PluginGroup for HeadlessStack {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
@@ -147,6 +209,7 @@ impl PluginGroup for HeadlessStack {
 ///
 /// The window is `WindowPlugin` with `ExitCondition::DontExit`; resize it
 /// after build if you need another resolution.
+#[cfg(feature = "ui")]
 #[derive(Debug, Clone)]
 pub struct HeadlessBevyPlugins {
     /// Logical width.
@@ -157,6 +220,7 @@ pub struct HeadlessBevyPlugins {
     pub scale_factor: f32,
 }
 
+#[cfg(feature = "ui")]
 impl Default for HeadlessBevyPlugins {
     fn default() -> Self {
         Self {
@@ -167,6 +231,7 @@ impl Default for HeadlessBevyPlugins {
     }
 }
 
+#[cfg(feature = "ui")]
 impl PluginGroup for HeadlessBevyPlugins {
     fn build(self) -> PluginGroupBuilder {
         use bevy::window::{ExitCondition, Window, WindowPlugin, WindowResolution};
@@ -211,9 +276,11 @@ impl PluginGroup for HeadlessBevyPlugins {
 /// Registers the four asset types `bevy_render` would register, so
 /// `bevy_ui`'s image sizing and `bevy_camera`'s bounds systems pass parameter
 /// validation without a renderer (ADR 0002, workaround 2).
+#[cfg(feature = "ui")]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HeadlessRenderAssets;
 
+#[cfg(feature = "ui")]
 impl Plugin for HeadlessRenderAssets {
     fn build(&self, app: &mut App) {
         use bevy::asset::AssetApp;

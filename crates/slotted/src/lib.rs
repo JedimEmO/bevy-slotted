@@ -12,8 +12,12 @@
 //!
 //! [`SlottedPlugins::headless()`] is the same group without rendering, on top
 //! of the Bevy plugins ADR 0002 proved sufficient for layout, picking, focus
-//! and keyboard. It is what `slotted-test` builds on and what a dedicated
-//! server runs.
+//! and keyboard. It is what `slotted-test` builds on.
+//!
+//! [`SlottedPlugins::server()`] is smaller again and is what a dedicated
+//! server runs: no widgets, and with `default-features = false, features =
+//! ["server"]` no `bevy_ui`, `bevy_text`, `bevy_picking`, `bevy_window`,
+//! `bevy_scene` or `bevy_render` in the dependency graph either.
 
 pub mod plugins;
 
@@ -21,7 +25,9 @@ pub mod plugins;
 pub use plugins::LuaurHostPlugin;
 #[cfg(feature = "net")]
 pub use plugins::{ClientTransport, SlottedNetPlugin};
-pub use plugins::{HeadlessBevyPlugins, HeadlessRenderAssets, SlottedPlugins};
+#[cfg(feature = "ui")]
+pub use plugins::{HeadlessBevyPlugins, HeadlessRenderAssets, HeadlessStack};
+pub use plugins::{ServerBevyPlugins, ServerStack, SlottedPlugins};
 
 pub use slotted_ecs as ecs;
 pub use slotted_model as model;

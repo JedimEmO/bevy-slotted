@@ -108,6 +108,7 @@ fn two_injections_at_the_same_anchor_keep_registration_order() {
                 anchor: AnchorId::new("title_end"),
                 node: label_node(name, name),
                 exclusion: false,
+                owner: slotted_ui::Owner::Game,
             });
         }
     }
@@ -135,6 +136,7 @@ fn an_injection_at_a_missing_anchor_is_reported_and_not_fatal() {
             anchor: AnchorId::new("nowhere"),
             node: label_node("stray", "stray"),
             exclusion: false,
+            owner: slotted_ui::Owner::Game,
         });
     let opened = open(&mut h);
 
@@ -173,6 +175,7 @@ fn closing_a_screen_removes_its_exclusion_zones_and_the_carried_stack() {
                 tags: Tags::new().with("test_id", "side_panel"),
             },
             exclusion: true,
+            owner: slotted_ui::Owner::Game,
         });
     let opened = open(&mut h);
 
@@ -270,6 +273,7 @@ fn an_inherits_chain_spawns_the_flattened_tree() {
             anchor: AnchorId::new("base_anchor"),
             node: label_node("injected", "injected"),
             exclusion: false,
+            owner: slotted_ui::Owner::Game,
         });
 
     h.open_screen(ScreenKind::new("demo:leaf"), ChestFixture::empty());

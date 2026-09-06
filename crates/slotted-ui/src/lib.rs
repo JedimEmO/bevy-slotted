@@ -19,6 +19,7 @@ pub mod hud;
 #[cfg(feature = "dev")]
 pub mod hud_editor;
 pub mod input;
+pub mod invalidate;
 pub mod item;
 pub mod layers;
 pub mod loc;
@@ -46,6 +47,10 @@ pub use hud::{
     HudValue, NineAnchor,
 };
 pub use input::{DragPaint, PendingDrag, SweepQuickMove, on_slot_press, on_slot_release};
+pub use invalidate::{
+    ChangeSet, Owner, Reconciled, ScreenDependencies, ScreenDropped, invalidate_and_respawn,
+    invalidate_screens, reconcile_mod_injections, respawn_screens,
+};
 pub use item::{
     DurabilityBar, DurabilityFill, ItemCount, ItemIcon, ItemView, RarityRing, render_items,
 };
@@ -69,7 +74,7 @@ pub use scale::{UiUnits, ui_scale_of};
 pub use screen::{
     Injection, Injections, MAX_INHERIT_DEPTH, ScreenClosed, ScreenLaidOut, ScreenLayout,
     ScreenSpawned, Screens, SpawnCtx, SpawnScreen, UnmatchedInjections, Widget, WidgetRegistry,
-    active_tokens, close_screen, emit_screen_layout, respawn_open_screens, spawn_screen,
+    active_tokens, close_screen, emit_screen_layout, spawn_screen,
 };
 pub use screen_asset::{
     FailedScreenAssets, ScreenAssetError, ScreenAssets, ScreenLoader, apply_screen_assets,

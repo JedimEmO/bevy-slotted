@@ -102,6 +102,7 @@ impl Plugin for SlottedUiPlugin {
             .init_resource::<crate::fluids::Fluids>()
             .init_resource::<crate::widgets::virtual_grid::VirtualGridSources>()
             .add_message::<crate::hud::HudUpdate>()
+            .add_message::<crate::invalidate::ScreenDropped>()
             .add_observer(crate::widgets::tank::on_property_changed)
             .add_observer(crate::widgets::side_tab::on_side_tab_toggle)
             .add_observer(crate::widgets::icon_button::on_icon_button_cycle)

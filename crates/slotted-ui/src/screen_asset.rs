@@ -8,10 +8,10 @@
 //! path resolution and, with `bevy/file_watcher`, hot reload for free.
 //!
 //! [`apply_screen_assets`] is the bridge: every `Added` or `Modified` event
-//! registers the definition in [`Screens`] and re-opens any screen of that
-//! kind that is on screen right now, through
-//! [`crate::screen::respawn_open_screens`] -- the same
-//! path `slotted-packs` takes after a mod reload.
+//! registers the definition in [`Screens`] and re-opens every screen the edit
+//! reaches, through [`crate::invalidate_and_respawn`] -- the same path
+//! `slotted-packs` takes after a mod reload. "Reaches" is wider than the kind
+//! that changed: a screen that `inherits` the edited one is respawned too.
 
 use bevy::asset::io::Reader;
 use bevy::asset::{AssetApp, AssetLoader, AssetPath, LoadContext};
@@ -19,7 +19,8 @@ use bevy::prelude::*;
 use bevy::reflect::TypePath;
 
 use crate::def::{ScreenDef, ScreenKind};
-use crate::screen::{Screens, respawn_open_screens};
+use crate::invalidate::{ChangeSet, Owner, invalidate_and_respawn};
+use crate::screen::Screens;
 
 /// Why a `*.screen.ron` failed to load.
 #[derive(Debug, thiserror::Error)]
@@ -102,6 +103,7 @@ pub fn apply_screen_assets(
     mut events: MessageReader<AssetEvent<ScreenDef>>,
     defs: Res<Assets<ScreenDef>>,
     mut screens: ResMut<Screens>,
+    server: Option<Res<AssetServer>>,
     mut commands: Commands,
 ) {
     let mut changed: Vec<ScreenKind> = Vec::new();
@@ -116,7 +118,14 @@ pub fn apply_screen_assets(
         if screens.get(&def.kind).is_some_and(|old| **old == *def) {
             continue;
         }
-        screens.register(def.clone());
+        let owner = server
+            .as_ref()
+            .and_then(|server| server.get_path(id))
+            .map_or_else(
+                || Owner::Asset(format!("{id:?}")),
+                |path| Owner::Asset(path.to_string()),
+            );
+        screens.register_owned(def.clone(), owner);
         changed.push(def.kind.clone());
     }
     if changed.is_empty() {
@@ -125,7 +134,9 @@ pub fn apply_screen_assets(
     for kind in &changed {
         tracing::debug!(screen = %kind.0, "screen asset registered");
     }
-    commands.queue(move |world: &mut World| respawn_open_screens(world, &changed));
+    commands.queue(move |world: &mut World| {
+        invalidate_and_respawn(world, &ChangeSet::screens(changed));
+    });
 }
 
 /// Screen assets whose last load failed, so the failure is said once.

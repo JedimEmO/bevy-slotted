@@ -14,7 +14,20 @@ keywords = ["bevy", "mods", "assets", "fluent", "gamedev"]
 categories = ["game-development"]
 
 [features]
-default = []
+default = ["ui"]
+# Widgets, screens, tooltips, HUD layers and the browser: everything the pack
+# lifecycle publishes into `slotted-ui`, plus the observers that turn UI events
+# into script events. On by default. Off for a dedicated server, which loads
+# the same mods and runs the same control scripts with no Bevy UI stack
+# compiled in at all.
+ui = [
+    "dep:slotted-ui",
+    "dep:slotted-icons",
+    "dep:slotted-browser",
+    "bevy/bevy_text",
+    "bevy/bevy_ui",
+    "bevy/bevy_ui_widgets",
+]
 # Hot reload of scripts, RON and locale files through Bevy's file watcher.
 watch = ["bevy/file_watcher"]
 
@@ -22,19 +35,11 @@ watch = ["bevy/file_watcher"]
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true, features = ["std-fs"] }
 slotted-ecs = { workspace = true }
-slotted-ui = { workspace = true }
-slotted-icons = { workspace = true }
-slotted-browser = { workspace = true }
+slotted-ui = { workspace = true, optional = true }
+slotted-icons = { workspace = true, optional = true }
+slotted-browser = { workspace = true, optional = true }
 slotted-script = { workspace = true }
-bevy = { workspace = true, features = [
-    "std",
-    "bevy_asset",
-    "bevy_log",
-    "bevy_state",
-    "bevy_text",
-    "bevy_ui",
-    "bevy_ui_widgets",
-] }
+bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_log", "bevy_state"] }
 serde = { workspace = true }
 ron = { workspace = true }
 thiserror = { workspace = true }

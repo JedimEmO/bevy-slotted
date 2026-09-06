@@ -40,8 +40,39 @@ gen-docs-check:
 deny:
     cargo deny check
 
+# `slotted`'s feature comments promise that `default-features = false` gives a
+# server build without Bevy's UI stack. Feature flags are additive and a single
+# `bevy/bevy_ui` anywhere below the facade silently breaks that promise for
+# every consumer, with nothing but the compile time to show for it. This is the
+# assertion, and it is a CI job of its own.
+#
+# Assert the dedicated-server dependency graph really has no UI in it.
+server-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Both targets: a `cfg(target_arch)` dependency can put the UI stack back
+    # into one graph and not the other, and the wasm server build is a real
+    # target here rather than a hypothetical one.
+    for target in "" "--target wasm32-unknown-unknown"; do
+        found=$(cargo tree -p slotted --no-default-features --features server -e normal $target \
+            | grep -oE "bevy_(ui|text|picking|winit|window|render)[a-z_]*" | sort -u || true)
+        if [ -n "$found" ]; then
+            echo "the server graph pulls Bevy's UI stack (${target:-native}):" >&2
+            echo "$found" >&2
+            echo "find the culprit with: cargo tree -p slotted --no-default-features --features server -e normal $target -i <crate>" >&2
+            exit 1
+        fi
+    done
+    echo "no bevy_ui, bevy_text, bevy_picking, bevy_winit, bevy_window or bevy_render in the server graph, on either target"
+    cargo check -p slotted --no-default-features --features server
+    cargo check --target wasm32-unknown-unknown -p slotted --no-default-features --features server
+    # `crates/slotted/tests/server.rs` compiles only in this profile, because
+    # half of what it asserts is what is absent. It is the assertion that the
+    # graph the lines above check is a stack that actually runs.
+    cargo test -p slotted --no-default-features --features server --test server
+
 # What CI runs.
-ci: fmt-check lint test gen-docs-check deny
+ci: fmt-check lint test gen-docs-check deny server-check
 
 # The chest example in a window: the glass chest screen over a 3D scene.
 run-chest:
@@ -116,6 +147,7 @@ wasm-check:
     cargo check --target wasm32-unknown-unknown -p slotted-browser
     cargo check --target wasm32-unknown-unknown -p slotted-packs
     cargo check --target wasm32-unknown-unknown -p slotted --no-default-features --features ui,browser,packs,gpu-icons
+    cargo check --target wasm32-unknown-unknown -p slotted --no-default-features --features server
     cargo check --target wasm32-unknown-unknown -p web-playground
 
 # The luaur adapter in a real browser. Needs `cargo install wasm-pack` and a

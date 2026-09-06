@@ -61,7 +61,7 @@ pub use click::{
 };
 pub use error::ClickError;
 pub use id::{ComponentId, ItemId, Namespaced, NamespacedError};
-pub use inventory::{DirtyMask, Inventories, Inventory, InventoryRef};
+pub use inventory::{DirtyMask, Inventories, Inventory, InventoryId, InventoryRef};
 pub use menu::{
     DragState, LookupCtx, MenuDef, MenuState, Predicate, PropertyDef, PropertyId, RoutingRule,
     RoutingTable, SlotBehaviour, SlotDef, SlotIx, SlotRange,

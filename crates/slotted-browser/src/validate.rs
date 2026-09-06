@@ -185,7 +185,7 @@ pub fn validate_screen_handlers(
     mut validation: ResMut<BrowserValidation>,
 ) {
     let Some(screens) = screens else { return };
-    if screens.0.is_empty() {
+    if screens.is_empty() {
         return;
     }
     let unknown: Vec<ScreenKind> = handlers

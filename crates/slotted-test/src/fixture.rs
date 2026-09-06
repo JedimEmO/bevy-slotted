@@ -63,7 +63,7 @@ impl ScreenSource for &ScreenKind {
         if let Some(def) = screens.get(self) {
             return def.clone();
         }
-        let mut known: Vec<String> = screens.0.keys().map(|k| k.0.to_string()).collect();
+        let mut known: Vec<String> = screens.kinds().map(|k| k.0.to_string()).collect();
         known.sort();
         let known = if known.is_empty() {
             "none are registered".to_owned()
@@ -91,8 +91,7 @@ impl ScreenSource for &ScreenDef {
 
 impl ScreenSource for Arc<ScreenDef> {
     fn screen_def(self, world: &mut World) -> Arc<ScreenDef> {
-        let mut screens = world.resource_mut::<Screens>();
-        screens.0.insert(self.kind.clone(), self.clone());
+        world.resource_mut::<Screens>().register((*self).clone());
         self
     }
 }

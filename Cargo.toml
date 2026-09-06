@@ -86,7 +86,7 @@ slotted-browser = { path = "crates/slotted-browser", version = "0.1.0" }
 slotted-test = { path = "crates/slotted-test" }
 slotted-script = { path = "crates/slotted-script", version = "0.1.0" }
 slotted-script-luaur = { path = "crates/slotted-script-luaur", version = "0.1.0" }
-slotted-packs = { path = "crates/slotted-packs", version = "0.1.0" }
+slotted-packs = { path = "crates/slotted-packs", version = "0.1.0", default-features = false }
 slotted = { path = "crates/slotted", version = "0.1.0" }
 
 # Bevy is slow in a plain dev profile; optimise dependencies as the spikes did.

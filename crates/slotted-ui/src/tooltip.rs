@@ -94,20 +94,70 @@ pub trait TooltipPart: Send + Sync {
     fn build(&self, ctx: &TooltipCtx<'_>, out: &mut Vec<UiNodeDef>);
 }
 
-/// Ordered registry of parts.
+/// Ordered registry of parts, each with the [`Owner`](crate::Owner) that
+/// registered it.
+///
+/// Order is what a tooltip reads top to bottom, so a part keeps its position
+/// across a reload: [`TooltipParts::set_mod_part`] replaces the pack loader's
+/// entry in place rather than pushing a second one.
 #[derive(Resource, Default, Clone)]
-pub struct TooltipParts(pub Vec<Arc<dyn TooltipPart>>);
+pub struct TooltipParts {
+    parts: Vec<Arc<dyn TooltipPart>>,
+    owners: Vec<crate::Owner>,
+}
 
 impl TooltipParts {
-    /// Append a part.
+    /// Append a part, as the game's own.
     pub fn push(&mut self, part: impl TooltipPart + 'static) {
-        self.0.push(Arc::new(part));
+        self.parts.push(Arc::new(part));
+        self.owners.push(crate::Owner::Game);
+    }
+
+    /// How many parts are registered.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.parts.len()
+    }
+
+    /// Whether nothing is registered.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.parts.is_empty()
+    }
+
+    /// Installs `part` as the one part owned by mods, replacing the previous
+    /// one in place when there is one, so it keeps its position in the
+    /// tooltip. Returns its index.
+    pub fn set_mod_part(&mut self, part: Arc<dyn TooltipPart>, owner: crate::Owner) -> usize {
+        if let Some(index) = self.owners.iter().position(crate::Owner::is_mod) {
+            self.parts[index] = part;
+            self.owners[index] = owner;
+            index
+        } else {
+            self.parts.push(part);
+            self.owners.push(owner);
+            self.parts.len() - 1
+        }
+    }
+
+    /// Removes every mod-owned part, for a pack set that unloaded.
+    pub fn clear_mod_parts(&mut self) {
+        let keep: Vec<bool> = self.owners.iter().map(|o| !o.is_mod()).collect();
+        let mut iter = keep.iter();
+        self.parts.retain(|_| *iter.next().unwrap_or(&true));
+        self.owners.retain(|owner| !owner.is_mod());
+    }
+
+    /// Who registered the part at `index`.
+    #[must_use]
+    pub fn owner(&self, index: usize) -> Option<&crate::Owner> {
+        self.owners.get(index)
     }
 
     /// Run every part.
     pub fn compose(&self, ctx: &TooltipCtx<'_>) -> Vec<UiNodeDef> {
         let mut out = Vec::new();
-        for p in &self.0 {
+        for p in &self.parts {
             p.build(ctx, &mut out);
         }
         out

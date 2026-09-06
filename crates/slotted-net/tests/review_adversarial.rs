@@ -27,18 +27,20 @@ use std::collections::BTreeMap;
 use pretty_assertions::assert_eq;
 use slotted_model::{
     Actor, Authority, AuthorityEvent, Button, ClickAction, Delta, DragKind, DragStage, Inventories,
-    ItemId, ItemStack, LookupCtx, MenuDef, MenuId, MenuSnapshot, MenuState, Namespaced, SlotIx,
-    apply_click, slot_view,
+    Inventory, InventoryId, ItemId, ItemStack, LookupCtx, MenuDef, MenuId, MenuSnapshot, MenuState,
+    Namespaced, SlotIx, apply_click, slot_view,
 };
 use slotted_net::{
-    ClientEnd, ClientMessage, Conditions, Loopback, MenuServer, Outcome, PeerId, RemoteAuthority,
-    ServerEnd, ServerMessage, Transport,
+    ClientEnd, ClientMessage, Conditions, Loopback, MenuServer, Outcome, PeerId, Refusal,
+    RemoteAuthority, ServerEnd, ServerMessage, Transport,
 };
 
 // --------------------------------------------------------------- the world
 
 const STONE: ItemId = ItemId(1);
 const EGG: ItemId = ItemId(2);
+/// The first session `World::join` opens. Tests with one client name it
+/// directly; tests with two use each client's own `menu`.
 const MENU: MenuId = MenuId(1);
 /// A menu id no server in this file ever opens.
 const ABSENT: MenuId = MenuId(99);
@@ -82,16 +84,18 @@ fn def() -> MenuDef {
     def
 }
 
+fn starting_container() -> Inventory {
+    Inventory::from_slots([stack(STONE, 64), stack(EGG, 10), None, None])
+}
+
+fn starting_player() -> Inventory {
+    Inventory::from_slots([None, None, stack(STONE, 5), None])
+}
+
 fn starting_inventories() -> Inventories {
-    let def = def();
-    let mut inventories = Inventories::for_menu(&def);
-    inventories[MenuDef::CONTAINER].set(0, stack(STONE, 64));
-    inventories[MenuDef::CONTAINER].set(1, stack(EGG, 10));
-    inventories[MenuDef::PLAYER_MAIN].set(2, stack(STONE, 5));
-    for inventory in inventories.iter_mut() {
-        inventory.clear_changed();
-    }
-    inventories
+    [starting_container(), starting_player()]
+        .into_iter()
+        .collect()
 }
 
 fn tally(inventories: &Inventories, carried: Option<&ItemStack>) -> BTreeMap<u32, u64> {
@@ -119,13 +123,14 @@ struct Client {
     corrections: Vec<(SlotIx, Option<ItemStack>)>,
     resyncs: usize,
     peer: PeerId,
+    /// This client's own session on the server.
+    menu: MenuId,
 }
 
 impl Client {
-    fn new(link: &Loopback) -> Self {
-        let end = link.add_client();
-        let peer = end.peer();
+    fn new(menu: MenuId, peer: PeerId, end: ClientEnd) -> Self {
         Self {
+            menu,
             def: def(),
             inventories: starting_inventories(),
             state: MenuState::new(&def()),
@@ -150,7 +155,7 @@ impl Client {
         let Ok(delta) = outcome else {
             return false;
         };
-        self.authority.submit(MENU, action, &delta).unwrap();
+        self.authority.submit(self.menu, action, &delta).unwrap();
         true
     }
 
@@ -218,6 +223,9 @@ struct World {
     link: Loopback,
     server: MenuServer,
     end: ServerEnd,
+    /// The one chest every session in a `World` binds.
+    container: InventoryId,
+    next_menu: u32,
 }
 
 impl World {
@@ -225,14 +233,38 @@ impl World {
         let link = Loopback::new(seed);
         let end = link.server();
         let mut server = MenuServer::new();
-        server.open(MENU, def(), starting_inventories(), Actor::SURVIVAL);
-        Self { link, server, end }
+        let container = server.add_shared(starting_container());
+        Self {
+            link,
+            server,
+            end,
+            container,
+            next_menu: MENU.0,
+        }
     }
 
+    /// A new player with their own session over the shared chest and their
+    /// own private player inventory. The first one gets [`MENU`].
     fn join(&mut self) -> Client {
-        let client = Client::new(&self.link);
-        self.server.add_viewer(MENU, client.peer);
-        client
+        self.join_with(def())
+    }
+
+    fn join_with(&mut self, def: MenuDef) -> Client {
+        let end = self.link.add_client();
+        let peer = end.peer();
+        let player = self.server.add_private(peer, starting_player());
+        let menu = MenuId(self.next_menu);
+        self.next_menu += 1;
+        self.server
+            .open(
+                menu,
+                peer,
+                def,
+                vec![self.container, player],
+                Actor::SURVIVAL,
+            )
+            .unwrap();
+        Client::new(menu, peer, end)
     }
 
     fn pump(&mut self) -> Vec<Outcome> {
@@ -297,18 +329,20 @@ fn a_client_two_state_ids_stale_is_corrected_onto_the_servers_numbers() {
     assert!(mover.click(left(4)));
     let outcomes = world.settle(&mut [&mut mover]);
     assert_eq!(outcomes, vec![Outcome::Acked, Outcome::Acked]);
-    assert_eq!(world.server.state_id(MENU), Some(2));
+    assert_eq!(world.server.state_id(mover.menu), Some(2));
 
-    // The stale client never reconciled, so it still believes it is at zero
-    // and that slot 0 holds the stone.
+    // A state id belongs to a session, not to a container, so the stale
+    // client's own session is still at zero on both sides. What is stale is
+    // its picture of the chest, and that is what has to be caught.
     assert_eq!(stale.state.state_id, 0);
+    assert_eq!(world.server.state_id(stale.menu), Some(0));
     assert_eq!(stale.slot(SlotIx(0)), stack(STONE, 64));
     assert_eq!(world.slot(0), None, "the server knows better");
 
-    // It clicks on what it thinks is there. The action is legal against the
-    // server's picture too -- slot 0 is empty and an empty hand on an empty
-    // slot is `NothingToDo` -- so what saves the client is the state id, not
-    // the action being impossible.
+    // It clicks on what it thinks is there. What catches the drift is the
+    // prediction: the client says it picked up 64 stone, the server's own
+    // application of the same click says otherwise, and a disagreement is
+    // answered with the container rather than an ack.
     let predicted_stack = stale.slot(SlotIx(0));
     assert!(stale.click(left(0)));
     assert_eq!(
@@ -331,7 +365,7 @@ fn a_client_two_state_ids_stale_is_corrected_onto_the_servers_numbers() {
     assert_eq!(
         stale.all_slots(),
         {
-            let snapshot = world.server.snapshot(MENU).unwrap();
+            let snapshot = world.server.snapshot(stale.menu).unwrap();
             let def = def();
             (0..def.slots.len())
                 .map(|i| {
@@ -349,7 +383,7 @@ fn a_client_two_state_ids_stale_is_corrected_onto_the_servers_numbers() {
     );
     assert_eq!(
         stale.state.state_id,
-        world.server.state_id(MENU).unwrap(),
+        world.server.state_id(stale.menu).unwrap(),
         "and on the server's state id, not a number of its own"
     );
     assert_eq!(stale.authority.in_flight(), 0, "nothing left waiting");
@@ -377,12 +411,21 @@ fn a_server_restart_with_fresh_state_ids_forces_one_full_resync_and_recovers() {
     assert_eq!(world.server.state_id(MENU), Some(3));
     let before = client.resyncs;
 
-    // The restart. Everything the server knew about this session is gone.
+    // The restart. Everything the server knew about this session is gone,
+    // the store included, so the containers are freshly allocated too.
     world.server = MenuServer::new();
+    world.container = world.server.add_shared(starting_container());
+    let player = world.server.add_private(client.peer, starting_player());
     world
         .server
-        .open(MENU, def(), starting_inventories(), Actor::SURVIVAL);
-    world.server.add_viewer(MENU, client.peer);
+        .open(
+            MENU,
+            client.peer,
+            def(),
+            vec![world.container, player],
+            Actor::SURVIVAL,
+        )
+        .unwrap();
     assert_eq!(world.server.state_id(MENU), Some(0));
 
     // The client's next click carries state id 3 and a sequence number the
@@ -413,7 +456,11 @@ fn a_server_restart_with_fresh_state_ids_forces_one_full_resync_and_recovers() {
 
     // And the session keeps working: the very next click is acked outright.
     let acked = world.settle(&mut [&mut client]);
-    assert!(acked.iter().all(|o| *o != Outcome::UnknownMenu));
+    assert!(
+        acked
+            .iter()
+            .all(|o| !matches!(o, Outcome::Denied(Refusal::UnknownMenu)))
+    );
     assert!(client.click(left(0)));
     let outcomes = world.settle(&mut [&mut client]);
     assert_eq!(
@@ -546,7 +593,7 @@ fn a_click_naming_a_slot_outside_the_menu_is_refused_without_panicking() {
     ] {
         end.send(PeerId::SERVER, message).unwrap();
         world.link.tick();
-        assert_eq!(world.pump(), vec![Outcome::UnknownMenu]);
+        assert_eq!(world.pump(), vec![Outcome::Denied(Refusal::UnknownMenu)]);
     }
 
     let after = world.server.snapshot(MENU).unwrap();
@@ -560,15 +607,40 @@ fn a_click_naming_a_slot_outside_the_menu_is_refused_without_panicking() {
         "and nothing ended up in the cursor"
     );
 
-    // The link is still usable afterwards: a legal click from the same peer
-    // is still served, so a refusal is not a disconnect.
+    // The link is still usable afterwards, and a refusal is not a
+    // disconnect. The hostile burst spent this peer's own sequence numbers,
+    // so the honest client's first click reuses one the server has already
+    // answered; it gets that answer replayed, which is a correction, and the
+    // two ends still agree at the end of it.
     let mut client = client;
     assert!(client.click(left(0)));
     let outcomes = world.settle(&mut [&mut client]);
     assert!(
-        outcomes.contains(&Outcome::Acked) || outcomes.contains(&Outcome::Corrected),
+        outcomes
+            .iter()
+            .any(|o| matches!(o, Outcome::Acked | Outcome::Corrected | Outcome::Duplicate)),
         "the session survives the hostile burst: {outcomes:?}"
     );
+    assert_eq!(
+        client.all_slots(),
+        {
+            let snapshot = world.server.snapshot(MENU).unwrap();
+            let def = def();
+            (0..def.slots.len())
+                .map(|i| {
+                    slot_view(
+                        &def,
+                        &snapshot.inventories,
+                        &snapshot.state,
+                        SlotIx(u16::try_from(i).unwrap()),
+                    )
+                    .cloned()
+                })
+                .collect::<Vec<_>>()
+        },
+        "and ends on exactly the server's slots"
+    );
+    assert_eq!(client.authority.in_flight(), 0);
 }
 
 /// A slot the server *has* but that is `Disabled`, and a hotbar index past
@@ -579,11 +651,7 @@ fn a_click_on_a_disabled_slot_is_refused_and_changes_nothing() {
     let mut world = World::new(14);
     let mut disabled = def();
     disabled.slots[2].behaviour = slotted_model::SlotBehaviour::Disabled;
-    world.server.close(MENU);
-    world
-        .server
-        .open(MENU, disabled, starting_inventories(), Actor::SURVIVAL);
-    let client = world.join();
+    let client = world.join_with(disabled);
     let end = client.authority.transport().clone();
     let before = world.tally();
 
@@ -679,7 +747,7 @@ fn thirty_percent_loss_still_converges_and_conserves() {
     assert_eq!(
         client.all_slots(),
         {
-            let snapshot = world.server.snapshot(MENU).unwrap();
+            let snapshot = world.server.snapshot(client.menu).unwrap();
             let def = def();
             (0..def.slots.len())
                 .map(|i| {
@@ -713,7 +781,8 @@ fn thirty_percent_loss_still_converges_and_conserves() {
 #[test]
 fn a_resync_request_the_link_eats_is_asked_for_again() {
     let world = World::new(15);
-    let client = Client::new(&world.link);
+    let end = world.link.add_client();
+    let client = Client::new(MENU, end.peer(), end);
     let end = client.authority.transport().clone();
 
     // Lose everything, ask, then let the link work again.
@@ -758,7 +827,8 @@ fn a_resync_request_the_link_eats_is_asked_for_again() {
 #[test]
 fn an_ack_for_an_unknown_submission_still_asks_for_the_container() {
     let world = World::new(16);
-    let client = Client::new(&world.link);
+    let end = world.link.add_client();
+    let client = Client::new(MENU, end.peer(), end);
     let server_end = world.link.server();
 
     server_end

@@ -6,6 +6,13 @@
 //! content, or a property update. See `docs/research/research-mc-anatomy.md`
 //! section 3.
 //!
+//! Two answers have no vanilla counterpart. [`ServerMessage::Refused`] is what
+//! a peer gets for naming a session that is not its own, and it deliberately
+//! carries no state at all. [`ServerMessage::Closed`] says the session is
+//! gone, so a client stops submitting into it. A menu id names a *session* on
+//! the server, one per open screen, not a container: see
+//! [`MenuServer`](crate::MenuServer).
+//!
 //! Every message is `Serialize + Deserialize`, and nothing in this module
 //! knows how the bytes travel.
 
@@ -56,8 +63,17 @@ pub enum ClientMessage {
     },
     /// "I no longer trust my copy of this menu; send me all of it."
     ///
-    /// Answered with [`ServerMessage::SetContent`].
+    /// Answered with [`ServerMessage::SetContent`] carrying `answers: None`.
     RequestResync {
+        /// Which menu.
+        menu: MenuId,
+    },
+    /// "I have closed this screen." The server drops the session, which
+    /// returns anything on the cursor to the player's own inventory.
+    ///
+    /// A client may only close its own session; naming another peer's gets a
+    /// [`Refused`](ServerMessage::Refused) and nothing else.
+    CloseMenu {
         /// Which menu.
         menu: MenuId,
     },
@@ -67,7 +83,9 @@ impl ClientMessage {
     /// The menu this message is about.
     pub fn menu(&self) -> MenuId {
         match self {
-            Self::ClickContainer { menu, .. } | Self::RequestResync { menu } => *menu,
+            Self::ClickContainer { menu, .. }
+            | Self::RequestResync { menu }
+            | Self::CloseMenu { menu } => *menu,
         }
     }
 }
@@ -106,6 +124,15 @@ pub enum ServerMessage {
     SetContent {
         /// Which menu.
         menu: MenuId,
+        /// The [`ClickContainer`](ClientMessage::ClickContainer) sequence
+        /// number this corrects, when it corrects one.
+        ///
+        /// Without it a client can only guess which submission a snapshot
+        /// settles, and guessing "the oldest" retires the wrong one as soon as
+        /// two clicks are in flight. `None` means the snapshot answers a
+        /// [`RequestResync`](ClientMessage::RequestResync) rather than a
+        /// click, and retires no submission at all.
+        answers: Option<u32>,
         /// Everything the client should replace its copy with.
         snapshot: Box<MenuSnapshot>,
     },
@@ -119,6 +146,45 @@ pub enum ServerMessage {
         /// Its new value.
         value: i32,
     },
+    /// The message named a session this peer may not touch, so the server did
+    /// nothing and sent no state.
+    ///
+    /// This is deliberately not a `SetContent`: a peer that asks about a menu
+    /// it has no business with must not learn what is in it, not even by
+    /// timing. The client retires whatever it had in flight for the menu and
+    /// stops asking.
+    Refused {
+        /// Which menu the refused message named.
+        menu: MenuId,
+        /// The [`ClickContainer`](ClientMessage::ClickContainer) sequence
+        /// number this answers, when the refused message carried one.
+        seq: Option<u32>,
+        /// Why.
+        reason: Refusal,
+    },
+    /// The session is gone: the client asked to close it, or the server did.
+    Closed {
+        /// Which menu.
+        menu: MenuId,
+    },
+}
+
+/// Why the server would not act on a message.
+///
+/// None of these say anything about the menu's contents, which is the point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, thiserror::Error)]
+pub enum Refusal {
+    /// No session with that id, on this server, for anybody.
+    #[error("no such menu")]
+    UnknownMenu,
+    /// The session exists and belongs to a different peer.
+    #[error("that menu belongs to another player")]
+    NotYours,
+    /// The session is this peer's, and the [`Access`](crate::Access) port said
+    /// no anyway: the player walked away, the block was broken, the trade was
+    /// cancelled.
+    #[error("access denied")]
+    Denied,
 }
 
 impl ServerMessage {
@@ -128,7 +194,9 @@ impl ServerMessage {
             Self::Ack { menu, .. }
             | Self::SetSlot { menu, .. }
             | Self::SetContent { menu, .. }
-            | Self::SetProperty { menu, .. } => *menu,
+            | Self::SetProperty { menu, .. }
+            | Self::Refused { menu, .. }
+            | Self::Closed { menu } => *menu,
         }
     }
 }

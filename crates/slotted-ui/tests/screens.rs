@@ -517,6 +517,7 @@ fn an_injection_at_an_anchor_adds_a_child_and_an_exclusion_zone() {
                 tags: Tags::new().with("test_id", "injected"),
             },
             exclusion: true,
+            owner: slotted_ui::Owner::Game,
         });
     let _ = h.open_chest(chest_screen());
 

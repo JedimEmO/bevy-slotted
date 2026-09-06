@@ -189,7 +189,29 @@ impl Plugin for SlottedPacksPlugin {
             .add_message::<ModReloaded>()
             .add_message::<ReloadMod>()
             .add_observer(route::on_slot_clicked)
-            .add_observer(route::on_widget_activate)
+            .add_systems(PreStartup, initial_load)
+            .add_systems(
+                Update,
+                (
+                    emit_hud_tick.in_set(SlottedPacksSet::Collect),
+                    route::dispatch_script_events.in_set(SlottedPacksSet::Dispatch),
+                    (watch_for_changes, apply_reloads)
+                        .chain()
+                        .after(SlottedPacksSet::Dispatch),
+                    // `resolve_loc_text` is not registered here. It belongs to
+                    // `slotted-ui`, beside the `LocText` component and the
+                    // `Localization` port, and `SlottedUiPlugin` runs it; this
+                    // crate only replaces the resource it reads.
+                ),
+            );
+
+        // Widget, screen and browser events, and the ordering against
+        // `SlottedUiSet`. Without the `ui` feature there is no `slotted-ui` to
+        // order against, and the two sets keep only their relation to
+        // `SlottedEcsSet::Input`, which is what makes a script's `MenuAction`
+        // land in the same frame as the event that caused it.
+        #[cfg(feature = "ui")]
+        app.add_observer(route::on_widget_activate)
             .add_observer(route::on_screen_spawned)
             .add_observer(route::on_screen_closed)
             .add_observer(route::on_property_changed)
@@ -202,21 +224,18 @@ impl Plugin for SlottedPacksPlugin {
                         .before(slotted_ecs::SlottedEcsSet::Input),
                 ),
             )
-            .add_systems(PreStartup, initial_load)
             .add_systems(
                 Update,
-                (
-                    (route::collect_browser_events, emit_hud_tick).in_set(SlottedPacksSet::Collect),
-                    route::dispatch_script_events.in_set(SlottedPacksSet::Dispatch),
-                    (watch_for_changes, apply_reloads)
-                        .chain()
-                        .after(SlottedPacksSet::Dispatch),
-                    // `resolve_loc_text` is not registered here. It belongs to
-                    // `slotted-ui`, beside the `LocText` component and the
-                    // `Localization` port, and `SlottedUiPlugin` runs it; this
-                    // crate only replaces the resource it reads.
-                ),
+                route::collect_browser_events.in_set(SlottedPacksSet::Collect),
             );
+
+        #[cfg(not(feature = "ui"))]
+        app.configure_sets(
+            Update,
+            SlottedPacksSet::Dispatch
+                .after(SlottedPacksSet::Collect)
+                .before(slotted_ecs::SlottedEcsSet::Input),
+        );
     }
 }
 

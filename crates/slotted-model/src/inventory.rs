@@ -252,6 +252,21 @@ impl Inventory {
     }
 }
 
+/// A world-wide identity for one inventory, independent of any menu.
+///
+/// [`InventoryRef`] says *which of the inventories this menu addresses*; an
+/// `InventoryId` says *which inventory in the world*. The two are different
+/// questions and a networked server needs both: two players looking into one
+/// chest have their own menus, so the chest is `InventoryRef::new(0)` in each
+/// of them, but it must be one `InventoryId` or their edits do not meet.
+///
+/// The model does not allocate these. Whoever owns the inventories does: in
+/// `slotted-net` that is `ContainerStore`, which hands out ids and refuses to
+/// bind an inventory private to one player into another player's menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct InventoryId(pub u64);
+
 /// An opaque handle to one of the [`Inventories`] a menu can see.
 ///
 /// Which inventory a handle names is a convention of the menu definition.

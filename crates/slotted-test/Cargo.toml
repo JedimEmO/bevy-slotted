@@ -48,7 +48,7 @@ slotted-theme = { workspace = true }
 slotted-ui = { workspace = true }
 slotted-icons = { workspace = true }
 slotted-browser = { workspace = true }
-slotted-packs = { workspace = true, optional = true }
+slotted-packs = { workspace = true, optional = true, features = ["ui"] }
 slotted-script = { workspace = true, optional = true }
 # `debug` so a failing system parameter names itself (ADR 0002).
 bevy = { workspace = true, features = [

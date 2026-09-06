@@ -570,6 +570,108 @@ fn a_property_update_reaches_the_child_entity_and_an_observer() {
     );
 }
 
+/// A snapshot carries the whole property vector, and every widget bound to a
+/// property reads the `MenuProperty` child rather than the vector. Replacing
+/// `MenuState.properties` alone therefore left tanks, bars and progress arrows
+/// drawing the value from before the snapshot: the model said 42 and the
+/// component still said 7. Snapshots take the same write path as a
+/// per-property message.
+#[test]
+fn a_resync_updates_the_property_child_and_fires_property_changed() {
+    let authority = RecordingAuthority::manual();
+    let mut fixture = Fixture::new(authority.clone());
+    let items = fixture.items;
+
+    let mut inventories = Inventories::new();
+    inventories.push(slotted_model::Inventory::from_slots([
+        stack(items.stone, 64),
+        None,
+        None,
+        None,
+    ]));
+    inventories.push(slotted_model::Inventory::new(4));
+    authority.resync(
+        fixture.id,
+        MenuSnapshot {
+            inventories,
+            state: MenuState {
+                carried: None,
+                state_id: 12,
+                drag: None,
+                properties: vec![42],
+                hints: std::collections::BTreeMap::new(),
+            },
+        },
+    );
+    fixture.app.update();
+
+    let value = fixture
+        .app
+        .world_mut()
+        .query::<&MenuProperty>()
+        .iter(fixture.app.world())
+        .find(|p| p.id == PropertyId(0))
+        .map(|p| p.value);
+    assert_eq!(
+        value,
+        Some(42),
+        "the property entity moved with the snapshot"
+    );
+    assert_eq!(
+        fixture
+            .app
+            .world()
+            .get::<OpenMenu>(fixture.menu)
+            .unwrap()
+            .state
+            .properties,
+        vec![42]
+    );
+    assert_eq!(
+        fixture.app.world().resource::<PropertyChanges>().0,
+        vec![(PropertyId(0), 42)],
+        "and everything observing the property was told once"
+    );
+}
+
+/// The other half of the same rule: a snapshot that leaves a property where it
+/// was must not announce a change, or a script subscribed to `property_changed`
+/// would see one event per resync for a value nobody moved.
+#[test]
+fn a_resync_that_moves_no_property_fires_nothing() {
+    let authority = RecordingAuthority::manual();
+    let mut fixture = Fixture::new(authority.clone());
+
+    let mut inventories = Inventories::new();
+    inventories.push(slotted_model::Inventory::new(4));
+    inventories.push(slotted_model::Inventory::new(4));
+    authority.resync(
+        fixture.id,
+        MenuSnapshot {
+            inventories,
+            state: MenuState {
+                carried: None,
+                state_id: 5,
+                drag: None,
+                // The value the menu opened with.
+                properties: vec![7],
+                hints: std::collections::BTreeMap::new(),
+            },
+        },
+    );
+    fixture.app.update();
+
+    assert!(
+        fixture
+            .app
+            .world()
+            .resource::<PropertyChanges>()
+            .0
+            .is_empty(),
+        "no property moved, so no `PropertyChanged`"
+    );
+}
+
 #[test]
 fn closing_a_menu_drops_the_carried_stack_and_announces_the_close() {
     let mut fixture = Fixture::new(RecordingAuthority::new());

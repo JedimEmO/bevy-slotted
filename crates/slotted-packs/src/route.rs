@@ -7,8 +7,10 @@ use slotted_ecs::{MenuAction, OpenMenu, SlotClicked, SlotRef};
 use slotted_model::{ClickAction, InventoryRef, ItemStack, MenuId, SlotIx, ToolbarAction};
 use slotted_registry::FrozenRegistries;
 use slotted_script::{Button, LogLevel, ModId, Modifiers, ScriptCommand, ScriptEvent, StackInfo};
-use slotted_ui::def::ScreenKind;
+#[cfg(feature = "ui")]
 use slotted_ui::{ScreenClosed, ScreenRoot, ScreenSpawned};
+
+use crate::uidef::ScreenKind;
 
 use crate::lifecycle::{fail, log};
 use crate::{ControlScripts, ModError, ModSet, ScriptHost};
@@ -129,6 +131,7 @@ pub fn on_slot_clicked(
 }
 
 /// `Activate` on a `WidgetNode` inside a screen -> `WidgetActivate`.
+#[cfg(feature = "ui")]
 pub fn on_widget_activate(
     activate: On<bevy::ui_widgets::Activate>,
     scripts: Res<ControlScripts>,
@@ -172,6 +175,7 @@ pub fn on_widget_activate(
 }
 
 /// `ScreenSpawned` -> `ScreenOpened`, and records the screen.
+#[cfg(feature = "ui")]
 pub fn on_screen_spawned(
     spawned: On<ScreenSpawned>,
     roots: Query<&ScreenRoot>,
@@ -197,6 +201,7 @@ pub fn on_screen_spawned(
 }
 
 /// `ScreenClosed` -> `ScreenClosed`, and forgets the screen.
+#[cfg(feature = "ui")]
 pub fn on_screen_closed(
     closed: On<ScreenClosed>,
     roots: Query<&ScreenRoot>,
@@ -221,6 +226,7 @@ pub fn on_screen_closed(
 }
 
 /// Browser `OpenRecipes`, `OpenUses`, `SearchChanged` -> events.
+#[cfg(feature = "ui")]
 pub fn collect_browser_events(
     registries: Option<Res<slotted_ecs::Registries>>,
     mut recipes: MessageReader<slotted_browser::OpenRecipes>,
@@ -253,6 +259,7 @@ pub fn collect_browser_events(
 
 /// The id a browser ingredient names, `#tag` included. Item ingredients carry
 /// a dense id, so naming one needs the frozen registries.
+#[cfg(feature = "ui")]
 fn ingredient_name(
     registries: Option<&slotted_ecs::Registries>,
     ingredient: &slotted_browser::Ingredient,
@@ -369,6 +376,9 @@ fn menu_entity(
 /// # Errors
 ///
 /// [`ModError::WrongStage`], [`ModError::UnknownMenu`], [`ModError::BadCommand`].
+// One arm per control-stage `ScriptCommand`. The lint counts the arms, and
+// splitting them across helpers would only hide the dispatch table.
+#[allow(clippy::too_many_lines)]
 pub fn apply_control_command(
     world: &mut World,
     mod_id: &ModId,
@@ -403,14 +413,22 @@ pub fn apply_control_command(
             }
             Ok(Vec::new())
         }
+        #[cfg(feature = "ui")]
         ScriptCommand::SetHud { layer, value } => {
             apply_set_hud(world, layer, value, &bad)?;
             Ok(Vec::new())
         }
+        #[cfg(feature = "ui")]
         ScriptCommand::HudUpdate { layer, path, value } => {
             apply_hud_update(world, layer, path, value, &bad)?;
             Ok(Vec::new())
         }
+        // Refused by name rather than through the wrong-stage arm below:
+        // succeeding would let a mod believe a bar it cannot see had moved.
+        #[cfg(not(feature = "ui"))]
+        ScriptCommand::SetHud { .. } | ScriptCommand::HudUpdate { .. } => Err(bad(
+            "this build has no UI: `set_hud` and `hud_update` need the `ui` feature".to_owned(),
+        )),
         // A control script's reply to `TooltipBuild` is read where the tooltip
         // is composed, not here.
         ScriptCommand::AddTooltipPart { .. } | ScriptCommand::Subscribe { .. } => Ok(Vec::new()),
@@ -527,6 +545,7 @@ fn check_slot(
 }
 
 /// `hud_update`: one value into one node of one layer, next `Render`.
+#[cfg(feature = "ui")]
 fn apply_hud_update(
     world: &mut World,
     layer: &str,
@@ -549,6 +568,7 @@ fn apply_hud_update(
 }
 
 /// One `set_hud` field, typed against what it is going to be written into.
+#[cfg(feature = "ui")]
 fn typed<T: serde::de::DeserializeOwned>(
     key: &str,
     value: &slotted_model::Value,
@@ -560,6 +580,7 @@ fn typed<T: serde::de::DeserializeOwned>(
 /// `set_hud`: the described layer, registered. `register` replaces a layer in
 /// place and appends a new one, so "an unknown layer is created on top" needs
 /// no special case here.
+#[cfg(feature = "ui")]
 fn apply_set_hud(
     world: &mut World,
     layer: &str,
@@ -583,6 +604,7 @@ fn apply_set_hud(
     clippy::cast_possible_truncation,
     reason = "a fill is a ratio a bar is a hundred pixels wide; f32 is the widget's own precision"
 )]
+#[cfg(feature = "ui")]
 fn hud_value(value: &slotted_model::Value) -> Option<slotted_ui::HudValue> {
     use slotted_model::Value;
     let number = |v: &Value| match v {
@@ -608,6 +630,7 @@ fn hud_value(value: &slotted_model::Value) -> Option<slotted_ui::HudValue> {
 /// The layer `set_hud` describes: the layer as it stands, with every field
 /// the script named replaced. A layer nobody registered starts from an empty
 /// `hud.panel`, so `set_hud("mymod:mana", (tree: ..))` alone is enough.
+#[cfg(feature = "ui")]
 fn hud_def(
     world: &World,
     id: &slotted_ui::HudLayerId,
@@ -644,6 +667,7 @@ fn hud_def(
 
 /// `slotted_ecs::PropertyChanged` -> `ScriptEvent::PropertyChanged`, so a
 /// control script sees a machine's progress the way it sees a click.
+#[cfg(feature = "ui")]
 pub fn on_property_changed(
     changed: On<slotted_ecs::PropertyChanged>,
     scripts: Res<ControlScripts>,

@@ -11,7 +11,7 @@ publish = false
 
 [dependencies]
 slotted = { workspace = true, features = ["blur", "dev"] }
-slotted-packs = { workspace = true, features = ["watch"] }
+slotted-packs = { workspace = true, features = ["ui", "watch"] }
 slotted-script = { workspace = true }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true, features = ["std-fs"] }

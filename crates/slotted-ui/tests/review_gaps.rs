@@ -199,6 +199,7 @@ fn injection(target: &str, anchor: &str, test_id: &str) -> Injection {
             tags,
         },
         exclusion: false,
+        owner: slotted_ui::Owner::Game,
     }
 }
 

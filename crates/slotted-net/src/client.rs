@@ -13,7 +13,7 @@ use slotted_model::{
     ValidationLevel,
 };
 
-use crate::message::{ClientMessage, PeerId, ServerMessage};
+use crate::message::{ClientMessage, PeerId, Refusal, ServerMessage};
 use crate::transport::ClientTransport;
 
 /// A click that has been sent and not yet answered.
@@ -49,6 +49,17 @@ struct ClientState {
     awaiting_resync: Vec<(u32, u64)>,
     /// Retransmissions sent so far, for tests and metrics.
     retransmits: u64,
+    /// Refusals the server has answered with, for tests and metrics.
+    refusals: u64,
+    /// Menus this client has asked to close and not yet been told are gone,
+    /// with the poll the request was last put on the wire at. A `CloseMenu`
+    /// the link eats leaves the session open on the server for ever, holding
+    /// whatever was on the cursor, while the client believes it is shut: so
+    /// the request is repeated on the same timer a click is, until a
+    /// `Closed` or a refusal settles it.
+    closing: Vec<(u32, u64)>,
+    /// Menus the server has told this client are gone.
+    closed: Vec<u32>,
 }
 
 /// The client's authority: predicts locally, defers to a server.
@@ -117,6 +128,58 @@ impl<T: ClientTransport> RemoteAuthority<T> {
         self.lock().in_flight.len()
     }
 
+    /// How many messages the server has refused as not this client's to send.
+    ///
+    /// A healthy client never sees one: a refusal means it named a menu that
+    /// is not open, is somebody else's, or that it has lost the right to
+    /// touch. Non-zero here is a bug in the game's session bookkeeping, not a
+    /// network condition.
+    pub fn refusals(&self) -> u64 {
+        self.lock().refusals
+    }
+
+    /// Menus the server has told this client are closed, in the order it said
+    /// so. Draining leaves the list empty.
+    pub fn take_closed(&self) -> Vec<MenuId> {
+        std::mem::take(&mut self.lock().closed)
+            .into_iter()
+            .map(MenuId)
+            .collect()
+    }
+
+    /// Tells the server this client has closed `menu`.
+    ///
+    /// The local screen is gone either way; what is repeated until the server
+    /// answers is the *request*, because a lost one leaves a session open on
+    /// the server holding this player's cursor while the client has stopped
+    /// thinking about it. A stale click for a closed session is refused
+    /// rather than applied, so repeating costs nothing.
+    pub fn close(&self, menu: MenuId) -> Result<(), AuthorityError> {
+        let mut state = self.lock();
+        state.in_flight.retain(|f| f.menu != menu);
+        state.awaiting_resync.retain(|(m, _)| *m != menu.0);
+        let now = state.now;
+        if !state.closing.iter().any(|(m, _)| *m == menu.0) {
+            state.closing.push((menu.0, now));
+        }
+        self.transport
+            .send(PeerId::SERVER, ClientMessage::CloseMenu { menu })
+            .map_err(|_| AuthorityError::Disconnected)
+    }
+
+    /// Reports `count` submissions on `menu` as settled, so the caller's
+    /// round-trip count comes back down by exactly as much as it went up.
+    ///
+    /// The vocabulary an [`Authority`] has for "this is settled" is
+    /// [`AuthorityEvent::Ack`], so that is what a settled-but-never-acked
+    /// submission is reported as. The `state_id` carried is the authority's
+    /// own, which is the useful number either way.
+    fn report_settled(state: &mut ClientState, menu: MenuId, count: usize, state_id: u32) {
+        for _ in 0..count {
+            state.outbox.push(AuthorityEvent::Ack { menu, state_id });
+        }
+    }
+
     fn lock(&self) -> MutexGuard<'_, ClientState> {
         self.state
             .lock()
@@ -153,20 +216,64 @@ impl<T: ClientTransport> RemoteAuthority<T> {
                     .outbox
                     .push(AuthorityEvent::Slot { menu, slot, stack });
             }
-            ServerMessage::SetContent { menu, snapshot } => {
+            ServerMessage::SetContent {
+                menu,
+                answers,
+                snapshot,
+            } => {
                 state.awaiting_resync.retain(|(m, _)| *m != menu.0);
-                // A snapshot answers exactly one thing: the oldest click still
-                // waiting on this menu, or, when there is none, the resync
-                // this client asked for. Retiring more than one would leave
-                // the caller's round-trip count stuck above zero for ever.
-                if let Some(index) = state.in_flight.iter().position(|f| f.menu == menu) {
-                    state.in_flight.remove(index);
+                let authoritative = snapshot.state.state_id;
+                // A snapshot says which click it corrects. That submission and
+                // every older one on the menu are settled by it: the older
+                // ones were answered before it and those answers are not
+                // coming. Guessing "the oldest" instead, as this used to,
+                // retires the wrong click the moment two are in flight.
+                if let Some(seq) = answers {
+                    let (retired, kept): (Vec<InFlight>, Vec<InFlight>) =
+                        std::mem::take(&mut state.in_flight)
+                            .into_iter()
+                            .partition(|f| f.menu == menu && f.seq <= seq);
+                    state.in_flight = kept;
+                    // One of them is reported as the `Resync` below; the rest
+                    // need an event each or the caller waits for ever.
+                    let extra = retired.len().saturating_sub(1);
+                    Self::report_settled(state, menu, extra, authoritative);
                 }
-                state.state_id.insert(menu.0, snapshot.state.state_id);
+                state.state_id.insert(menu.0, authoritative);
                 state.outbox.push(AuthorityEvent::Resync {
                     menu,
                     snapshot: *snapshot,
                 });
+            }
+            ServerMessage::Refused { menu, seq, reason } => {
+                state.refusals += 1;
+                tracing::warn!(?menu, ?seq, ?reason, "the server refused a message");
+                // No state came back and none is coming: asking again would
+                // only be refused again. Everything outstanding on this menu
+                // is settled here so the caller stops waiting on it.
+                state.awaiting_resync.retain(|(m, _)| *m != menu.0);
+                let (retired, kept): (Vec<InFlight>, Vec<InFlight>) =
+                    std::mem::take(&mut state.in_flight)
+                        .into_iter()
+                        .partition(|f| f.menu == menu);
+                state.in_flight = kept;
+                let known = state.state_id.get(&menu.0).copied().unwrap_or_default();
+                Self::report_settled(state, menu, retired.len(), known);
+                if reason == Refusal::UnknownMenu || reason == Refusal::NotYours {
+                    state.closed.push(menu.0);
+                }
+            }
+            ServerMessage::Closed { menu } => {
+                state.closing.retain(|(m, _)| *m != menu.0);
+                let (retired, kept): (Vec<InFlight>, Vec<InFlight>) =
+                    std::mem::take(&mut state.in_flight)
+                        .into_iter()
+                        .partition(|f| f.menu == menu);
+                state.in_flight = kept;
+                state.awaiting_resync.retain(|(m, _)| *m != menu.0);
+                let known = state.state_id.get(&menu.0).copied().unwrap_or_default();
+                Self::report_settled(state, menu, retired.len(), known);
+                state.closed.push(menu.0);
             }
             ServerMessage::SetProperty { menu, id, value } => {
                 state
@@ -206,6 +313,7 @@ impl<T: ClientTransport> RemoteAuthority<T> {
     /// back on the wire.
     fn retransmit(&self, state: &mut ClientState) {
         self.retransmit_resyncs(state);
+        self.retransmit_closes(state);
         let now = state.now;
         let deadline = self.retry_after;
         let mut due: Vec<usize> = Vec::new();
@@ -232,6 +340,38 @@ impl<T: ClientTransport> RemoteAuthority<T> {
                 }
                 Err(error) => {
                     tracing::warn!(%error, "could not retransmit a click");
+                }
+            }
+        }
+    }
+
+    /// Repeats any close request that has gone unanswered too long.
+    ///
+    /// The same reasoning as [`Self::retransmit_resyncs`], with a worse
+    /// failure: an unanswered resync leaves the client waiting, while an
+    /// unanswered close leaves a *session* open on the server, bound to this
+    /// player's private inventories and holding whatever was on the cursor,
+    /// with nobody left who will ever close it.
+    fn retransmit_closes(&self, state: &mut ClientState) {
+        let now = state.now;
+        let deadline = self.retry_after;
+        let due: Vec<u32> = state
+            .closing
+            .iter()
+            .filter(|(_, sent_at)| now.saturating_sub(*sent_at) >= deadline)
+            .map(|(menu, _)| *menu)
+            .collect();
+        for menu in due {
+            let message = ClientMessage::CloseMenu { menu: MenuId(menu) };
+            match self.transport.send(PeerId::SERVER, message) {
+                Ok(()) => {
+                    if let Some(entry) = state.closing.iter_mut().find(|(m, _)| *m == menu) {
+                        entry.1 = now;
+                    }
+                    state.retransmits += 1;
+                }
+                Err(error) => {
+                    tracing::warn!(menu, %error, "could not repeat a close request");
                 }
             }
         }

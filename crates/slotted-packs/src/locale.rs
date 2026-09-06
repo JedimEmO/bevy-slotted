@@ -10,8 +10,10 @@ use fluent_bundle::FluentArgs;
 use fluent_bundle::FluentResource;
 use fluent_bundle::concurrent::FluentBundle;
 use slotted_script::ModId;
-use slotted_ui::def::LocKey;
+#[cfg(feature = "ui")]
 use slotted_ui::{Localization, Localizer};
+
+use crate::uidef::LocKey;
 use unic_langid::LanguageIdentifier;
 
 use crate::assets::TextLoadError;
@@ -135,6 +137,7 @@ impl LocaleTable {
     }
 
     /// `resolve`, logging once for a key nothing defines.
+    #[cfg(feature = "ui")]
     fn resolve_or_warn(&self, key: &LocKey) -> Option<String> {
         if let Some(text) = self.resolve(key, None) {
             return Some(text);
@@ -154,6 +157,7 @@ impl Default for LocaleTable {
     }
 }
 
+#[cfg(feature = "ui")]
 impl Localizer for LocaleTable {
     /// The port `slotted-ui` and `slotted-browser` resolve through. It warns
     /// once per key that nothing defines, the same as a `LocText` does, so a
@@ -178,6 +182,7 @@ impl Locales {
     }
 
     /// The port over the same catalogue.
+    #[cfg(feature = "ui")]
     pub fn port(&self) -> Localization {
         Localization(self.0.clone())
     }
@@ -240,6 +245,7 @@ pub fn normalise_ids(source: &str) -> String {
 /// Re-exported from `slotted-ui`, which owns both the component and the
 /// [`Localization`] port and registers this in `SlottedUiPlugin`. It stays
 /// named here because it was published here.
+#[cfg(feature = "ui")]
 pub use slotted_ui::resolve_loc_text;
 
 /// Reads `locale/<lang>.ftl` from base and every mod, in load order, so the
@@ -292,6 +298,7 @@ pub(crate) fn load_locales(
     // `LocText` can never resolve the same key differently. Replacing the port
     // rather than mutating it is what lets a reader use change detection.
     let locales = Locales::new(locales);
+    #[cfg(feature = "ui")]
     world.insert_resource(locales.port());
     world.insert_resource(locales);
 }

@@ -243,6 +243,85 @@ fn a_tank_binds_to_its_two_properties_when_the_screen_opens() {
     assert!((h.tank_fill(tank)).abs() < f32::EPSILON, "starts empty");
 }
 
+/// The end of the chain the review found broken: an authority snapshot lands
+/// on the model, the model write goes through the one property path, the path
+/// moves the `MenuProperty` child, and the tank bound to that child redraws.
+/// Before, the snapshot moved only `MenuState.properties` and the tank kept
+/// drawing the value it was spawned with.
+#[test]
+fn a_tank_follows_a_property_delivered_by_a_snapshot() {
+    let (mut h, opened) = harness();
+    let tank = find(&h, "tank");
+    assert!(h.tank_fill(tank).abs() < f32::EPSILON, "starts empty");
+
+    let (id, def, inventories) = {
+        let menu = h.world().get::<slotted_ecs::OpenMenu>(opened.menu).unwrap();
+        (menu.id, menu.def.clone(), menu.inventories.clone())
+    };
+    let mut snapshot_inventories = slotted_model::Inventories::new();
+    for entity in &inventories {
+        let inventory = h.world().get::<slotted_ecs::Inventory>(*entity).unwrap();
+        snapshot_inventories.push(inventory.0.clone());
+    }
+    let mut state = slotted_model::MenuState::new(&def);
+    state.properties[usize::from(TANK.0)] = 2000;
+    let authority = Arc::new(SnapshotAuthority::new(
+        slotted_model::AuthorityEvent::Resync {
+            menu: id,
+            snapshot: slotted_model::MenuSnapshot {
+                inventories: snapshot_inventories,
+                state,
+            },
+        },
+    ));
+    h.world_mut()
+        .insert_resource(slotted_ecs::Authority(authority));
+    h.settle();
+
+    assert!(
+        (h.tank_fill(tank) - 0.25).abs() < 0.001,
+        "the tank redrew from the snapshot: 2000 of 8000"
+    );
+    assert_eq!(
+        h.world()
+            .get::<SemanticLabel>(tank)
+            .map(|l| l.0.clone())
+            .as_deref(),
+        Some("2000 / 8000 mB"),
+    );
+}
+
+/// An authority that delivers one event and then nothing, so a test can put a
+/// snapshot on the wire without a server.
+#[derive(Debug)]
+struct SnapshotAuthority(std::sync::Mutex<Option<slotted_model::AuthorityEvent>>);
+
+impl SnapshotAuthority {
+    fn new(event: slotted_model::AuthorityEvent) -> Self {
+        Self(std::sync::Mutex::new(Some(event)))
+    }
+}
+
+impl slotted_model::Authority for SnapshotAuthority {
+    fn submit(
+        &self,
+        _menu: slotted_model::MenuId,
+        _action: slotted_model::ClickAction,
+        _predicted: &slotted_model::Delta,
+    ) -> Result<(), slotted_model::AuthorityError> {
+        Ok(())
+    }
+
+    fn poll(&self) -> Vec<slotted_model::AuthorityEvent> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .into_iter()
+            .collect()
+    }
+}
+
 #[test]
 fn a_tank_fill_and_label_follow_a_property_change() {
     let (mut h, opened) = harness();

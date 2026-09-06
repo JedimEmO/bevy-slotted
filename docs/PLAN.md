@@ -272,8 +272,10 @@ The conformance suite in `slotted-testutils` is therefore load-bearing: it runs 
 The other side of the `Authority` port, and the one crate in the workspace that speaks a protocol.
 
 - Messages mirror vanilla's container packets: `ClickContainer { menu, state_id, seq, action, predicted }` and `RequestResync` client to server; `Ack`, `SetSlot`, `SetContent`, `SetProperty` server to client. The predicted `Delta` rides along so an agreeing server answers with an ack rather than a container, and `seq` identifies a click, which `state_id` cannot do because the drag stages leave it unchanged.
-- `RemoteAuthority<T>` is the client: it implements `slotted_model::Authority`, retransmits an unanswered click after a set number of polls, and turns server messages into `AuthorityEvent`s.
-- `MenuServer` is the server: it applies every click to a scratch copy with `apply_click_validated` at `ValidationLevel::Always`, commits on `Ok`, acks a matching prediction, sends the container otherwise, and broadcasts `SetSlot` to the menu's other viewers off the inventories' dirty masks.
+- `RemoteAuthority<T>` is the client: it implements `slotted_model::Authority`, retransmits an unanswered click after a set number of polls, and turns server messages into `AuthorityEvent`s. A snapshot names the sequence number it answers, so it retires exactly that submission and everything older rather than whichever is oldest.
+- `MenuServer` is the server. It holds a `ContainerStore` of inventories, each shared or private to one player, and one *session* per open screen. A session belongs to one peer, owns that player's cursor, drag, hints and properties, and binds one `InventoryId` per inventory its definition addresses; two players at one chest are two sessions binding one container. It applies every click to a scratch copy with `apply_click_validated` at `ValidationLevel::Always`, commits on `Ok`, acks a matching prediction, sends the container otherwise, and fans a container change out off the dirty masks to every other session bound to it, translated into that session's own slot numbering.
+- Authorisation: every message that names a session is checked before anything is read. The server enforces that the peer owns the session and that a private inventory is never bound into another player's, and the `Access` port (`may_open`, `may_act`) is asked on top of that; `OwnerOnly` is the default. A peer naming another peer's session gets `Refused` and no state.
+- Corrections: the server records the answer it gave per `(session, seq)` for a bounded window and replays it by kind, so a lost correction repeats as a correction and cannot be turned into an ack by the retry.
 - `Transport` is the port: `send`, `poll`, `peers`. `Loopback` is the in-process adapter with a tick clock, latency, reordering jitter and a deterministic drop rate, which is what the tests run against.
 - A `bevy_replicon` adapter is designed but not built; the shape is in `docs/design/gaps-notes-A.md` section 6.
 
@@ -447,15 +449,17 @@ Two audiences. Our own crates are tested with the usual unit and integration tes
 
 ## 11. Outcome
 
-Phases 0 to 7 are done, and so is the gap-closing round that followed them
-(2026-09-06, `docs/design/gaps-notes-{A,B,C}.md`). What shipped, crate by
-crate:
+Phases 0 to 7 are done, so is the gap-closing round that followed them
+(2026-09-06, `docs/design/gaps-notes-{A,B,C}.md`), and so is the external
+review round after that (2026-09-06, `docs/design/review-notes-{A,B,C}.md`,
+eight findings, all closed -- see `docs/FOLLOWUPS.md` for the test that proves
+each). What shipped, crate by crate:
 
 | Crate | What landed |
 |---|---|
 | `slotted-model`, `slotted-registry` | The domain and the registries. No Bevy, no IO. Ghost and filter hints live on `MenuState`, and conservation is a runtime `ValidationLevel` rather than a debug assertion. |
 | `slotted-ecs` | The model as components and events, prediction, the `Authority` port, and the resync a refused submission can ask for. |
-| `slotted-net` | The networked adapter the plan's section 4.1 described: a predicting `RemoteAuthority`, an authoritative `MenuServer` running at `ValidationLevel::Always`, and a `Transport` port whose in-process `Loopback` can add latency, reorder and drop. |
+| `slotted-net` | The networked adapter the plan's section 4.1 described: a predicting `RemoteAuthority`, an authoritative `MenuServer` running at `ValidationLevel::Always`, and a `Transport` port whose in-process `Loopback` can add latency, reorder and drop. The server holds a `ContainerStore` and one *session* per open screen, each belonging to one peer and authorised on every message through the `Access` port; answers are recorded per sequence number so a retransmission replays the kind of answer it first got. |
 | `slotted-theme` | Ten materials, 36 roles, size and type tokens, per-preset motion, and three shipped skins with their OFL font files: glass, paper, neon. |
 | `slotted-ui` | Screens as data and as `.screen.ron` assets, with inheritance, 14 node types, tooltips, anchors and injection, HUD layers, localisation, recording and replay. |
 | `slotted-icons` | Lit-shape item icons: a deterministic CPU bake, an offscreen GPU rig that renders into the atlas, glTF item models behind the `gltf` feature, and live viewport icons. |
@@ -463,10 +467,11 @@ crate:
 | `slotted-script` and its adapter | One `slotted.*` surface on one runtime, Luau through luaur, on every target (ADR 0004). |
 | `slotted-packs` | Mod discovery, layered assets, the two-stage lifecycle, hot reload, Fluent. |
 | `slotted-test`, `slotted-testutils` | The public headless harness and the internal fakes. |
-| `slotted` | The facade: `SlottedPlugins`, the prelude, the feature flags. |
+| `slotted` | The facade: `SlottedPlugins`, the prelude, the feature flags. `SlottedPlugins::server()` with `--no-default-features --features server` is a real dedicated-server graph: 160 crates against a default build's 300, with no Bevy UI stack on either target. |
 
-**912 tests pass** with every feature on, three more behind a GPU gate that
-cannot currently be lifted (see the limitations below). The three native
+**951 tests pass** with every feature on, plus two more that compile only in
+the dedicated-server profile and run from `just server-check`, and three behind
+a GPU gate that cannot currently be lifted (see the limitations below). The three native
 examples and the web playground all run, each covered by its own harness tests
 and its mods' `tests/*.lua`.
 

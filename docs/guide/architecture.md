@@ -37,12 +37,31 @@ dependencies, `serde` and `thiserror`. Every click mode, every stack merge and
 every conservation rule is a pure function over value types, testable in
 milliseconds, and equally usable in a headless authoritative server.
 
+That last claim is a build, not an aspiration. The facade's `ui` feature owns
+every Bevy UI feature the workspace enables, and `slotted-packs` has a `ui`
+feature of its own over the half of the mod lifecycle that publishes screens,
+widget templates, tooltip parts and HUD layers. So:
+
+| Build | Crates compiled | `bevy_ui`, `bevy_text`, `bevy_picking`, `bevy_window`, `bevy_render` |
+|---|---|---|
+| `slotted` with default features | 300 | present |
+| `slotted --no-default-features --features server` | 160 | absent |
+
+`SlottedPlugins::server()` is the plugin group for the second one:
+`ServerBevyPlugins` (task pool, clock, states, assets, runner) and nothing else
+from Bevy. `SlottedPlugins::headless()` is a different thing and lives behind
+`ui`: it keeps `bevy_ui` layout, picking and focus with no renderer, which is
+what the test harness drives. `just server-check` greps `cargo tree` for the
+five crate names above and fails the build if any of them come back; CI runs it
+as its own job, and the Pages deployment waits on it.
+
 **Every boundary with two implementations is a port.** There are five:
 
 | Port | Lives in | Implementations |
 |---|---|---|
 | `Authority` | `slotted-model`, resource in `slotted-ecs` | `LocalAuthority` for single-player; `slotted_net::RemoteAuthority` for a client of a `MenuServer`. |
 | `Transport` | `slotted-net` | `Loopback` in process, with latency, reordering and loss for tests. A `bevy_replicon` adapter is designed, not built. |
+| `Access` | `slotted-net` | `OwnerOnly` by default: a session answers its own peer. A game overrides it to add a distance or lock check, or to revoke access mid-session. |
 | `ScriptRuntime` | `slotted-script` | `slotted-script-luaur`, the same runtime natively and in a browser. |
 | `AssetSource` | `slotted-registry` | `DirSource` for a plain directory, `LayeredSource` in `slotted-packs` for mods and resource packs. |
 | `IconSource` | `slotted-icons` | `AtlasIcons` over a baked atlas; `LiveIcons` behind the `live` feature. |
@@ -128,13 +147,43 @@ against a local authority.
 The server half, `MenuServer`, runs the same `apply_click` the client ran,
 against its own copy of the menu, at `ValidationLevel::Always`. A client that
 predicted right gets an ack of a few bytes. A client that predicted wrong, or
-whose state id says its copy has drifted, gets the whole container back. The
-menu's other viewers get one `SetSlot` per slot that changed, taken off the
-inventories' dirty masks.
+whose state id says its copy has drifted, gets the whole container back.
+
+What the server holds is a `ContainerStore` of inventories and one *session*
+per open screen, not one menu per container. A session belongs to exactly one
+peer; it owns that player's cursor, drag, ghost hints and property values, and
+binds one `InventoryId` per inventory its definition addresses. Two players at
+one chest are therefore two sessions binding one container id: the chest is a
+single inventory that both write into, and everything personal about the two
+screens stays apart. A change to a container is fanned out off the dirty mask
+to every session bound to it, translated into each one's own slot numbering,
+because a slot index is a fact about a session and means nothing across two.
+Player inventories are marked private, and no `Access` policy can bind one into
+another player's session.
+
+Every message that names a session is authorised before anything is read: the
+server checks the peer owns it, then asks `Access` whether it may act through
+it right now. A peer naming somebody else's session gets a `Refused` and no
+state at all, not even a refusal that differs by timing.
+
+The server also remembers what it answered each click with, per sequence
+number, for a bounded window. A retransmission replays the *kind* of answer:
+an ack repeats as an ack, a correction repeats as the container. Snapshots
+carry the sequence number they answer, so the client retires exactly that
+submission and everything older rather than guessing at the oldest. Without
+both halves a single lost correction leaves a client wrong for the rest of the
+session.
+
+Closing a session is reliable in both directions, because both directions can
+lose an item. The stack on a session's cursor has already been taken out of a
+container, so `CloseMenu` returns it to a binding private to that peer before
+the session goes; and the request itself is repeated until the server answers,
+because a lost one leaves a session open on the server that nobody will ever
+close.
 
 Anything above the transport is testable without a socket: `Loopback` is
 tick-driven, so a test decides exactly when the link is slow, shuffled or
-lossy. See `docs/design/gaps-notes-A.md`.
+lossy. See `docs/design/gaps-notes-A.md` and `docs/design/review-notes-A.md`.
 
 ## Bevy version
 

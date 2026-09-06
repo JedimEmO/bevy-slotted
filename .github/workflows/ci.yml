@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 env:
@@ -100,29 +100,16 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The browser tests are the only thing in the workspace that needs a
-      # browser, and a runner without one must not fail the build. This is an
-      # `if` on a detected binary rather than `continue-on-error`, because
-      # `continue-on-error` also swallows a real failure of the tests.
-      - name: Find a Chrome
+      # A browser is installed rather than looked for. This used to skip
+      # itself when the runner had no Chrome, which meant the one job that
+      # exercises the script runtime in a tab could report success without
+      # running anything, on the very branch that then deploys.
+      - uses: browser-actions/setup-chrome@v1
         id: chrome
-        run: |
-          for candidate in "$CHROME" "$CHROME_BIN" google-chrome chromium chromium-browser; do
-            [ -n "$candidate" ] || continue
-            found=$(command -v "$candidate" 2>/dev/null || true)
-            if [ -n "$found" ]; then
-              echo "path=$found" >> "$GITHUB_OUTPUT"
-              break
-            fi
-          done
-
-      - name: Say why there are no browser tests
-        if: steps.chrome.outputs.path == ''
-        run: |
-          echo "::notice title=Browser tests skipped::No Chrome or Chromium on this runner, so slotted-script-luaur's wasm-bindgen tests did not run. Each of them has a native twin in the same crate, which the Test (ubuntu) job ran."
+        with:
+          chrome-version: stable
 
       - name: Install wasm-pack
-        if: steps.chrome.outputs.path != ''
         run: cargo install wasm-pack --version 0.13.1 --locked
 
       # The one script runtime, in the one place its behaviour differs from
@@ -132,10 +119,31 @@ jobs:
       # trade ADR 0004 accepts. Their native twins are in the same crate and
       # the Test (ubuntu) job runs them.
       - name: luaur in a browser
-        if: steps.chrome.outputs.path != ''
         env:
-          CHROME: ${{ steps.chrome.outputs.path }}
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
         run: wasm-pack test --headless --chrome crates/slotted-script-luaur --test wasm
+
+  server:
+    name: Dedicated-server graph
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: extractions/setup-just@v2
+
+      # `slotted`'s feature comments promise that `default-features = false`
+      # is a server build with no Bevy UI stack. Cargo features are additive,
+      # so one `bevy/bevy_ui` in any crate below the facade breaks that for
+      # every consumer and nothing but this fails when it happens. The recipe
+      # greps `cargo tree` and then builds the profile on native and on wasm.
+      - name: No bevy_ui in the server graph
+        run: just server-check
 
   docs:
     name: Docs
@@ -190,8 +198,12 @@ jobs:
 
   pages:
     name: Deploy the playground and the docs
-    needs: [wasm, docs]
-    if: github.ref == 'refs/heads/main'
+    # Every validation job, not just the two that produce the artifacts.
+    # Deployment used to depend on `wasm` and `docs` alone, so a push to the
+    # default branch published the playground and the documentation while the
+    # native tests, Clippy, `cargo deny` or the browser tests were red.
+    needs: [native, wasm, browser, server, docs]
+    if: contains(fromJSON('["refs/heads/main","refs/heads/master"]'), github.ref)
     runs-on: ubuntu-latest
     permissions:
       pages: write

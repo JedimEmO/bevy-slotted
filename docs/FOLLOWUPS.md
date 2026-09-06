@@ -6,6 +6,77 @@ Entries the gap-closing round closed have been deleted rather than struck
 through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
 and summarised below. What is left here is open.
 
+## External review round, 2026-09-06
+
+Eight findings from a second, external review, landed as three packages
+(`docs/design/review-notes-{A,B,C}.md`) and integrated as one round. All eight
+are closed. Each line names the test that proves it.
+
+| # | Finding | Closed by |
+|---|---|---|
+| 1 | The server acted on any message that named a menu it had. | `slotted-net/tests/sessions.rs::every_message_kind_from_a_foreign_peer_is_refused_and_changes_nothing` and `::access_revoked_mid_session_refuses_the_owners_own_messages`. The seam against finding 3 is `review_round2.rs::a_revoked_peer_retransmitting_an_old_sequence_is_refused_and_leaks_nothing`. |
+| 2 | Viewers shared a `MenuState`, an actor and a set of inventories. | `sessions.rs::two_sessions_share_the_container_and_share_nothing_else` and `::a_container_change_reaches_each_session_at_its_own_slot_index`. The seam against closing is `review_round2.rs::a_peer_closing_mid_drag_leaves_no_phantom_and_destroys_nothing`. |
+| 3 | A lost correction could not be recovered, and a snapshot retired the wrong submission. | `sessions.rs::a_lost_correction_is_repeated_as_a_correction_on_the_retry` and `::an_out_of_order_snapshot_retires_exactly_what_it_answers`. Reordering is `review_round2.rs::a_snapshot_answering_the_newer_click_arrives_before_the_older_ack`. |
+| 4 | Three property writers, only two of which wrote both copies. | `slotted-ecs/tests/prediction.rs::a_resync_updates_the_property_child_and_fires_property_changed` and `::a_resync_that_moves_no_property_fires_nothing`; `slotted-ui/tests/machine_widgets.rs::a_tank_follows_a_property_delivered_by_a_snapshot`. Where it meets finding 2: `slotted-net/tests/review_round2.rs::one_property_change_on_a_shared_furnace_reaches_both_sessions_and_seeds_a_third`. |
+| 5 | Invalidation matched screen kinds by name instead of by dependency. | `slotted-ui/tests/invalidation.rs`, and across the reload in `slotted-packs/tests/review_round2.rs::an_edit_to_an_inherited_game_screen_reaches_the_mod_screen_through_both_paths` and `::an_injection_retargeted_on_reload_leaves_one_screen_and_reaches_the_other`. |
+| 6 | Nothing a mod registered could ever be removed. | `slotted-packs/tests/review_round2.rs::a_mod_removed_from_the_dir_loses_its_registrations_and_gives_the_game_screen_back` and `::a_reload_that_fails_leaves_the_previous_owned_set_intact`. |
+| 7 | `default-features = false` was not a server graph. | `just server-check` greps `cargo tree` on **both** native and `wasm32-unknown-unknown`, then builds both, then runs `slotted/tests/server.rs` -- which compiles only under `--no-default-features --features server` and drives one click from a `RemoteAuthority` to an ack through a `MenuServer` pumped by the server app's own schedule. |
+| 8 | `pages` could deploy over a red branch. | `.github/workflows/ci.yml`: `pages` needs `native`, `wasm`, `browser`, `server` and `docs`, and the `browser` job installs a Chrome rather than skipping itself. |
+
+### Found and fixed during the integration review
+
+- **A client closing a screen destroyed whatever was on its cursor.**
+  `ClientMessage::CloseMenu` is documented to return the carried stack to the
+  player's own inventory; the server dropped the session and the stack with it.
+  Any client could sink items at will by pressing escape mid-click.
+  `MenuServer::return_carried` now puts it back into a binding the store marks
+  private to that peer, and the fan-out runs after the session is gone.
+  Proved by `slotted-net/tests/review_round2.rs::a_peer_closing_mid_drag_leaves_no_phantom_and_destroys_nothing`.
+- **A lost `CloseMenu` left a session open on the server for ever.** `close`
+  was fire-and-forget, so a link that ate the request left a session bound to
+  the player's private inventories with nobody who would ever close it, while
+  the client had stopped thinking about it. It is now repeated on the same
+  timer a click is, until a `Closed` or a refusal settles it. Surfaced by the
+  10% loss fuzz in
+  `slotted-net/tests/review_round2.rs::two_peers_survive_a_lossy_link_with_properties_and_a_session_that_reopens`.
+- **`just server-check` only checked the native dependency tree.** Package C's
+  notes claim both targets; the recipe grepped one. It now loops over native
+  and `wasm32-unknown-unknown`, and runs the new facade server tests.
+- The `slotted-net` and `slotted-packs` test harnesses moved into
+  `tests/common/mod.rs` in each crate, so the round-two files drive the same
+  world the first-round files do rather than a second copy of it.
+
+### Left open by the round
+
+- **A lost `SetProperty` has no repair path of its own.** Unlike a click it is
+  not retransmitted, and unlike a slot it is not re-derived from a dirty mask,
+  so a property update the link eats is repaired only by the next snapshot. A
+  furnace that keeps burning heals itself on the next tick; one that has
+  stopped stays stale until something asks for a resync. The fuzz asserts the
+  snapshot path carries it. Making properties reliable on their own needs an
+  acknowledgement the protocol does not have, which is a bigger change than
+  this round.
+- **`apply_resync` diffs the property vector against the vector, not against
+  the child components.** `slotted-ecs/src/systems.rs` captures the vector
+  before assigning the snapshot and calls `write_property` only for the
+  positions that moved, which is deliberate: calling it for all of them would
+  deliver a `property_changed` per property per resync to every script. The
+  residual is that a `MenuProperty` child that had somehow drifted from the
+  vector is not repaired by a resync carrying the value the vector already
+  holds. Unreachable while `write_property` is the only writer, and it is; the
+  audit for this round found no second one.
+- **`Injections` still has a public tuple field.** Nothing in `src/` mutates it
+  outside `reconcile_mod_injections`, but several `slotted-ui` tests push into
+  `.0` directly to stand in for a game's own registration. A `register_game`
+  method would let the field be private.
+- **A mod may still register outside its own namespace with only a warning**,
+  and the owner recorded for a screen or a widget is derived from the *kind's*
+  namespace rather than from the mod that registered it
+  (`Screens::load_from_registry`, `install.rs::publish_ui`). It is consistent,
+  it is documented where it happens, and it is harmless while a reconcile
+  replaces the whole mod-owned set at once. It would stop being harmless if
+  reconciliation ever became per-mod.
+
 ## Gap-closing round, 2026-09-06
 
 Three packages landed together and were integrated and reviewed as one round.

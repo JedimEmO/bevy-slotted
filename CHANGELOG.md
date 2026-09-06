@@ -7,6 +7,87 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **A peer could drive any open menu on the server.** `MenuServer` checked that
+  a menu existed and then acted, so any connected client could click, resync or
+  otherwise move items in any other player's open container, and would be sent
+  its whole contents on a state-id mismatch. A menu id now names a *session*
+  belonging to exactly one peer, every message goes through one `authorize`
+  gate, and a refusal carries no state at all -- not a snapshot, not a slot.
+  The new `Access` port adds a game's own distance or lock check on top and can
+  take access away mid-session; the ownership and privacy rules underneath it
+  are invariants no policy can switch off.
+- **One player could reach into another's inventory.** A `ServerMenu` owned one
+  `MenuState`, one `Actor` and one `Inventories` for every viewer, so two
+  players at one chest shared a cursor, a drag and a player inventory.
+  Inventories now live in a `ContainerStore`, each `Shared` or `Private(peer)`,
+  and a session binds ids rather than owning items. Binding an inventory
+  private to another player is refused whatever the access policy says.
+
+### Fixed
+
+- **A client closing a screen destroyed whatever was on its cursor.**
+  `ClientMessage::CloseMenu` is documented to return the carried stack to the
+  player's own inventory; the server dropped the session and the stack with it,
+  so any client could sink items by pressing escape mid-click. The stack now
+  goes back into a binding private to that peer.
+- **A lost `CloseMenu` left a session open on the server for ever**, bound to
+  that player's private inventories, with nobody left who would ever close it.
+  The request is now repeated on the same timer a click is, until the server
+  answers.
+- **A lost correction was replaced by an ack on the retry**, leaving a client
+  permanently divergent from one dropped packet. The server records which kind
+  of answer it gave per `(session, sequence)` in a bounded window and replays
+  the kind: an ack repeats as an ack, a correction as the container as it is
+  now.
+- **A snapshot retired the oldest submission in flight rather than the one it
+  answered**, which is the wrong one as soon as two clicks are outstanding.
+  `ServerMessage::SetContent` now carries `answers: Option<u32>`.
+- **A resync moved a menu's properties and left every widget drawing the old
+  value.** `apply_resync` replaced the whole `MenuState` and touched no
+  `MenuProperty` component, so a snapshot carrying 42 moved the model to 42 and
+  left the tank on screen at 0. `slotted_ecs::systems::write_property` is now
+  the one path a property value changes by, and all three callers go through
+  it; the resync case diffs, so a resync that moves nothing fires nothing.
+- **A screen only respawned when its own definition changed by name.** An edit
+  to a base screen, to a widget template, or an injection added or removed
+  reached nothing. `ScreenDependencies` answers the dependency question
+  instead, and `slotted_ui::respawn_screens` is now the only respawn
+  implementation in the workspace -- there were two, and they had drifted.
+- **Nothing a mod registered could ever be removed.** A screen, template,
+  injection or tooltip part a mod stopped shipping outlived the mod for the
+  life of the process. Every entry carries an `Owner`, each registry is
+  reconciled rather than appended to, a game definition a mod took over comes
+  back when the mod stops registering it, and an open screen whose kind nothing
+  registers any more is closed and reported to the mod log.
+
+### Changed
+
+- **`SlottedPlugins::server()` and the `server` feature.** The facade's `bevy`
+  dependency enabled `bevy_ui`, `bevy_text`, `bevy_picking`, `bevy_window`,
+  `bevy_scene` and `default_font` unconditionally, so the lightweight
+  dedicated-server build its feature comments advertised did not exist. Every
+  Bevy UI feature moved into the facade's own `ui` feature, `packs` no longer
+  implies `ui`, and `server` is `packs + script-luaur + net` and nothing else:
+  160 crates against a default build's 300, with no `bevy_ui`, `bevy_text`,
+  `bevy_picking`, `bevy_winit`, `bevy_window` or `bevy_render` in the graph on
+  either target. `slotted-packs` gained a `ui` feature of its own to make that
+  possible. `just server-check` asserts the graph on native and on
+  `wasm32-unknown-unknown`, builds both, and runs
+  `crates/slotted/tests/server.rs`, which drives a client click to an ack
+  through a `MenuServer` in a `server()` app with no UI plugins present.
+- `ClientMessage::CloseMenu`, `ServerMessage::Refused` and
+  `ServerMessage::Closed` are new on the wire. `Outcome::UnknownMenu` became
+  `Outcome::Denied(Refusal)`, and `Outcome::Closed` joined it.
+- `slotted_model::InventoryId` is new: `InventoryRef` says which of the
+  inventories a menu addresses, `InventoryId` says which inventory in the
+  world, and a server needs both.
+- The `pages` CI job now needs `native`, `wasm`, `browser`, `server` and
+  `docs`, so it cannot deploy over a red branch; the `browser` job installs a
+  Chrome rather than skipping itself when it finds none.
+
+
 ### Changed
 
 - **There is one script runtime now, `slotted-script-luaur`, on every target**

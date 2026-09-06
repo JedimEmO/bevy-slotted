@@ -636,6 +636,7 @@ pub fn reconcile(
                     &fanout,
                     &mut menus,
                     &mut inventories,
+                    &mut properties,
                     &mut sync,
                     &mut commands,
                 );
@@ -660,23 +661,10 @@ pub fn reconcile(
                 let Some(entity) = entity_of(menu) else {
                     continue;
                 };
-                if let Ok((_, mut open, _, _)) = menus.get_mut(entity)
-                    && let Some(position) = open.def.properties.iter().position(|p| p.id == id)
-                    && let Some(slot) = open.state.properties.get_mut(position)
-                {
-                    *slot = value;
-                }
-                for (child, mut property, child_of) in &mut properties {
-                    if child_of.parent() == entity && property.id == id {
-                        property.value = value;
-                        commands.trigger(PropertyChanged {
-                            entity: child,
-                            menu: entity,
-                            id,
-                            value,
-                        });
-                    }
-                }
+                let Ok((_, mut open, _, _)) = menus.get_mut(entity) else {
+                    continue;
+                };
+                write_property(entity, &mut open, id, value, &mut properties, &mut commands);
             }
         }
     }
@@ -743,6 +731,7 @@ fn apply_resync(
     fanout: &SlotFanout,
     menus: &mut Query<(Entity, &mut OpenMenu, &mut Carried, &SlotEntities)>,
     inventories: &mut Query<&mut Inventory>,
+    properties: &mut Query<(Entity, &mut MenuProperty, &ChildOf)>,
     sync: &mut MessageWriter<SlotSync>,
     commands: &mut Commands,
 ) {
@@ -779,8 +768,29 @@ fn apply_resync(
         }
     }
 
+    // Properties are duplicated state: the model's vector and one
+    // `MenuProperty` child per property. Overwriting the vector alone left
+    // every tank and bar bound to it drawing the value from before the
+    // snapshot, so the writes go through `write_property` -- the one path a
+    // per-property message and a host-side `SetProperty` also take. Only the
+    // values the snapshot actually moved are written, so a resync that
+    // changed nothing triggers no `PropertyChanged`.
+    let before_properties = menu.state.properties.clone();
     menu.state = snapshot.state.clone();
     carried.set_if_neq(Carried(menu.state.carried.clone()));
+    let moved: Vec<(slotted_model::PropertyId, i32)> = menu
+        .def
+        .properties
+        .iter()
+        .enumerate()
+        .filter_map(|(position, property)| {
+            let value = *menu.state.properties.get(position)?;
+            (before_properties.get(position) != Some(&value)).then_some((property.id, value))
+        })
+        .collect();
+    for (id, value) in moved {
+        write_property(entity, &mut menu, id, value, properties, commands);
+    }
 
     let after = {
         let Ok((_, menu, _, _)) = menus.get(entity) else {
@@ -898,20 +908,42 @@ pub fn apply_set_property(
         tracing::warn!(?menu, "SetProperty on something that is not an open menu");
         return;
     };
-    // The same three steps `reconcile` takes for `AuthorityEvent::Property`,
-    // minus the round trip: this write *is* the authority's (contract 0).
+    // The same path `reconcile` takes for `AuthorityEvent::Property`, minus
+    // the round trip: this write *is* the authority's (contract 0).
+    write_property(menu, &mut open, id, value, &mut properties, &mut commands);
+}
+
+/// The one way a property value changes.
+///
+/// A property lives in two places -- `OpenMenu::state.properties`, indexed
+/// like `MenuDef::properties`, and one [`MenuProperty`] child entity per
+/// property, which is what `PropertyBinding`, tanks, bars and progress arrows
+/// read. Writing one without the other is the whole bug class this function
+/// exists to close: a snapshot resync used to replace the model vector and
+/// leave every bound widget drawing the previous value.
+///
+/// Every caller goes through here: [`reconcile`] for both
+/// `AuthorityEvent::Property` and the property half of a `Resync`, and
+/// [`apply_set_property`] for the host-side [`SetProperty`](crate::SetProperty).
+///
+/// Returns whether the menu has a property with this id; a write to an id the
+/// menu does not define is logged and does nothing.
+pub fn write_property(
+    menu: Entity,
+    open: &mut OpenMenu,
+    id: slotted_model::PropertyId,
+    value: i32,
+    properties: &mut Query<(Entity, &mut MenuProperty, &ChildOf)>,
+    commands: &mut Commands,
+) -> bool {
     let Some(position) = open.def.properties.iter().position(|p| p.id == id) else {
-        tracing::warn!(
-            ?menu,
-            ?id,
-            "SetProperty for a property this menu has not got"
-        );
-        return;
+        tracing::warn!(?menu, ?id, "property write for an id this menu has not got");
+        return false;
     };
     if let Some(slot) = open.state.properties.get_mut(position) {
         *slot = value;
     }
-    for (child, mut property, child_of) in &mut properties {
+    for (child, mut property, child_of) in properties.iter_mut() {
         if child_of.parent() == menu && property.id == id {
             property.value = value;
             commands.trigger(PropertyChanged {
@@ -922,6 +954,7 @@ pub fn apply_set_property(
             });
         }
     }
+    true
 }
 
 /// Observer for [`SetSlot`](crate::events::SetSlot): a host-side slot write.

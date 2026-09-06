@@ -848,8 +848,7 @@ impl UiHarness {
             let mut known: Vec<String> = self
                 .world()
                 .resource::<slotted_ui::Screens>()
-                .0
-                .keys()
+                .kinds()
                 .map(|k| k.0.to_string())
                 .collect();
             known.sort();

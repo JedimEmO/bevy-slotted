@@ -20,13 +20,19 @@
 
 pub mod assets;
 pub mod error;
+pub mod install;
+#[cfg(feature = "ui")]
+pub mod invalidate;
 pub mod lifecycle;
 pub mod locale;
 pub mod modset;
 pub mod plugin;
+pub mod prepare;
 pub mod route;
 pub mod source;
+#[cfg(feature = "ui")]
 pub mod tooltip;
+pub mod uidef;
 
 pub use assets::{DataFile, DataFileLoader, ModWatch, ScriptAsset, ScriptLoader};
 pub use error::ModError;
@@ -34,7 +40,9 @@ pub use lifecycle::{
     ControlScript, ControlScripts, FrozenSnapshot, LogEntry, ModErrors, ModFailed, ModLoader,
     ModReloaded, ModStage, PacksBakedIcons, ReloadMod, ScriptHost, ScriptLog, ScriptLogs,
 };
-pub use locale::{FtlAsset, FtlLoader, Locales, resolve_loc_text};
+#[cfg(feature = "ui")]
+pub use locale::resolve_loc_text;
+pub use locale::{FtlAsset, FtlLoader, Locales};
 pub use modset::{MANIFEST_FILE, ModEntry, ModPaths, ModSet, PackLayout};
 pub use plugin::{PackSourcePlugin, PacksConfig, SlottedPacksPlugin, SlottedPacksSet};
 pub use route::{
@@ -44,6 +52,7 @@ pub use route::{
 pub use source::{
     LayeredAssetReader, LayeredSource, PACK_SOURCE, PackAssets, SharedSource, SourceAssetReader,
 };
+#[cfg(feature = "ui")]
 pub use tooltip::{CHILDREN_ANCHOR, ScriptTooltipPart, StaticPart, TemplateWidget};
 
 /// Everything a game needs to wire mods in.

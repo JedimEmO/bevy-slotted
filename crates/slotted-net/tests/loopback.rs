@@ -5,8 +5,8 @@
 use pretty_assertions::assert_eq;
 use slotted_model::{
     Actor, Authority, AuthorityEvent, Button, ClickAction, DragKind, DragStage, Inventories,
-    ItemId, ItemStack, LookupCtx, MenuDef, MenuId, MenuSnapshot, MenuState, Namespaced, SlotIx,
-    ToolbarAction, ValidationLevel, apply_click, slot_view,
+    Inventory, InventoryId, ItemId, ItemStack, LookupCtx, MenuDef, MenuId, MenuSnapshot, MenuState,
+    Namespaced, SlotIx, ToolbarAction, ValidationLevel, apply_click, slot_view,
 };
 use slotted_net::{ClientEnd, Conditions, Loopback, MenuServer, Outcome, PeerId, RemoteAuthority};
 
@@ -14,7 +14,6 @@ use slotted_net::{ClientEnd, Conditions, Loopback, MenuServer, Outcome, PeerId, 
 
 const STONE: ItemId = ItemId(1);
 const EGG: ItemId = ItemId(2);
-const MENU: MenuId = MenuId(1);
 
 struct Items;
 
@@ -56,16 +55,20 @@ fn def() -> MenuDef {
     def
 }
 
+/// The chest as it starts: 64 stone in cell 0, 10 eggs in cell 1.
+fn starting_container() -> Inventory {
+    Inventory::from_slots([stack(STONE, 64), stack(EGG, 10), None, None])
+}
+
+/// One player's own four slots: 5 stone in cell 2.
+fn starting_player() -> Inventory {
+    Inventory::from_slots([None, None, stack(STONE, 5), None])
+}
+
 fn starting_inventories() -> Inventories {
-    let def = def();
-    let mut inventories = Inventories::for_menu(&def);
-    inventories[MenuDef::CONTAINER].set(0, stack(STONE, 64));
-    inventories[MenuDef::CONTAINER].set(1, stack(EGG, 10));
-    inventories[MenuDef::PLAYER_MAIN].set(2, stack(STONE, 5));
-    for inventory in inventories.iter_mut() {
-        inventory.clear_changed();
-    }
-    inventories
+    [starting_container(), starting_player()]
+        .into_iter()
+        .collect()
 }
 
 // -------------------------------------------------------------- the client
@@ -80,13 +83,16 @@ struct Client {
     /// Slots this client had to correct because the server said so.
     corrections: Vec<(SlotIx, Option<ItemStack>)>,
     peer: PeerId,
+    /// This client's own session on the server. Two players at one chest have
+    /// two of these, which is the difference the store made.
+    menu: MenuId,
 }
 
 impl Client {
-    fn new(link: &Loopback) -> Self {
-        let end = link.add_client();
-        let peer = end.peer();
+    fn new(link: &Loopback, menu: MenuId, peer: PeerId, end: ClientEnd) -> Self {
+        let _ = link;
         Self {
+            menu,
             def: def(),
             inventories: starting_inventories(),
             state: MenuState::new(&def()),
@@ -110,7 +116,7 @@ impl Client {
         let Ok(delta) = outcome else {
             return false;
         };
-        self.authority.submit(MENU, action, &delta).unwrap();
+        self.authority.submit(self.menu, action, &delta).unwrap();
         true
     }
 
@@ -199,6 +205,9 @@ struct World {
     link: Loopback,
     server: MenuServer,
     end: slotted_net::ServerEnd,
+    /// The one chest every session binds.
+    container: InventoryId,
+    next_menu: u32,
 }
 
 impl World {
@@ -206,14 +215,34 @@ impl World {
         let link = Loopback::new(seed);
         let end = link.server();
         let mut server = MenuServer::new();
-        server.open(MENU, def(), starting_inventories(), Actor::SURVIVAL);
-        Self { link, server, end }
+        let container = server.add_shared(starting_container());
+        Self {
+            link,
+            server,
+            end,
+            container,
+            next_menu: 1,
+        }
     }
 
+    /// A new player: their own link end, their own player inventory, their
+    /// own session, and the shared chest.
     fn join(&mut self) -> Client {
-        let client = Client::new(&self.link);
-        self.server.add_viewer(MENU, client.peer);
-        client
+        let end = self.link.add_client();
+        let peer = end.peer();
+        let player = self.server.add_private(peer, starting_player());
+        let menu = MenuId(self.next_menu);
+        self.next_menu += 1;
+        self.server
+            .open(
+                menu,
+                peer,
+                def(),
+                vec![self.container, player],
+                Actor::SURVIVAL,
+            )
+            .unwrap();
+        Client::new(&self.link, menu, peer, end)
     }
 
     fn pump(&mut self) -> Vec<Outcome> {
@@ -235,12 +264,15 @@ impl World {
         outcomes
     }
 
-    fn slot(&self, slot: u16) -> Option<ItemStack> {
-        self.server.slot(MENU, SlotIx(slot))
+    /// What one session's slot holds on the server.
+    fn slot(&self, menu: MenuId, slot: u16) -> Option<ItemStack> {
+        self.server.slot(menu, SlotIx(slot))
     }
 
-    fn tally(&self) -> Vec<(ItemId, u64)> {
-        let snapshot = self.server.snapshot(MENU).unwrap();
+    /// The items one session can see: the chest plus that player's own
+    /// inventory, which is what the matching client's tally covers.
+    fn tally(&self, menu: MenuId) -> Vec<(ItemId, u64)> {
+        let snapshot = self.server.snapshot(menu).unwrap();
         tally(&snapshot.inventories, snapshot.state.carried.as_ref())
     }
 }
@@ -270,10 +302,10 @@ fn the_happy_path_costs_one_ack_and_nothing_else() {
         client.corrections
     );
     assert_eq!(client.slot(SlotIx(0)), None);
-    assert_eq!(world.slot(0), None);
-    assert_eq!(world.slot(4), stack(STONE, 64));
+    assert_eq!(world.slot(client.menu, 0), None);
+    assert_eq!(world.slot(client.menu, 4), stack(STONE, 64));
     assert_eq!(client.state.state_id, 2);
-    assert_eq!(world.server.state_id(MENU), Some(2));
+    assert_eq!(world.server.state_id(client.menu), Some(2));
     assert_eq!(client.authority.in_flight(), 0);
 }
 
@@ -287,11 +319,12 @@ fn a_disagreement_resyncs_the_client_and_touches_only_what_differs() {
     // shape of every desync: two definitions that drifted apart.
     let mut locked = def();
     locked.slots[0].behaviour = slotted_model::SlotBehaviour::Locked;
-    world.server.close(MENU);
+    let bindings = world.server.bindings_of(client.menu).unwrap().to_vec();
+    world.server.close(client.menu);
     world
         .server
-        .open(MENU, locked, starting_inventories(), Actor::SURVIVAL);
-    world.server.add_viewer(MENU, client.peer);
+        .open(client.menu, client.peer, locked, bindings, Actor::SURVIVAL)
+        .unwrap();
 
     assert!(client.click(left(0)), "the client predicts the pickup");
     assert_eq!(client.slot(SlotIx(0)), None, "and shows it immediately");
@@ -309,7 +342,7 @@ fn a_disagreement_resyncs_the_client_and_touches_only_what_differs() {
     );
     assert_eq!(client.state.carried, None, "and the cursor is emptied");
     assert_eq!(client.slot(SlotIx(0)), stack(STONE, 64));
-    assert_eq!(client.tally(), world.tally());
+    assert_eq!(client.tally(), world.tally(client.menu));
 }
 
 #[test]
@@ -368,18 +401,18 @@ fn a_dropped_click_is_retried_and_applied_exactly_once() {
     let outcomes = world.settle(&mut [&mut client]);
     assert!(client.authority.retransmits() >= 1, "the click was resent");
     assert_eq!(outcomes, vec![Outcome::Acked]);
-    assert_eq!(world.slot(0), None);
-    assert_eq!(world.server.state_id(MENU), Some(1));
+    assert_eq!(world.slot(client.menu, 0), None);
+    assert_eq!(world.server.state_id(client.menu), Some(1));
 
     // A second copy of the same click, arriving late, must not move anything
     // again: the sequence number says it is the one already applied.
     world.link.set_conditions(Conditions::PERFECT);
-    let before = world.server.snapshot(MENU).unwrap();
+    let before = world.server.snapshot(client.menu).unwrap();
     for _ in 0..4 {
         world.settle(&mut [&mut client]);
     }
-    assert_eq!(world.server.snapshot(MENU).unwrap(), before);
-    assert_eq!(client.tally(), world.tally());
+    assert_eq!(world.server.snapshot(client.menu).unwrap(), before);
+    assert_eq!(client.tally(), world.tally(client.menu));
 }
 
 #[test]
@@ -391,7 +424,7 @@ fn two_clients_on_one_container_see_each_others_changes() {
     assert!(a.click(left(0)), "a picks the stone up");
     world.settle(&mut [&mut a, &mut b]);
 
-    assert_eq!(world.slot(0), None);
+    assert_eq!(world.slot(a.menu, 0), None);
     assert_eq!(
         b.corrections,
         vec![(SlotIx(0), None)],
@@ -409,7 +442,7 @@ fn two_clients_on_one_container_see_each_others_changes() {
     assert!(b.click(left(0)), "and drops it in the chest");
     world.settle(&mut [&mut a, &mut b]);
 
-    assert_eq!(world.slot(0), stack(STONE, 5));
+    assert_eq!(world.slot(a.menu, 0), stack(STONE, 5));
     assert_eq!(a.slot(SlotIx(0)), stack(STONE, 5), "a sees b's stack");
     assert!(
         a.corrections.contains(&(SlotIx(0), stack(STONE, 5))),
@@ -424,7 +457,7 @@ fn conservation_holds_on_both_sides_across_a_thousand_lossy_actions() {
     let mut client = world.join();
     world.link.set_conditions(Conditions::lossy(5));
 
-    let expected = world.tally();
+    let expected = world.tally(client.menu);
     let mut rng: u64 = 0x9E37_79B9_7F4A_7C15;
     let mut random = move || {
         rng ^= rng >> 12;
@@ -486,7 +519,7 @@ fn conservation_holds_on_both_sides_across_a_thousand_lossy_actions() {
     // `Throw` moves items out of the menu and into the world, so the tally
     // only has to be conserved *up to* what was thrown; both sides must
     // nonetheless agree, and neither may invent an item.
-    let server_total: u64 = world.tally().iter().map(|(_, n)| n).sum();
+    let server_total: u64 = world.tally(client.menu).iter().map(|(_, n)| n).sum();
     let expected_total: u64 = expected.iter().map(|(_, n)| n).sum();
     assert!(
         server_total <= expected_total,
@@ -494,12 +527,14 @@ fn conservation_holds_on_both_sides_across_a_thousand_lossy_actions() {
     );
     assert_eq!(
         client.tally(),
-        world.tally(),
+        world.tally(client.menu),
         "client and server ended on the same items"
     );
     assert_eq!(
         client.all_slots(),
-        (0..8).map(|i| world.slot(i)).collect::<Vec<_>>(),
+        (0..8)
+            .map(|i| world.slot(client.menu, i))
+            .collect::<Vec<_>>(),
         "and on the same slots"
     );
     assert_eq!(client.authority.in_flight(), 0);
@@ -519,5 +554,8 @@ fn the_server_validates_in_release_builds_too() {
         count: 64,
         target: slotted_model::GiveTarget::Cursor,
     }));
-    assert_eq!(world.tally(), tally(&starting_inventories(), None));
+    assert_eq!(
+        world.tally(client.menu),
+        tally(&starting_inventories(), None)
+    );
 }

@@ -3,186 +3,20 @@
 
 mod common;
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use bevy::prelude::*;
-use common::{FakeRuntime, Replies};
 use pretty_assertions::assert_eq;
-use slotted_ecs::{MenuIdAllocator, SlotClicked, SlotRef, SlottedEcsSet, open_menu};
-use slotted_model::{
-    Actor, Button, ClickAction, InventoryRef, ItemStack, MenuDef, Namespaced, SlotDef, SlotIx,
-    ToolbarAction, Value,
-};
-use slotted_packs::{
-    ControlScripts, ModErrors, ModFailed, ModLoader, ModReloaded, PackLayout, PendingScriptEvents,
-    ReloadMod, ScriptHost, ScriptLog, ScriptLogs, route,
-};
+use slotted_ecs::SlotClicked;
+use slotted_model::{Button, ClickAction, InventoryRef, ItemStack, ToolbarAction, Value};
+use slotted_packs::{ControlScripts, ModLoader, ScriptHost, ScriptLogs};
 use slotted_script::{LogLevel, ModId, ScriptCommand, ScriptError};
-use slotted_testutils::RecordingAuthority;
 use slotted_ui::def::{LocKey, ScreenKind};
 use slotted_ui::{LocText, Screens};
 
-// -- fixtures ---------------------------------------------------------------
-
-fn fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
-}
-
-fn layout_at(root: &Path) -> PackLayout {
-    PackLayout::new(root.join("base"))
-        .with_mods(&root.join("mods"))
-        .expect("the fixture mods discover")
-}
-
-fn id(text: &str) -> Namespaced {
-    Namespaced::parse(text).expect("a valid id")
-}
-
-fn mod_id(text: &str) -> ModId {
-    ModId::new(text).expect("a valid mod id")
-}
-
-fn map<const N: usize>(pairs: [(&str, Value); N]) -> Value {
-    Value::Map(
-        pairs
-            .into_iter()
-            .map(|(key, value)| (key.to_owned(), value))
-            .collect::<BTreeMap<_, _>>(),
-    )
-}
-
-fn text(value: &str) -> Value {
-    Value::Str(value.to_owned())
-}
-
-/// The smallest tree `slotted_ui::ScreenDef` accepts.
-fn screen_tree() -> Value {
-    map([(
-        "root",
-        map([
-            ("type", text("panel")),
-            ("role", text("panel")),
-            ("children", Value::List(Vec::new())),
-        ]),
-    )])
-}
-
-// -- app --------------------------------------------------------------------
-
-struct Harness {
-    app: App,
-    replies: Arc<Mutex<Replies>>,
-    authority: Arc<RecordingAuthority>,
-}
-
-fn harness_at(root: &Path) -> Harness {
-    let replies = Arc::new(Mutex::new(Replies::default()));
-    let authority = RecordingAuthority::new();
-    let mut app = slotted_testutils::ecs_app_with(authority.clone());
-    app.init_resource::<ScriptLogs>()
-        .init_resource::<ModErrors>()
-        .init_resource::<ControlScripts>()
-        .init_resource::<route::OpenScreens>()
-        .init_resource::<PendingScriptEvents>()
-        .init_resource::<route::WarnedDeprecations>()
-        .init_resource::<slotted_packs::Locales>()
-        .init_resource::<slotted_browser::Categories>()
-        .add_message::<ScriptLog>()
-        .add_message::<ModFailed>()
-        .add_message::<ModReloaded>()
-        .add_message::<ReloadMod>()
-        .insert_resource(ScriptHost::new(FakeRuntime::new(replies.clone())))
-        .insert_resource(layout_at(root))
-        .add_observer(route::on_slot_clicked)
-        .add_observer(route::on_screen_spawned)
-        .add_observer(route::on_screen_closed)
-        .add_systems(
-            Update,
-            route::dispatch_script_events.before(SlottedEcsSet::Input),
-        );
-    Harness {
-        app,
-        replies,
-        authority,
-    }
-}
-
-fn harness() -> Harness {
-    harness_at(&fixtures())
-}
-
-impl Harness {
-    fn reply(&self, owner: &str, event: &str, reply: Result<Vec<ScriptCommand>, ScriptError>) {
-        self.replies
-            .lock()
-            .expect("not poisoned")
-            .set(owner, event, reply);
-    }
-
-    fn run_all(&mut self) -> slotted_registry::LoadReport {
-        ModLoader::run_all(self.app.world_mut()).expect("the fixture set loads")
-    }
-
-    fn registries(&self) -> Arc<slotted_registry::FrozenRegistries> {
-        self.app
-            .world()
-            .resource::<slotted_ecs::Registries>()
-            .0
-            .clone()
-    }
-
-    fn errors(&self) -> Vec<slotted_packs::ModError> {
-        self.app.world().resource::<ModErrors>().0.clone()
-    }
-
-    /// A four-slot menu over one inventory, plus a slot entity for slot 1.
-    fn open_menu_with(&mut self, stacks: Vec<Option<ItemStack>>) -> (Entity, Entity, u32) {
-        let def = MenuDef {
-            slots: (0..4)
-                .map(|index| SlotDef::new(InventoryRef::new(0), index))
-                .collect(),
-            ..MenuDef::default()
-        };
-        let world = self.app.world_mut();
-        let inventory = world
-            .spawn(slotted_ecs::Inventory(
-                slotted_model::Inventory::from_slots(stacks),
-            ))
-            .id();
-        let mut ids = world
-            .remove_resource::<MenuIdAllocator>()
-            .expect("the ecs plugin inserts one");
-        let menu = {
-            let mut commands = world.commands();
-            open_menu(
-                &mut commands,
-                &mut ids,
-                Arc::new(def),
-                vec![inventory],
-                Actor::SURVIVAL,
-            )
-        };
-        world.flush();
-        world.insert_resource(ids);
-        let menu_id = world
-            .get::<slotted_ecs::OpenMenu>(menu)
-            .expect("the menu exists")
-            .id;
-        let slot = world
-            .spawn(SlotRef {
-                menu,
-                slot: SlotIx(1),
-            })
-            .id();
-        world
-            .resource_mut::<route::OpenScreens>()
-            .by_menu
-            .insert(menu, (menu_id, ScreenKind::new("beta:chest")));
-        (menu, slot, menu_id.0)
-    }
-}
+use common::{
+    Harness, copy_dir, fixtures, harness, harness_at, id, map, mod_id, scratch, screen_tree, text,
+};
 
 // -- the data and freeze stages ---------------------------------------------
 
@@ -593,6 +427,59 @@ fn a_failed_reload_keeps_the_previous_registries() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// Finding 6, end to end: a mod that registers a screen and then stops has to
+/// leave the runtime registry, not only stop shipping the file. Before, a
+/// reload could add to `Screens` and replace entries in it, never remove one,
+/// so a screen a mod dropped stayed openable forever and an open instance kept
+/// drawing a definition nothing shipped.
+///
+/// The game's own Rust registration in the same reload is the control: it must
+/// survive, because it was never the mod's to remove.
+#[test]
+fn a_screen_a_mod_stops_registering_is_unregistered_by_the_reload() {
+    let mut harness = harness();
+    harness.reply(
+        "beta",
+        "data_stage",
+        Ok(vec![ScriptCommand::RegisterScreen {
+            id: "beta:chest".to_owned(),
+            def: screen_tree(),
+        }]),
+    );
+    harness.run_all();
+
+    // A screen the game registered itself, alongside the mod's.
+    harness.app.world_mut().resource_mut::<Screens>().register(
+        slotted_ui::ScreenDef::from_ron(
+            r#"(kind: "game:own", root: (type: "panel", role: "panel"))"#,
+        )
+        .expect("the game's own screen parses"),
+    );
+    assert!(
+        harness
+            .app
+            .world()
+            .resource::<Screens>()
+            .get(&ScreenKind::new("beta:chest"))
+            .is_some(),
+        "the mod's screen is registered to start with"
+    );
+
+    // The reload: beta ships no screen this time.
+    harness.reply("beta", "data_stage", Ok(Vec::new()));
+    ModLoader::reload_mod(harness.app.world_mut(), &mod_id("beta")).expect("the reload succeeds");
+
+    let screens = harness.app.world().resource::<Screens>();
+    assert!(
+        screens.get(&ScreenKind::new("beta:chest")).is_none(),
+        "the screen the mod stopped registering is gone from `Screens`"
+    );
+    assert!(
+        screens.get(&ScreenKind::new("game:own")).is_some(),
+        "reconciling the mod-owned set left the game's own registration alone"
+    );
+}
+
 #[test]
 fn a_control_chunk_that_fails_leaves_the_mod_answering_with_the_last_good_one() {
     let mut harness = harness();
@@ -781,32 +668,6 @@ fn loc_text_resolves_after_the_locale_loads_and_leaves_unknown_keys_verbatim() {
         "nobody.defines.me",
         "an unresolved key stays as written"
     );
-}
-
-// -- helpers ----------------------------------------------------------------
-
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "slotted-packs-{name}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).expect("scratch dir");
-    dir
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).expect("destination");
-    for entry in std::fs::read_dir(from).expect("readable") {
-        let entry = entry.expect("entry");
-        let target = to.join(entry.file_name());
-        if entry.file_type().expect("file type").is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            std::fs::copy(entry.path(), &target).expect("copy");
-        }
-    }
 }
 
 // -- tooltips and injections ------------------------------------------------
