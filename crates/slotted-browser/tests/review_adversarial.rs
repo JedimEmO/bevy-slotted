@@ -42,6 +42,8 @@ const HEIGHT: f32 = 720.0;
 fn bare_chest() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {

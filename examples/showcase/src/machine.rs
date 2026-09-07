@@ -427,8 +427,8 @@ impl Widget for FaceConfigWidget {
                         None => UiNodeDef::Panel {
                             role: Role::new_static("invisible"),
                             layout: Layout {
-                                width: Some(SLOT_SIZE),
-                                height: Some(SLOT_SIZE),
+                                width: Some((SLOT_SIZE).into()),
+                                height: Some((SLOT_SIZE).into()),
                                 ..Layout::default()
                             },
                             children: Vec::new(),
@@ -456,7 +456,7 @@ impl Widget for FaceConfigWidget {
             layout: Layout {
                 direction: LayoutDirection::Column,
                 gap: 0.5,
-                padding: 0.5,
+                padding: 0.5.into(),
                 ..Layout::default()
             },
             children: rows,

@@ -37,13 +37,15 @@ fn grid(inventory: slotted_model::InventoryRef, rows: u16, first: u16, region: &
 fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
             role: roles::PANEL,
             layout: Layout {
                 gap: 1.0,
-                padding: 1.0,
+                padding: 1.0.into(),
                 ..Default::default()
             },
             children: vec![
@@ -167,8 +169,8 @@ fn closing_a_screen_removes_its_exclusion_zones_and_the_carried_stack() {
             node: UiNodeDef::Panel {
                 role: roles::PANEL,
                 layout: Layout {
-                    width: Some(120.0),
-                    height: Some(40.0),
+                    width: Some((120.0).into()),
+                    height: Some((40.0).into()),
                     ..Default::default()
                 },
                 children: vec![label_node("side", "side")],
@@ -223,6 +225,8 @@ fn an_inherits_chain_spawns_the_flattened_tree() {
     let mut h = harness();
     let base = ScreenDef {
         kind: ScreenKind::new("demo:base"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -237,6 +241,8 @@ fn an_inherits_chain_spawns_the_flattened_tree() {
     };
     let middle = ScreenDef {
         kind: ScreenKind::new("demo:middle"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: Some(ScreenKind::new("demo:base")),
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -249,6 +255,8 @@ fn an_inherits_chain_spawns_the_flattened_tree() {
     };
     let leaf = ScreenDef {
         kind: ScreenKind::new("demo:leaf"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: Some(ScreenKind::new("demo:middle")),
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -746,6 +754,8 @@ fn an_unknown_custom_widget_kind_still_spawns_a_findable_node() {
     let mut h = harness();
     let def = ScreenDef {
         kind: ScreenKind::new("demo:unknown"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -784,6 +794,8 @@ fn an_unknown_custom_widget_kind_still_spawns_a_findable_node() {
 fn two_grid_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new("demo:chest_full"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -791,7 +803,7 @@ fn two_grid_screen() -> ScreenDef {
             layout: Layout {
                 direction: slotted_ui::LayoutDirection::Column,
                 gap: 1.0,
-                padding: 1.0,
+                padding: 1.0.into(),
                 ..Default::default()
             },
             children: vec![

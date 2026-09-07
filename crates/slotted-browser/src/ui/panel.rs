@@ -184,7 +184,7 @@ fn spawn_panel(world: &mut World, screen: Entity, root: &ScreenRoot) {
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
                 row_gap: px(layout.gap),
-                padding: UiRect::all(px(layout.padding)),
+                padding: UiRect::all(px(layout.padding.top)),
                 ..default()
             },
             GlobalZIndex(zbands::BROWSER),
@@ -192,6 +192,13 @@ fn spawn_panel(world: &mut World, screen: Entity, root: &ScreenRoot) {
             ScreenRoot {
                 kind: panel_kind(),
                 menu: root.menu,
+                // The browser panel is a sibling of the screen, not a stack
+                // entry; `overlay` keeps it out of `Back` and HUD counting.
+                presentation: slotted_ui::Presentation {
+                    mode: slotted_ui::PresentationMode::Overlay,
+                    ..Default::default()
+                },
+                initial_focus: None,
             },
             SemanticRole::Browser,
             TestId::new("browser"),

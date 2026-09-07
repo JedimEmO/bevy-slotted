@@ -10,7 +10,7 @@ use bevy::ui::ui_transform::UiGlobalTransform;
 use slotted_registry::Value;
 use slotted_theme::{ActiveTheme, Theme, Tokens};
 
-use crate::def::{AnchorId, ScreenDef, ScreenKind, Tags, UiNodeDef, WidgetKind};
+use crate::def::{AnchorId, Presentation, ScreenDef, ScreenKind, Tags, UiNodeDef, WidgetKind};
 use crate::invalidate::{Owner, Reconciled};
 use crate::layers::zbands;
 use crate::semantic::{ScreenRoot, SemanticRole, TestId, WidgetNode};
@@ -278,6 +278,18 @@ fn merge_screens(base: &ScreenDef, child: &ScreenDef) -> ScreenDef {
             child.listring.clone()
         },
         remove: Vec::new(),
+        initial_focus: child
+            .initial_focus
+            .clone()
+            .or_else(|| base.initial_focus.clone()),
+        // A child that writes no `presentation` keeps the ancestor's: the
+        // default is indistinguishable from "unset" here, so a child wanting
+        // the plain default over a modal ancestor writes `mode: "page"`.
+        presentation: if child.presentation == Presentation::default() {
+            base.presentation
+        } else {
+            child.presentation
+        },
     }
 }
 
@@ -590,6 +602,9 @@ impl SpawnCtx<'_> {
             if let Some(id) = tags.get(crate::def::Tags::TEST_ID) {
                 self.world.entity_mut(entity).insert(TestId::new(id));
             }
+            if let Some(links) = crate::def::NavLinks::from_tags(tags) {
+                self.world.entity_mut(entity).insert(links);
+            }
         }
         entity
     }
@@ -782,7 +797,10 @@ impl Command for SpawnScreen {
             ScreenRoot {
                 kind: resolved.kind.clone(),
                 menu: self.menu,
+                presentation: resolved.presentation,
+                initial_focus: None,
             },
+            crate::semantic::ScreenFocusHint(resolved.initial_focus.clone()),
             SemanticRole::Screen,
         ));
         let mut ctx = SpawnCtx {
@@ -928,6 +946,8 @@ mod tests {
     fn screen(kind: &str, inherits: Option<&str>, root: UiNodeDef) -> ScreenDef {
         ScreenDef {
             kind: ScreenKind::new(kind),
+            initial_focus: None,
+            presentation: crate::def::Presentation::default(),
             inherits: inherits.map(ScreenKind::new),
             root,
             listring: vec![],

@@ -147,6 +147,14 @@ impl Tags {
 
     /// The reserved key that becomes a `TestId`.
     pub const TEST_ID: &'static str = "test_id";
+    /// Reserved: the node focus moves to on `Up` (menus contract 2.4).
+    pub const NAV_UP: &'static str = "nav.up";
+    /// Reserved: the node focus moves to on `Down`.
+    pub const NAV_DOWN: &'static str = "nav.down";
+    /// Reserved: the node focus moves to on `Left`.
+    pub const NAV_LEFT: &'static str = "nav.left";
+    /// Reserved: the node focus moves to on `Right`.
+    pub const NAV_RIGHT: &'static str = "nav.right";
 
     /// Lookup.
     pub fn get(&self, key: &str) -> Option<&str> {
@@ -210,8 +218,261 @@ impl Default for LayoutDirection {
     }
 }
 
+string_enum! {
+    /// Cross-axis alignment of a panel's children.
+    pub enum Align {
+        /// Pack at the start of the cross axis.
+        Start = "start",
+        /// Centre on the cross axis.
+        Center = "center",
+        /// Pack at the end of the cross axis.
+        End = "end",
+        /// Stretch to fill the cross axis.
+        Stretch = "stretch",
+    }
+}
+
+string_enum! {
+    /// Main-axis distribution of a panel's children.
+    pub enum Justify {
+        /// Pack at the start of the main axis.
+        Start = "start",
+        /// Centre on the main axis.
+        Center = "center",
+        /// Pack at the end of the main axis.
+        End = "end",
+        /// First at the start, last at the end, the rest spread evenly.
+        SpaceBetween = "space_between",
+    }
+}
+
+string_enum! {
+    /// What a panel does with children that do not fit.
+    pub enum Overflow {
+        /// They spill out and stay visible.
+        Visible = "visible",
+        /// They clip and the panel scrolls vertically.
+        Scroll = "scroll",
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for Align {
+    fn default() -> Self {
+        Self::Start
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for Justify {
+    fn default() -> Self {
+        Self::Start
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for Overflow {
+    fn default() -> Self {
+        Self::Visible
+    }
+}
+
+/// A length in a screen file. A bare number is pixels; a string is `"50%"`,
+/// `"fill"` (100%), `"auto"` or `"3s"` (three spacing steps).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Length {
+    /// Logical pixels.
+    Px(f32),
+    /// Percent of the parent.
+    Percent(f32),
+    /// Spacing steps (`1.0` = `spacing.sm`).
+    Steps(f32),
+    /// `Val::Auto`.
+    Auto,
+}
+
+impl From<f32> for Length {
+    fn from(px: f32) -> Self {
+        Self::Px(px)
+    }
+}
+
+impl core::str::FromStr for Length {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        let s = s.trim();
+        if s == "auto" {
+            return Ok(Self::Auto);
+        }
+        if s == "fill" {
+            return Ok(Self::Percent(100.0));
+        }
+        if let Some(pct) = s.strip_suffix('%') {
+            return pct
+                .trim()
+                .parse()
+                .map(Self::Percent)
+                .map_err(|e| format!("bad percent length `{s}`: {e}"));
+        }
+        if let Some(steps) = s.strip_suffix('s') {
+            return steps
+                .trim()
+                .parse()
+                .map(Self::Steps)
+                .map_err(|e| format!("bad steps length `{s}`: {e}"));
+        }
+        Err(format!(
+            "unknown length `{s}`: write a number for pixels, `50%`, `3s`, `fill` or `auto`"
+        ))
+    }
+}
+
+impl Serialize for Length {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Px(px) => s.serialize_f32(*px),
+            Self::Percent(p) => s.serialize_str(&format!("{p}%")),
+            Self::Steps(n) => s.serialize_str(&format!("{n}s")),
+            Self::Auto => s.serialize_str("auto"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Length {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Num(f32),
+            Int(i64),
+            Str(String),
+        }
+        match Raw::deserialize(d)? {
+            Raw::Num(px) => Ok(Self::Px(px)),
+            #[allow(clippy::cast_precision_loss)]
+            Raw::Int(px) => Ok(Self::Px(px as f32)),
+            Raw::Str(s) => s.parse().map_err(serde::de::Error::custom),
+        }
+    }
+}
+
+/// Padding in spacing steps: one number for all sides or `(top, right,
+/// bottom, left)`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Padding {
+    /// Top, in steps.
+    pub top: f32,
+    /// Right, in steps.
+    pub right: f32,
+    /// Bottom, in steps.
+    pub bottom: f32,
+    /// Left, in steps.
+    pub left: f32,
+}
+
+impl Padding {
+    /// The same on every side.
+    pub const fn all(steps: f32) -> Self {
+        Self {
+            top: steps,
+            right: steps,
+            bottom: steps,
+            left: steps,
+        }
+    }
+
+    /// True when every side is the same.
+    pub fn is_uniform(&self) -> bool {
+        let same = |a: f32, b: f32| a.to_bits() == b.to_bits();
+        same(self.top, self.right) && same(self.top, self.bottom) && same(self.top, self.left)
+    }
+}
+
+impl Default for Padding {
+    fn default() -> Self {
+        Self::all(0.0)
+    }
+}
+
+impl From<f32> for Padding {
+    fn from(steps: f32) -> Self {
+        Self::all(steps)
+    }
+}
+
+impl Serialize for Padding {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        if self.is_uniform() {
+            s.serialize_f32(self.top)
+        } else {
+            (self.top, self.right, self.bottom, self.left).serialize(s)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Padding {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Num(f32),
+            Int(i64),
+            Sides((f32, f32, f32, f32)),
+        }
+        Ok(match Raw::deserialize(d)? {
+            Raw::Num(n) => Self::all(n),
+            #[allow(clippy::cast_precision_loss)]
+            Raw::Int(n) => Self::all(n as f32),
+            Raw::Sides((top, right, bottom, left)) => Self {
+                top,
+                right,
+                bottom,
+                left,
+            },
+        })
+    }
+}
+
+/// Where on its parent an absolutely placed node hangs. Lowercase strings in
+/// data. Shared by HUD layers and by [`Layout::place`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NineAnchor {
+    /// Top left corner.
+    TopLeft,
+    /// Top centre.
+    Top,
+    /// Top right corner.
+    TopRight,
+    /// Left centre.
+    Left,
+    /// Centre.
+    #[default]
+    Center,
+    /// Right centre.
+    Right,
+    /// Bottom left corner.
+    BottomLeft,
+    /// Bottom centre.
+    Bottom,
+    /// Bottom right corner.
+    BottomRight,
+}
+
+/// Absolute placement of a node inside its parent (menus contract 1.4).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct Place {
+    /// Which of the nine points.
+    #[serde(default)]
+    pub anchor: NineAnchor,
+    /// Logical-pixel offset from that point.
+    #[serde(default)]
+    pub offset: bevy::math::Vec2,
+}
+
 /// Panel layout, the subset of `Node` a screen author sets. Everything else
-/// comes from the theme's spacing tokens.
+/// comes from the theme's spacing tokens. Menus contract section 1.4.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Layout {
     /// Flow.
@@ -220,18 +481,169 @@ pub struct Layout {
     /// Gap between children, in spacing steps (`1.0` = `spacing.sm`).
     #[serde(default)]
     pub gap: f32,
-    /// Padding, in spacing steps.
+    /// Padding, in spacing steps; one number or four sides.
     #[serde(default)]
-    pub padding: f32,
-    /// Fixed width in px. `None` = fit content.
+    pub padding: Padding,
+    /// Width. `None` = fit content.
     #[serde(default)]
-    pub width: Option<f32>,
-    /// Fixed height in px. `None` = fit content.
+    pub width: Option<Length>,
+    /// Height. `None` = fit content.
     #[serde(default)]
-    pub height: Option<f32>,
-    /// Centre children on the cross axis.
+    pub height: Option<Length>,
+    /// Minimum width.
+    #[serde(default)]
+    pub min_width: Option<Length>,
+    /// Maximum width.
+    #[serde(default)]
+    pub max_width: Option<Length>,
+    /// Minimum height.
+    #[serde(default)]
+    pub min_height: Option<Length>,
+    /// Maximum height.
+    #[serde(default)]
+    pub max_height: Option<Length>,
+    /// Cross-axis alignment of children.
+    #[serde(default)]
+    pub align: Option<Align>,
+    /// Main-axis distribution of children.
+    #[serde(default)]
+    pub justify: Justify,
+    /// Flex grow.
+    #[serde(default)]
+    pub grow: f32,
+    /// Wrap onto the next line when the main axis is full.
+    #[serde(default)]
+    pub wrap: bool,
+    /// Clip and scroll, or spill.
+    #[serde(default)]
+    pub overflow: Overflow,
+    /// Absolute placement inside the parent.
+    #[serde(default)]
+    pub place: Option<Place>,
+    /// Deprecated alias for `align: center`; honoured only when `align` is
+    /// unset.
     #[serde(default)]
     pub center: bool,
+}
+
+impl Layout {
+    /// The effective cross-axis alignment: `align`, else `center`.
+    pub fn effective_align(&self) -> Align {
+        self.align.unwrap_or(if self.center {
+            Align::Center
+        } else {
+            Align::Start
+        })
+    }
+}
+
+/// Explicit focus neighbours of a node (menus contract 2.4). Read from the
+/// reserved tags `nav.up`, `nav.down`, `nav.left`, `nav.right`, whose values
+/// are node ids in the sense of [`UiNodeDef::id`].
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq)]
+pub struct NavLinks {
+    /// Id of the node focus moves to on `Up`.
+    pub up: Option<String>,
+    /// Id of the node focus moves to on `Down`.
+    pub down: Option<String>,
+    /// Id of the node focus moves to on `Left`.
+    pub left: Option<String>,
+    /// Id of the node focus moves to on `Right`.
+    pub right: Option<String>,
+}
+
+impl NavLinks {
+    /// Reads the four reserved tags. `None` when none is set.
+    pub fn from_tags(tags: &Tags) -> Option<Self> {
+        let links = Self {
+            up: tags.get(Tags::NAV_UP).map(str::to_owned),
+            down: tags.get(Tags::NAV_DOWN).map(str::to_owned),
+            left: tags.get(Tags::NAV_LEFT).map(str::to_owned),
+            right: tags.get(Tags::NAV_RIGHT).map(str::to_owned),
+        };
+        (links != Self::default()).then_some(links)
+    }
+}
+
+string_enum! {
+    /// How a screen sits on the stack (menus contract 1.3).
+    pub enum PresentationMode {
+        /// Hides every entry below it and takes focus.
+        Page = "page",
+        /// Keeps the entries below visible, scrims them, traps focus.
+        Modal = "modal",
+        /// Takes no focus, blocks nothing, is not counted by `Back`.
+        Overlay = "overlay",
+    }
+}
+
+string_enum! {
+    /// How a screen arrives when pushed.
+    pub enum Transition {
+        /// Alpha 0 to 1.
+        Fade = "fade",
+        /// Fade plus a slide from below.
+        SlideUp = "slide_up",
+        /// Fade plus a slide from the right.
+        SlideLeft = "slide_left",
+        /// Appears at once.
+        None = "none",
+    }
+}
+
+string_enum! {
+    /// What an unclaimed `Back` does to the screen.
+    pub enum BackPolicy {
+        /// Pops it.
+        Pop = "pop",
+        /// Leaves it; the screen handles `Back` itself.
+        Ignore = "ignore",
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for PresentationMode {
+    fn default() -> Self {
+        Self::Page
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for Transition {
+    fn default() -> Self {
+        Self::Fade
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for BackPolicy {
+    fn default() -> Self {
+        Self::Pop
+    }
+}
+
+/// How a screen presents on the [`ScreenStack`](crate::ScreenStack).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Presentation {
+    /// Page, modal or overlay.
+    #[serde(default)]
+    pub mode: PresentationMode,
+    /// Draw a scrim under it. Defaults to `mode == modal`.
+    #[serde(default)]
+    pub scrim: Option<bool>,
+    /// Arrival motion.
+    #[serde(default)]
+    pub transition: Transition,
+    /// What `Back` does.
+    #[serde(default)]
+    pub back: BackPolicy,
+}
+
+impl Presentation {
+    /// Whether a scrim is drawn: `scrim`, else `mode == modal`.
+    pub fn scrim(&self) -> bool {
+        self.scrim.unwrap_or(self.mode == PresentationMode::Modal)
+    }
 }
 
 string_enum! {
@@ -628,6 +1040,13 @@ pub struct ScreenDef {
     /// simply does not write the node it does not want.
     #[serde(default)]
     pub remove: Vec<String>,
+    /// Node id ([`UiNodeDef::id`]) that takes focus when the screen opens.
+    /// `None` = the first focusable node in tree order (menus contract 2.4).
+    #[serde(default)]
+    pub initial_focus: Option<String>,
+    /// How the screen sits on the stack (menus contract 1.3).
+    #[serde(default)]
+    pub presentation: Presentation,
 }
 
 impl ScreenDef {

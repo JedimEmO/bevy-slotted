@@ -137,7 +137,7 @@ pub fn panel_def(side: Side) -> UiNodeDef {
         layout: Layout {
             direction: LayoutDirection::Column,
             gap: dock::PANEL_GAP,
-            padding: dock::PANEL_PADDING,
+            padding: dock::PANEL_PADDING.into(),
             ..Layout::default()
         },
         children: vec![

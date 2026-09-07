@@ -41,8 +41,8 @@ fn panel_layer(id: &str, anchor: HudAnchor, size: Vec2) -> HudLayerDef {
         tree: UiNodeDef::Panel {
             role: slotted_theme::roles::HUD_PANEL,
             layout: Layout {
-                width: Some(size.x),
-                height: Some(size.y),
+                width: Some((size.x).into()),
+                height: Some((size.y).into()),
                 ..Layout::default()
             },
             children: Vec::new(),
@@ -301,6 +301,8 @@ fn the_crosshair_hides_while_a_screen_is_open() {
 fn one_slot_screen() -> slotted_ui::ScreenDef {
     slotted_ui::ScreenDef {
         kind: slotted_ui::ScreenKind::new("test:hud"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Slot {

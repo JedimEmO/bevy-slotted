@@ -15,7 +15,7 @@ use crate::motion::{
     GestureTarget, clear_gesture_target, despawn_finished_flights, drop_squash, fly_to_slot,
     record_gesture_target, slot_motion,
 };
-use crate::nav::{NavKeys, TextEntryFocused, directional_nav_keys};
+use crate::nav::{TextEntryFocused, directional_nav_actions};
 use crate::preview::{
     DragGhost, HintGlyphs, load_hint_glyphs, render_overlays, update_carried_validity,
     update_drag_phantoms, update_slot_hints,
@@ -37,9 +37,12 @@ use slotted_theme::{Themed, roles};
 /// -> `SlottedUiSet::Render` -> `SlottedThemeSet::{Motion, Apply}` -> `SlottedUiSet::Semantics`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SlottedUiSet {
-    /// Keyboard navigation, hover tracking. Pointer observers have already
-    /// triggered `SlotClicked`.
+    /// Action emission, keyboard navigation, hover tracking. Pointer
+    /// observers have already triggered `SlotClicked`.
     Input,
+    /// Stack navigation: `Back` pops, focus is kept inside the top screen.
+    /// Runs after `Input` and before the ecs sets (menus contract 0).
+    Navigate,
     /// Item views, slot state roles, carried layer position.
     Render,
     /// Post-layout: `ScreenLayout` events, tooltip placement.
@@ -110,7 +113,6 @@ impl Plugin for SlottedUiPlugin {
             .init_resource::<Screens>()
             .init_resource::<crate::loc::Localization>()
             .init_resource::<Injections>()
-            .init_resource::<NavKeys>()
             .init_resource::<TextEntryFocused>()
             .init_resource::<DragPaint>()
             .init_resource::<SweepQuickMove>()
@@ -127,6 +129,7 @@ impl Plugin for SlottedUiPlugin {
                 Update,
                 (
                     SlottedUiSet::Input,
+                    SlottedUiSet::Navigate,
                     (
                         SlottedEcsSet::Input,
                         SlottedEcsSet::Predict,
@@ -146,6 +149,11 @@ impl Plugin for SlottedUiPlugin {
             );
         // The `*.screen.ron` asset and its loader, when this app has assets.
         crate::screen_asset::register(app);
+        // Menus M0: actions, the focus ring, the stack.
+        crate::actions::build(app);
+        crate::focus_ring::build(app);
+        crate::stack::build(app);
+        app.add_observer(crate::nav::focus_on_spawn);
         #[cfg(feature = "viewport")]
         app.add_systems(
             Update,
@@ -186,8 +194,9 @@ impl Plugin for SlottedUiPlugin {
             (
                 (
                     crate::nav::track_text_entry_focus,
-                    (directional_nav_keys, hotbar_swap_keys)
-                        .after(crate::nav::track_text_entry_focus),
+                    (directional_nav_actions, hotbar_swap_keys)
+                        .after(crate::nav::track_text_entry_focus)
+                        .after(crate::actions::UiActionEmit),
                     clear_drag_suppression,
                 )
                     .in_set(SlottedUiSet::Input),

@@ -1,39 +1,13 @@
-//! Keyboard directional navigation. Bevy ships `AutoDirectionalNavigator` as
-//! a `SystemParam` and wires no keys to it (ADR 0002); this is the system
-//! the spike proved.
+//! Directional focus navigation over `UiActionEvent`s. Bevy ships
+//! `AutoDirectionalNavigator` as a `SystemParam` and wires no input to it
+//! (ADR 0002); this is what drives it, plus the explicit nav graph.
 
-use bevy::input::ButtonInput;
 use bevy::input_focus::InputFocus;
-use bevy::math::CompassOctant;
 use bevy::prelude::*;
 use bevy::text::EditableText;
 use bevy::ui::auto_directional_navigation::AutoDirectionalNavigator;
 
 use crate::semantic::SemanticRole;
-
-/// Which keys move focus. Defaults to the arrow keys.
-#[derive(Resource, Debug, Clone, PartialEq, Eq)]
-pub struct NavKeys {
-    /// Move focus up.
-    pub up: Vec<KeyCode>,
-    /// Move focus down.
-    pub down: Vec<KeyCode>,
-    /// Move focus left.
-    pub left: Vec<KeyCode>,
-    /// Move focus right.
-    pub right: Vec<KeyCode>,
-}
-
-impl Default for NavKeys {
-    fn default() -> Self {
-        Self {
-            up: vec![KeyCode::ArrowUp],
-            down: vec![KeyCode::ArrowDown],
-            left: vec![KeyCode::ArrowLeft],
-            right: vec![KeyCode::ArrowRight],
-        }
-    }
-}
 
 /// Whether a text-entry node owns the keyboard, as of the last
 /// [`track_text_entry_focus`] run.
@@ -72,33 +46,42 @@ pub fn track_text_entry_focus(
     }
 }
 
-/// `SlottedUiSet::Input`: arrow keys drive `AutoDirectionalNavigator`.
-/// Gamepad d-pad joins in Phase 6.
+/// `SlottedUiSet::Input`, after `UiActionEmit`: directional actions drive
+/// focus (menus contract 2.4).
 ///
-/// Inert while a text field has the keyboard: the arrow keys move the caret,
-/// not the focus.
-pub fn directional_nav_keys(
-    keys: Res<ButtonInput<KeyCode>>,
-    nav_keys: Res<NavKeys>,
-    text_entry: Res<TextEntryFocused>,
-    mut nav: AutoDirectionalNavigator,
+/// An explicit `NavLinks` link on the focused node or one of its ancestors
+/// wins; otherwise Bevy's `AutoDirectionalNavigator` picks the target.
+/// Keyboard-sourced actions are already suppressed while a text field has
+/// the keyboard (`emit_ui_actions`), so this needs no guard of its own.
+#[allow(clippy::too_many_arguments)]
+pub fn directional_nav_actions(
+    _events: MessageReader<crate::actions::UiActionEvent>,
+    _links: Query<&crate::def::NavLinks>,
+    _parents: Query<&ChildOf>,
+    _ids: Query<(Entity, &crate::semantic::TestId)>,
+    _focusables: Query<(), With<crate::focus_ring::Focusable>>,
+    _children: Query<&Children>,
+    _roots: Query<(), With<crate::semantic::ScreenRoot>>,
+    _nav: AutoDirectionalNavigator,
 ) {
-    if text_entry.0 {
-        return;
-    }
-    let pressed = |set: &[KeyCode]| set.iter().any(|k| keys.just_pressed(*k));
-    let dir = if pressed(&nav_keys.right) {
-        CompassOctant::East
-    } else if pressed(&nav_keys.left) {
-        CompassOctant::West
-    } else if pressed(&nav_keys.up) {
-        CompassOctant::North
-    } else if pressed(&nav_keys.down) {
-        CompassOctant::South
-    } else {
-        return;
-    };
-    if let Err(e) = nav.navigate(dir) {
-        tracing::trace!(?e, "directional navigation found no target");
-    }
+    // M0-IMPL: A
+}
+
+/// Observer on `ScreenSpawned`: gives the new screen its initial focus
+/// (menus contract 2.4).
+#[allow(clippy::too_many_arguments)]
+pub fn focus_on_spawn(
+    _spawned: On<crate::screen::ScreenSpawned>,
+    _hints: Query<(
+        &crate::semantic::ScreenRoot,
+        &crate::semantic::ScreenFocusHint,
+    )>,
+    _ids: Query<(Entity, &crate::semantic::TestId)>,
+    _focusables: Query<(), With<crate::focus_ring::Focusable>>,
+    _children: Query<&Children>,
+    _stack: Res<crate::stack::ScreenStack>,
+    _focus: Option<ResMut<InputFocus>>,
+    _commands: Commands,
+) {
+    // M0-IMPL: A
 }

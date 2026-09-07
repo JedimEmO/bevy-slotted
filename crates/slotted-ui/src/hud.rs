@@ -70,30 +70,7 @@ pub mod builtin {
     ];
 }
 
-/// Where on the window a layer hangs. Lowercase strings in data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum NineAnchor {
-    /// Top left corner.
-    TopLeft,
-    /// Top centre.
-    Top,
-    /// Top right corner.
-    TopRight,
-    /// Left centre.
-    Left,
-    /// Window centre.
-    #[default]
-    Center,
-    /// Right centre.
-    Right,
-    /// Bottom left corner.
-    BottomLeft,
-    /// Bottom centre.
-    Bottom,
-    /// Bottom right corner.
-    BottomRight,
-}
+pub use crate::def::NineAnchor;
 
 /// Anchor, offset and scale of one layer. Also a component on the anchor
 /// wrapper, where the editor rewrites it.
@@ -218,8 +195,8 @@ impl HudLayerDef {
             tree: UiNodeDef::Panel {
                 role: slotted_theme::roles::HUD_PANEL,
                 layout: crate::def::Layout {
-                    width: Some(0.0),
-                    height: Some(0.0),
+                    width: Some(crate::def::Length::Px(0.0)),
+                    height: Some(crate::def::Length::Px(0.0)),
                     ..crate::def::Layout::default()
                 },
                 children: Vec::new(),
@@ -547,8 +524,8 @@ pub fn register_builtin_layers(layers: &mut HudLayers, hotbar: &HudHotbar) {
                 tree: UiNodeDef::Panel {
                     role: slotted_theme::roles::HUD_CROSSHAIR,
                     layout: crate::def::Layout {
-                        width: Some(CROSSHAIR_SIZE),
-                        height: Some(CROSSHAIR_SIZE),
+                        width: Some(crate::def::Length::Px(CROSSHAIR_SIZE)),
+                        height: Some(crate::def::Length::Px(CROSSHAIR_SIZE)),
                         ..crate::def::Layout::default()
                     },
                     children: Vec::new(),

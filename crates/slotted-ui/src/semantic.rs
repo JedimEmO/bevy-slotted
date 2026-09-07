@@ -113,7 +113,17 @@ pub struct ScreenRoot {
     pub kind: ScreenKind,
     /// The `OpenMenu` entity this screen drives, if any.
     pub menu: Option<Entity>,
+    /// How it sits on the stack (menus contract 1.3).
+    pub presentation: crate::def::Presentation,
+    /// The node that took focus when the screen opened, once the nav system
+    /// has chosen it (menus contract 2.4).
+    pub initial_focus: Option<Entity>,
 }
+
+/// The `initial_focus` id a screen asked for, kept on the root until the nav
+/// system resolves it into [`ScreenRoot::initial_focus`].
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScreenFocusHint(pub Option<String>);
 
 /// On the root entity of a `Custom` widget or a built-in widget with a kind.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]

@@ -13,8 +13,10 @@
 //!
 //! See `docs/design/phase2-contract.md`.
 
+pub mod actions;
 pub mod def;
 pub mod fluids;
+pub mod focus_ring;
 pub mod hud;
 #[cfg(feature = "dev")]
 pub mod hud_editor;
@@ -32,19 +34,26 @@ pub mod scale;
 pub mod screen;
 pub mod screen_asset;
 pub mod semantic;
+pub mod stack;
 pub mod tooltip;
 pub mod widgets;
 
+pub use actions::{
+    ActionRepeat, InputDevice, InputMode, InputModeChanged, UiAction, UiActionClaims, UiActionEmit,
+    UiActionEvent, UiBindings, emit_ui_actions, track_input_mode,
+};
 pub use def::{
     AnchorId, DataSourceId, Direction, IconButtonState as IconButtonStateDef, IconDef, Layout,
-    LayoutDirection, LocKey, Orientation, ScreenDef, ScreenKind, Side, Tags, TextRole, UiNodeDef,
-    ViewSubject, WidgetKind,
+    LayoutDirection, Length, LocKey, NavLinks, NineAnchor, Orientation, Overflow, Padding, Place,
+    Presentation, PresentationMode, ScreenDef, ScreenKind, Side, Tags, TextRole, Transition,
+    UiNodeDef, ViewSubject, WidgetKind,
 };
 pub use fluids::{FluidDef, FluidId, Fluids};
+pub use focus_ring::{FocusRing, FocusRingState, Focusable, update_focus_ring};
 pub use hud::{
     HudAnchor, HudAnchored, HudConfig, HudError, HudHotbar, HudLayerDef, HudLayerId,
     HudLayerPayload, HudLayerRoot, HudLayers, HudLayout, HudMenu, HudPlacement, HudUpdate,
-    HudValue, NineAnchor,
+    HudValue,
 };
 pub use input::{DragPaint, PendingDrag, SweepQuickMove, on_slot_press, on_slot_release};
 pub use invalidate::{
@@ -63,7 +72,7 @@ pub use motion::{
     FlyingItem, GestureTarget, HOVER_SCALE, MotionTarget, PRESS_SCALE, REST_SCALE, SQUASH_SCALE,
     SlotPressed, despawn_finished_flights, drop_squash, fly_to_slot, slot_motion,
 };
-pub use nav::{NavKeys, TextEntryFocused, directional_nav_keys, track_text_entry_focus};
+pub use nav::{TextEntryFocused, directional_nav_actions, focus_on_spawn, track_text_entry_focus};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use preview::{
     DragGhost, HintGlyphs, SlotHint, SlotPhantom, Validity, render_overlays,
@@ -81,8 +90,12 @@ pub use screen_asset::{
     report_failed_screen_assets,
 };
 pub use semantic::{
-    AnchorNode, LocText, ScreenRoot, SemanticLabel, SemanticRole, TestId, WidgetNode,
-    sync_accessibility,
+    AnchorNode, LocText, ScreenFocusHint, ScreenRoot, SemanticLabel, SemanticRole, TestId,
+    WidgetNode, sync_accessibility,
+};
+pub use stack::{
+    ClearScreens, PopScreen, PopTo, PushScreen, ScreenStack, Scrim, StackChanged, StackEntry,
+    clear_screens, pop_screen, pop_to, push_screen, replace_screen,
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,
@@ -107,9 +120,10 @@ pub use widgets::{RailAction, SLOT_SIZE, slot_state_roles};
 /// Everything a game needs to define and open screens.
 pub mod prelude {
     pub use crate::{
-        AnchorId, Injection, Injections, ItemView, Layout, ScreenAssets, ScreenClosed, ScreenDef,
-        ScreenKind, ScreenRoot, ScreenSpawned, Screens, SemanticLabel, SemanticRole,
-        SlottedUiPlugin, SlottedUiSet, Tags, TestId, TextRole, UiNodeDef, WidgetKind, close_screen,
-        spawn_screen, widgets::kinds, zbands,
+        AnchorId, Injection, Injections, ItemView, Layout, Presentation, PresentationMode,
+        ScreenAssets, ScreenClosed, ScreenDef, ScreenKind, ScreenRoot, ScreenSpawned, ScreenStack,
+        Screens, SemanticLabel, SemanticRole, SlottedUiPlugin, SlottedUiSet, Tags, TestId,
+        TextRole, UiAction, UiActionEvent, UiBindings, UiNodeDef, WidgetKind, close_screen,
+        pop_screen, push_screen, spawn_screen, widgets::kinds, zbands,
     };
 }

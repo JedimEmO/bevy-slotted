@@ -31,6 +31,8 @@ fn spawn_tree(h: &mut UiHarness) {
             TabGroup::new(0),
             ScreenRoot {
                 kind: ScreenKind::new(CHEST),
+                presentation: slotted_ui::Presentation::default(),
+                initial_focus: None,
                 menu: None,
             },
             SemanticRole::Screen,
@@ -91,6 +93,8 @@ fn spawn_tree(h: &mut UiHarness) {
             Node::default(),
             ScreenRoot {
                 kind: ScreenKind::new("demo:hidden"),
+                presentation: slotted_ui::Presentation::default(),
+                initial_focus: None,
                 menu: None,
             },
             SemanticRole::Screen,

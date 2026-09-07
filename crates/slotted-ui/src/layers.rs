@@ -14,6 +14,8 @@ pub mod zbands {
     pub const SCREEN: i32 = 100;
     /// The item browser beside a screen (Phase 3).
     pub const BROWSER: i32 = 200;
+    /// The focus ring (menus contract 2.3).
+    pub const FOCUS: i32 = 900;
     /// Tooltips.
     pub const TOOLTIP: i32 = 1000;
     /// The carried stack following the pointer.

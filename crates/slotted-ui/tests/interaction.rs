@@ -54,13 +54,15 @@ fn grid(inventory: InventoryRef, rows: u16, first: u16, region: &str) -> UiNodeD
 fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout {
                 gap: 6.0,
-                padding: 8.0,
+                padding: 8.0.into(),
                 ..Layout::default()
             },
             children: vec![
@@ -77,6 +79,8 @@ fn chest_screen() -> ScreenDef {
 fn machine_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(MACHINE),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -91,7 +95,7 @@ fn machine_screen() -> ScreenDef {
                     role: slotted_theme::roles::PANEL,
                     layout: Layout {
                         gap: 6.0,
-                        padding: 8.0,
+                        padding: 8.0.into(),
                         ..Layout::default()
                     },
                     children: vec![grid(MenuDef::CONTAINER, 3, 0, "chest")],

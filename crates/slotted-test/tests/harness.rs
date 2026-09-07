@@ -237,6 +237,8 @@ fn open_screen_spawns_a_screen_root_bound_to_a_menu() {
     let kind = ScreenKind::new("demo:chest");
     h.world_mut().resource_mut::<Screens>().register(ScreenDef {
         kind: kind.clone(),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -291,6 +293,8 @@ fn assert_conserved_catches_a_vanished_stack() {
     let opened = h.open_screen(
         ScreenDef {
             kind,
+            initial_focus: None,
+            presentation: slotted_ui::Presentation::default(),
             inherits: None,
             remove: vec![],
             root: UiNodeDef::Panel {

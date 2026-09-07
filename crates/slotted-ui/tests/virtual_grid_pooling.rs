@@ -134,6 +134,8 @@ impl VirtualGridSource for Pooled {
 fn screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(SCREEN),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {

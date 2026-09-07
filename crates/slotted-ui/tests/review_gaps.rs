@@ -507,6 +507,8 @@ fn an_unparseable_screen_edit_keeps_the_open_screen_and_reports() {
 fn scale_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new("gaps:scale"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {

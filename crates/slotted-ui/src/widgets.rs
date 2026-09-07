@@ -24,7 +24,10 @@ use slotted_model::{Button as ModelButton, ClickAction, InventoryRef, SlotIx, To
 use slotted_registry::Value;
 use slotted_theme::{Role, Themed, roles};
 
-use crate::def::{IconDef, Layout, LayoutDirection, LocKey, Tags, TextRole, UiNodeDef, WidgetKind};
+use crate::def::{
+    Align, IconDef, Justify, Layout, LayoutDirection, Length, LocKey, Tags, TextRole, UiNodeDef,
+    WidgetKind,
+};
 use crate::input::{
     on_slot_drag_end, on_slot_drag_enter, on_slot_drag_start, on_slot_press, on_slot_release,
 };
@@ -216,28 +219,65 @@ fn build_icon(
 // Panel
 // ---------------------------------------------------------------------------
 
+/// A [`Length`] as a `Val`, with steps resolved through `spacing_sm`.
+pub fn length_val(length: Option<Length>, spacing_sm: f32) -> Val {
+    match length {
+        None | Some(Length::Auto) => Val::Auto,
+        Some(Length::Px(px)) => Val::Px(px),
+        Some(Length::Percent(p)) => Val::Percent(p),
+        Some(Length::Steps(n)) => Val::Px(n * spacing_sm),
+    }
+}
+
 /// `Node` for a [`Layout`], with gap and padding resolved through the theme's
-/// spacing scale.
+/// spacing scale (menus contract 1.4).
 pub fn layout_node(layout: &Layout, spacing_sm: f32) -> Node {
-    Node {
+    let steps = |n: f32| Val::Px(n * spacing_sm);
+    let mut node = Node {
         display: Display::Flex,
         flex_direction: match layout.direction {
             LayoutDirection::Row => FlexDirection::Row,
             LayoutDirection::Column => FlexDirection::Column,
         },
-        row_gap: Val::Px(layout.gap * spacing_sm),
-        column_gap: Val::Px(layout.gap * spacing_sm),
-        padding: UiRect::all(Val::Px(layout.padding * spacing_sm)),
+        row_gap: steps(layout.gap),
+        column_gap: steps(layout.gap),
+        padding: UiRect::new(
+            steps(layout.padding.left),
+            steps(layout.padding.right),
+            steps(layout.padding.top),
+            steps(layout.padding.bottom),
+        ),
         border: UiRect::all(Val::Px(BORDER_WIDTH)),
-        width: layout.width.map_or(Val::Auto, Val::Px),
-        height: layout.height.map_or(Val::Auto, Val::Px),
-        align_items: if layout.center {
-            AlignItems::Center
+        width: length_val(layout.width, spacing_sm),
+        height: length_val(layout.height, spacing_sm),
+        min_width: length_val(layout.min_width, spacing_sm),
+        max_width: length_val(layout.max_width, spacing_sm),
+        min_height: length_val(layout.min_height, spacing_sm),
+        max_height: length_val(layout.max_height, spacing_sm),
+        align_items: match layout.effective_align() {
+            Align::Start => AlignItems::FlexStart,
+            Align::Center => AlignItems::Center,
+            Align::End => AlignItems::FlexEnd,
+            Align::Stretch => AlignItems::Stretch,
+        },
+        justify_content: match layout.justify {
+            Justify::Start => JustifyContent::FlexStart,
+            Justify::Center => JustifyContent::Center,
+            Justify::End => JustifyContent::FlexEnd,
+            Justify::SpaceBetween => JustifyContent::SpaceBetween,
+        },
+        flex_grow: layout.grow,
+        flex_wrap: if layout.wrap {
+            FlexWrap::Wrap
         } else {
-            AlignItems::FlexStart
+            FlexWrap::NoWrap
         },
         ..default()
-    }
+    };
+    // M0-IMPL: B — `overflow: scroll` (plus `ScrollPosition` in `spawn_panel`)
+    // and `place` through the shared nine-anchor helper.
+    let _ = (&layout.overflow, &layout.place, &mut node);
+    node
 }
 
 /// Spawns a themed container and its children.
@@ -1238,10 +1278,10 @@ mod tests {
             &Layout {
                 direction: LayoutDirection::Row,
                 gap: 2.0,
-                padding: 1.0,
-                width: Some(320.0),
-                height: None,
+                padding: 1.0.into(),
+                width: Some((320.0).into()),
                 center: true,
+                ..Default::default()
             },
             6.0,
         );

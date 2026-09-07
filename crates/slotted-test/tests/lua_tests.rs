@@ -15,6 +15,8 @@ use slotted_ui::{Layout, ScreenDef, Screens, Tags, UiNodeDef};
 fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new("demo:chest"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {

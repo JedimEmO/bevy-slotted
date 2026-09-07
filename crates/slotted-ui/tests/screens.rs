@@ -296,6 +296,8 @@ impl Harness {
 fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new("demo:chest"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
@@ -303,10 +305,9 @@ fn chest_screen() -> ScreenDef {
             layout: slotted_ui::Layout {
                 direction: slotted_ui::LayoutDirection::Column,
                 gap: 1.0,
-                padding: 2.0,
-                width: None,
-                height: None,
+                padding: 2.0.into(),
                 center: false,
+                ..Default::default()
             },
             children: vec![
                 UiNodeDef::Panel {

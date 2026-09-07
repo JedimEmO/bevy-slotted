@@ -24,13 +24,15 @@ const CHEST: &str = "demo:chest";
 fn chest_screen() -> ScreenDef {
     ScreenDef {
         kind: ScreenKind::new(CHEST),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout {
                 gap: 1.0,
-                padding: 1.0,
+                padding: 1.0.into(),
                 ..Default::default()
             },
             children: vec![
@@ -474,6 +476,8 @@ fn two_open_screens_both_appear_in_the_tree() {
     let (mut h, _) = open_chest();
     let second = ScreenDef {
         kind: ScreenKind::new("demo:second"),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {

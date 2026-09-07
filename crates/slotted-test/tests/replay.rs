@@ -31,13 +31,15 @@ fn chest_screen() -> ScreenDef {
     };
     ScreenDef {
         kind: ScreenKind::new(CHEST),
+        initial_focus: None,
+        presentation: slotted_ui::Presentation::default(),
         inherits: None,
         remove: vec![],
         root: UiNodeDef::Panel {
             role: slotted_theme::roles::PANEL,
             layout: Layout {
                 gap: 1.0,
-                padding: 1.0,
+                padding: 1.0.into(),
                 ..Layout::default()
             },
             children: vec![
