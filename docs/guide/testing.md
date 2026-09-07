@@ -74,7 +74,8 @@ break a test.
 | `by::anchor("title_end")` | An injection anchor. |
 | `by::screen(kind)` | A screen root. |
 | `by::hud_layer("mymod:mana")` | A HUD layer root. |
-| `by::widget_kind(kind)` | A widget kind. |
+| `by::widget_kind(kind)` | A widget kind, as a `WidgetKind`. |
+| `by::control("slider")` | A control by its kind's path: every M1 control carries `WidgetNode("slotted:<type>")`. |
 
 Chain `.tag(k, v)`, `.index(n)`, `.visible()`, `.nth_visible(n)`,
 `.within(entity)` and `.with_item("demo:coal")` to narrow.
@@ -97,6 +98,44 @@ first keyboard key bound to an action, and `set_input_mode(InputMode)` puts the
 UI in pointer, keyboard or gamepad mode directly. The harness owns one
 `Gamepad` entity; a replayed recording's pad events land on it too. See
 [input.md](input.md) for what the actions mean.
+
+### Controls
+
+The M1 controls have helpers that do what a player does, through the real
+input path, and stop when the control has reacted:
+
+| Helper | Does |
+|---|---|
+| `value(key)` | Reads the `ValueStore`. |
+| `set_value(key, value)` | Writes a `SetValue` and steps a frame, so the key's rule and the guards apply exactly as they would to a control's write. |
+| `drag_slider(slider, fraction)` | Presses on the track where the thumb is, drags to `fraction` of the track's width, releases. Every move is a write with the slider as source, so a guard sees each one. |
+| `select_option(select, "high")` | Clicks the pill to open the popup, then clicks the option. |
+| `type_into(field, "Steve")` | Focuses the row, `Accept` to start editing, types, Enter to commit. |
+| `switch_tab(tabs, "audio")` | Clicks the tab button. |
+| `capture_key(row, KeyCode::KeyK)` | Focuses the `key_binding` row, `Accept` to start capture, presses the key. `UiBindings` is rebound afterwards. |
+
+What a test asserts on is a plain component on the control's row, never the
+paint: `ToggleState`, `SliderState`, `SelectState`, `RadioState`,
+`KeyBindingState`, `TextFieldState`, `ListState` and `TabsState`
+([values.md](values.md) for how a value gets there).
+
+```rust
+let scale = h.find(&by::test_id("ui_scale"));
+h.drag_slider(scale, 0.4);                       // 0.5 + 2.5 * 0.4, on the 0.25 grid
+h.settle();
+assert_eq!(h.value("settings.ui_scale"), Some(Value::Float(1.5)));
+assert_eq!(h.world().get::<SliderState>(scale).unwrap().value, 1.5);
+h.drag_slider(scale, 1.0);                       // past the guard's limit of 2.0
+h.settle();
+assert!(h.value("settings.ui_scale").unwrap().as_f64().unwrap() <= 2.0);
+```
+
+`crates/slotted-test/tests/settings.rs` drives the whole settings demo this
+way. One thing it does that a game's tests need not: this crate has no
+`assets/` directory of its own, so it hands the headless group an
+`AssetPlugin { file_path }` pointing at the workspace's, or the theme would
+never load. A game's tests run from the game's crate root and find its
+`assets/` as the game does.
 
 ### Queries
 
@@ -182,7 +221,10 @@ A locator is a table: `role` (a semantic role in snake case), `tag` (a map),
 A test drives the pad and the action vocabulary too: `t.gamepad("DPadRight")`
 presses a button, `t.action("back")` presses whatever key `Back` is bound to,
 and `t.focused()` returns the focused node's tags, so a mod can assert where
-the focus ring sits without knowing which key moved it.
+the focus ring sits without knowing which key moved it. For a settings screen,
+`t.value("settings.ui_scale")` reads the value store, `t.set_value(key, v)`
+writes through its rules and guards, and `t.type_into(loc, "text")` edits a
+text field the way a player does.
 
 The full list of actions, queries and expectations is in
 [api/lua.md](api/lua.md#slottedtest).

@@ -401,9 +401,61 @@ pub mod ops {
             }
             TestOp::LogContains { text } => Ok(Value::Bool(log_contains(world, text))),
             TestOp::Focused => Ok(focused_tags(world)),
+            TestOp::Value { key } => Ok(store_value(world, key)),
             _ => return None,
         };
         Some(answer)
+    }
+
+    /// The `ValueStore` entry under `key` as a Lua value, `nil` when absent.
+    fn store_value(world: &World, key: &str) -> Value {
+        world
+            .get_resource::<slotted_ui::ValueStore>()
+            .and_then(|store| store.get(key))
+            .map_or(Value::Null, to_lua_value)
+    }
+
+    /// A store value as the untyped value a Lua test reads.
+    pub fn to_lua_value(value: &slotted_ui::Value) -> Value {
+        match value {
+            slotted_ui::Value::Bool(b) => Value::Bool(*b),
+            slotted_ui::Value::Int(i) => Value::Int(*i),
+            slotted_ui::Value::Float(f) => Value::Float(*f),
+            slotted_ui::Value::Text(s) => Value::Str(s.clone()),
+        }
+    }
+
+    /// A Lua value as a store value: a bool, a number or a string.
+    ///
+    /// # Errors
+    ///
+    /// A `nil`, a list or a table, none of which the store holds.
+    pub fn to_store_value(value: &Value) -> Result<slotted_ui::Value, String> {
+        match value {
+            Value::Bool(b) => Ok(slotted_ui::Value::Bool(*b)),
+            Value::Int(i) => Ok(slotted_ui::Value::Int(*i)),
+            Value::Float(f) => Ok(slotted_ui::Value::Float(*f)),
+            Value::Str(s) => Ok(slotted_ui::Value::Text(s.clone())),
+            other => Err(format!(
+                "set_value takes a boolean, a number or a string, not {}",
+                other.describe()
+            )),
+        }
+    }
+
+    /// Writes one `SetValue` with no source. The next frame applies it.
+    ///
+    /// # Errors
+    ///
+    /// A value the store cannot hold.
+    pub fn set_value(world: &mut World, key: &str, value: &Value) -> Result<(), String> {
+        let value = to_store_value(value)?;
+        world.write_message(slotted_ui::SetValue {
+            key: key.to_owned(),
+            value,
+            source: None,
+        });
+        Ok(())
     }
 
     /// `{ item, count }` of a slot entity, read from the model.
@@ -873,6 +925,17 @@ impl UiHarness {
                 let action = ops::ui_action(action)
                     .ok_or_else(|| format!("no UI action named {action:?}"))?;
                 self.action(action);
+                Ok(Value::Null)
+            }
+            TestOp::SetValue { key, value } => {
+                ops::set_value(self.world_mut(), key, value)?;
+                self.step(1);
+                Ok(Value::Null)
+            }
+            TestOp::TypeInto { loc, text } => {
+                self.try_settle().map_err(|e| e.to_string())?;
+                let entity = ops::resolve_one(self.world(), loc)?;
+                self.type_into(entity, text);
                 Ok(Value::Null)
             }
             TestOp::Settle => self

@@ -135,6 +135,71 @@ fn a_test_drives_the_screen_with_a_gamepad_and_reads_focus() {
     );
 }
 
+/// The value API (menus M1, package D): `value(key)` reads the store,
+/// `set_value(key, v)` writes through its rules and guards, `type_into`
+/// edits a text field and commits. The screen is the settings demo with the
+/// showcase's seed, rules and guard, so the guard's refusal is visible from
+/// Lua too.
+#[test]
+fn a_test_reads_and_writes_the_value_store_and_types_into_a_field() {
+    let mut harness = UiHarness::builder()
+        .plugins((
+            SlottedPlugins::headless(),
+            showcase::settings::SettingsDemoPlugin,
+        ))
+        .registries(TestRegistries::basic())
+        .resolution(1280.0, 720.0)
+        .build();
+    let report = run(
+        &mut harness,
+        r#"
+        local t = slotted.test
+        t.test("values round trip through the store", function()
+            t.open_screen("demo:settings")
+            t.settle()
+            t.expect_eq(t.value("settings.ui_scale"), 1.0, "the seed")
+            t.expect_eq(t.value("settings.reduced_motion"), false)
+            t.expect_eq(t.value("settings.resolution"), "1920x1080")
+            t.expect_eq(t.value("settings.nothing"), nil, "an unknown key is nil")
+
+            t.set_value("settings.ui_scale", 1.6)
+            t.settle()
+            t.expect_eq(t.value("settings.ui_scale"), 1.5, "snapped to the 0.25 grid")
+            t.set_value("settings.ui_scale", 2.75)
+            t.settle()
+            t.expect_eq(t.value("settings.ui_scale"), 1.5, "the guard refused 2.75")
+            t.set_value("settings.reduced_motion", true)
+            t.settle()
+            t.expect_eq(t.value("settings.reduced_motion"), true)
+
+            t.action("tab_next")
+            t.action("tab_next")
+            t.settle()
+            t.expect_eq(t.value("settings.tab"), "controls", "the tabs bind the store")
+            t.set_value("settings.player_name", "")
+            t.settle()
+            t.type_into({ test_id = "player_name" }, "Ada")
+            t.settle()
+            t.expect_eq(t.value("settings.player_name"), "Ada")
+            t.expect_eq(t.text_of({ test_id = "title" }), "Settings")
+        end)
+        t.test("a table is not a value", function()
+            t.set_value("settings.ui_scale", { 1, 2 })
+        end)
+        "#,
+    );
+    assert_eq!(report.results.len(), 2);
+    assert!(
+        report.results[0].passed,
+        "{:?}",
+        report.results[0].message.clone()
+    );
+    assert_eq!(
+        report.results[1].message.as_deref(),
+        Some("set_value takes a boolean, a number or a string, not a list")
+    );
+}
+
 /// A failed expectation is that test's message, with no chunk or line in it,
 /// and the file's other tests still run.
 #[test]

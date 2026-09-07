@@ -1,7 +1,8 @@
 //! Tabs (menus M1 contract 4.4): a tab bar over one page per tab.
 //!
 //! The root is a column: the bar, then the pages in tab order. Exactly one
-//! page is visible; the others are `Visibility::Hidden` and carry a
+//! page is visible; the others are `Visibility::Hidden`, `Display::None`
+//! (so they take no room in the column either) and carry a
 //! [`FocusMask`], which keeps their focusable descendants out of the focus
 //! ring, the focused-action dispatch, and (through [`mask_focus`]) out of
 //! `InputFocus` altogether. `TabPrev`/`TabNext` switch the tabs of the
@@ -136,10 +137,26 @@ pub fn spawn_tabs(
         }
         if index != 0 {
             e.insert((Visibility::Hidden, FocusMask));
+            if let Some(mut node) = e.get_mut::<Node>() {
+                node.display = Display::None;
+            }
         }
     }
     ctx.parent = parent;
     entity
+}
+
+/// A hidden page is out of layout as well as out of sight: `Visibility::Hidden`
+/// alone keeps a page's height in the column, so a tabs node with three
+/// pages would be as tall as all three.
+fn hide_page(visibility: &mut Visibility, node: &mut Node) {
+    *visibility = Visibility::Hidden;
+    node.display = Display::None;
+}
+
+fn show_page(visibility: &mut Visibility, node: &mut Node) {
+    *visibility = Visibility::Inherited;
+    node.display = Display::Flex;
 }
 
 fn spawn_tab_button(
@@ -221,7 +238,7 @@ fn activate(
     tabs: Entity,
     index: usize,
     states: &mut Query<(&mut TabsState, Option<&ValueBinding>)>,
-    pages: &mut Query<(Entity, &TabPage, &mut Visibility)>,
+    pages: &mut Query<(Entity, &TabPage, &mut Visibility, &mut Node)>,
     buttons: &Query<(Entity, &TabButton)>,
     parents: &Query<&ChildOf>,
     focusables: &Query<(), With<Focusable>>,
@@ -240,16 +257,16 @@ fn activate(
     state.active = index;
 
     let mut new_page = None;
-    for (page, tab_page, mut visibility) in pages.iter_mut() {
+    for (page, tab_page, mut visibility, mut node) in pages.iter_mut() {
         if tab_page.tabs != tabs {
             continue;
         }
         if tab_page.index == index {
             new_page = Some(page);
-            *visibility = Visibility::Inherited;
+            show_page(&mut visibility, &mut node);
             commands.entity(page).remove::<FocusMask>();
         } else {
-            *visibility = Visibility::Hidden;
+            hide_page(&mut visibility, &mut node);
             commands.entity(page).insert(FocusMask);
         }
     }
@@ -283,8 +300,8 @@ fn activate(
             .is_ok_and(|(_, b)| b.tabs == tabs && b.index == previous);
         let in_old_page = pages
             .iter()
-            .find(|(_, p, _)| p.tabs == tabs && p.index == previous)
-            .is_some_and(|(page, _, _)| is_under(focused, page, parents));
+            .find(|(_, p, _, _)| p.tabs == tabs && p.index == previous)
+            .is_some_and(|(page, _, _, _)| is_under(focused, page, parents));
         if on_button || in_old_page {
             let target = if in_old_page {
                 new_page.and_then(|page| first_focusable(page, focusables, children))
@@ -326,7 +343,7 @@ pub fn on_tab_button_action(
     buttons: Query<(Entity, &TabButton)>,
     disabled: Query<Has<bevy::ui::InteractionDisabled>>,
     mut states: Query<(&mut TabsState, Option<&ValueBinding>)>,
-    mut pages: Query<(Entity, &TabPage, &mut Visibility)>,
+    mut pages: Query<(Entity, &TabPage, &mut Visibility, &mut Node)>,
     parents: Query<&ChildOf>,
     focusables: Query<(), With<Focusable>>,
     children: Query<&Children>,
@@ -367,7 +384,7 @@ pub fn on_tab_button_click(
     buttons: Query<(Entity, &TabButton)>,
     disabled: Query<Has<bevy::ui::InteractionDisabled>>,
     mut states: Query<(&mut TabsState, Option<&ValueBinding>)>,
-    mut pages: Query<(Entity, &TabPage, &mut Visibility)>,
+    mut pages: Query<(Entity, &TabPage, &mut Visibility, &mut Node)>,
     parents: Query<&ChildOf>,
     focusables: Query<(), With<Focusable>>,
     children: Query<&Children>,
@@ -418,7 +435,7 @@ pub fn tab_actions(
     tabs_nodes: Query<(Entity, Has<bevy::ui::InteractionDisabled>), With<TabsState>>,
     buttons: Query<(Entity, &TabButton)>,
     mut states: Query<(&mut TabsState, Option<&ValueBinding>)>,
-    mut pages: Query<(Entity, &TabPage, &mut Visibility)>,
+    mut pages: Query<(Entity, &TabPage, &mut Visibility, &mut Node)>,
     focusables: Query<(), With<Focusable>>,
     children: Query<&Children>,
     mut claims: ResMut<UiActionClaims>,
@@ -561,7 +578,7 @@ pub fn sync_tabs(
         &mut crate::widgets::list::StoreSeen,
         Option<&ValueBinding>,
     )>,
-    mut pages: Query<(Entity, &TabPage, &mut Visibility)>,
+    mut pages: Query<(Entity, &TabPage, &mut Visibility, &mut Node)>,
     mut buttons: Query<(Entity, &TabButton, &Hovered, &mut Themed)>,
     mut commands: Commands,
 ) {
@@ -579,15 +596,15 @@ pub fn sync_tabs(
                 && want != state.active
             {
                 state.active = want;
-                for (page, tab_page, mut visibility) in pages.iter_mut() {
+                for (page, tab_page, mut visibility, mut node) in pages.iter_mut() {
                     if tab_page.tabs != entity {
                         continue;
                     }
                     if tab_page.index == want {
-                        *visibility = Visibility::Inherited;
+                        show_page(&mut visibility, &mut node);
                         commands.entity(page).remove::<FocusMask>();
                     } else {
-                        *visibility = Visibility::Hidden;
+                        hide_page(&mut visibility, &mut node);
                         commands.entity(page).insert(FocusMask);
                     }
                 }

@@ -135,6 +135,26 @@ pub enum TestOp {
     /// Replies the focused node's tags as a table, or nothing when no node
     /// has focus.
     Focused,
+    /// Replies the `ValueStore` entry under `key`, or nothing.
+    Value {
+        /// Store key.
+        key: String,
+    },
+    /// Writes a `SetValue` for `key`, so the store's rules and guards apply.
+    SetValue {
+        /// Store key.
+        key: String,
+        /// A bool, a number or a string.
+        #[serde(with = "crate::value::untagged")]
+        value: Value,
+    },
+    /// Focus a text field, enter editing, type, commit with Enter.
+    TypeInto {
+        /// Target: the text field row.
+        loc: TestLocator,
+        /// What to type.
+        text: String,
+    },
 }
 
 fn unit() -> Value {

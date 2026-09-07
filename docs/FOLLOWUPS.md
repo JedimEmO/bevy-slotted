@@ -6,6 +6,147 @@ Entries the gap-closing round closed have been deleted rather than struck
 through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
 and summarised below. What is left here is open.
 
+## Menus M1, 2026-09-07
+
+Type scale, rich text, localisation arguments, the value store and the
+controls (`docs/design/menus-m1-contract.md`,
+`docs/design/menus-m1-notes-{A,B,C,D}.md`). What the four packages deferred.
+The M0 entries for wheel scrolling, shrinking scroll children and the rebound
+keyboard `Accept` are closed by this milestone and deleted below.
+
+- **`max_lines` is a `text` feature only.** `TextOpts` carries it for
+  `rich_text` too, and a `rich_text` ignores it: truncating spans needs the
+  cut to land inside a run and keep the tail's styles. Build it when a
+  design wants a clamped rich paragraph.
+- **Truncation is proportional, not exact.** `enforce_max_lines` keeps
+  `len × max / lines` characters and can land a few words short of the
+  longest prefix that fits. An exact fit needs Parley's line breaks for a
+  candidate string without a layout pass, which `TextPipeline` does not
+  expose in 0.19.
+- **Inline rich-text icons do not re-resolve when the icon source changes.**
+  `reresolve_icons_on_source_change` covers `ItemView`s; a rich text's
+  `ImageNode` is rebuilt only when the node, the catalogue or the theme
+  changes. One more `is_changed` on `Icons` in `render_rich_text`, once that
+  resource's change semantics are settled.
+- **A Fluent message reference in a rich string renders raw.** A `{name}`
+  without the `$` is an unknown placeholder to the parser, so the whole
+  footer shows its markup, logged once. Correct, but a translator who forgot
+  the `$` sees brackets; a friendlier failure would render the rest and mark
+  the one placeholder.
+- **A text shadow is per paragraph, not per span.** Bevy reads `TextShadow`
+  on the root, so a `{key}` run in a `count` paragraph takes the count's
+  shadow and a paragraph in a role without one has none. Nothing to do unless
+  a direction wants a shadow under glyphs alone.
+- **The chest header grew** with `panel.title` on the scale (24/22/26 px).
+  If the moodboard wants the old 15 px header, that is the `title` step in
+  the theme files, not code.
+- **The control materials are the skeleton's first pass.** The tokens decide
+  the geometry (thumb travel is `spacing.md`, radii are `radii.sm`), and no
+  theme yet draws a toggle or a slider differently from the others beyond
+  colour. Tuning is a theme-file job for whoever styles the settings
+  template (M2).
+- **A select popup does not close on a click outside it.** `Back`, `Accept`
+  and a click on an option close it; a click elsewhere leaves it open with
+  focus moved out by Bevy's `click_to_focus`, so the next `Back` pops the
+  screen with the popup drawn. A global `Pointer<Press>` observer that closes
+  any open popup whose subtree was not pressed is the fix.
+- **A key capture does not unbind the key elsewhere.** Binding `K` to
+  `Accept` leaves `K` on whatever else had it; two actions can share a key.
+  Conflict handling (unbind, or refuse and say who has it) is a settings
+  design call for M2.
+- **A gamepad row cannot capture `Back`'s button.** `Back` cancels a capture
+  on either device, so East can never be bound on a pad row. The rule the
+  contract set for Escape, applied to both devices; a capture that ignores
+  `Back` for one press would let a player rebind it.
+- **Two seeding mechanisms.** B's controls take their value through the
+  `BoundValue` entity event; C's `text_field`, `list` and `tabs` read the
+  store themselves with a `StoreSeen(version)` marker. Either works; one
+  mechanism would be tidier, and the switch needs no contract change.
+- **`ValueRule` is not derived from a slider's `min`/`max`/`step`.** A slider
+  clamps and snaps its own proposals, so a screen that forgets the rule still
+  behaves; a Lua or harness `set_value` outside the range is only caught when
+  the game declared the rule. Deriving one at spawn when none exists is a
+  small addition to `spawn_slider`.
+- **A numeric text filter is per character.** "One point, a leading minus"
+  cannot be expressed through Bevy's `EditableTextFilter`, so `1-2.3.4`
+  types. The store's rule is where the parse belongs; nothing pins it.
+- **Horizontal scroll panels.** The viewport is `scroll_y` only; paging
+  handles `x` when a node ever sets it, and nothing spawns one.
+- **`ScrollIntoView` and padding.** A padded viewport scrolls its first child
+  to the padding edge rather than the content edge, which is Bevy's
+  measurement and why the viewport carries no border of its own.
+- **A list inside a scroll panel pages the panel, not the list.** The
+  panel's `PageNext` observer claims first. Which should win is a design call
+  for the settings template (M2).
+- **The text field's ring sits on the editable child while editing**, since
+  that child is `Focusable` so `Back` can reach it. A ring on the frame reads
+  better; the ring would have to know `TextFieldParts`.
+- **Tab icons are sized from the compact control height**, because the
+  tokens have no icon size.
+- **No harness rect snapshot helper.** The contract's "harness rect snapshot"
+  does not exist; the settings screen's snapshots are `insta` tree snapshots
+  only, which exclude sizes and positions by design. A rect snapshot would
+  need a stable serialisation of `rect_of` over the tree and a decision on
+  rounding.
+- **The settings demo is a fixture, not the M2 template.**
+  `assets/screens/demo_settings.screen.ron` exists to exercise every control
+  in three themes and to give the chest example something to open; it binds
+  `settings.*` keys nothing reads. The real settings screen, its bindings to
+  the game and its persistence are M2.
+- **The chest example opens settings on `Menu` (Tab)**, which is also Bevy's
+  tab-navigation key, so the press that opens the modal also moves focus in
+  the screen underneath before the modal takes it. Harmless in the demo; a
+  dedicated key for `Menu` is a bindings question for M2.
+
+- **Bevy's directional navigator takes the whole half-plane.**
+  `AutoNavigationConfig::min_alignment_factor` is 0, and the scorer accepts a
+  candidate with no cross-axis overlap at all, so `Left` from a grid's first
+  slot lands on a button 360 px below it and `Up` from a full-width settings
+  row lands on whichever tab button is nearest the row's centre. Every
+  control row and button is in the graph now (they were not, which is why
+  the settings walk did nothing from a tab), so this shows more than it
+  did. A small `min_alignment_factor` (or our own scorer) in
+  `SlottedUiPlugin` is the fix; it changes every screen's walk, so it wants a
+  pass over the M0 nav tests rather than a one-line edit at the end of M1.
+- **`slotted-test`'s own tests never load a theme.** `.theme("glass")` in
+  `crates/slotted-test/tests/*` resolves `assets/themes/glass.theme.ron`
+  against the crate root, which has no `assets/`, and the load fails
+  silently (a failed load is not "loading", so `settle` does not wait). The
+  M0 gamepad tests and the chest-screen tests run on the default tokens.
+  `settings.rs` passes `AssetPlugin { file_path }` through
+  `SlottedPlugins::headless().set(..)`; a `UiHarnessBuilder::assets_dir` (or a
+  symlink like `examples/chest/assets`) would make it the default for this
+  crate, and a harness that warned when the active theme failed to load would
+  have caught it a milestone ago.
+- **The base locale file is read only by a pack install.**
+  `slotted-packs` loads `assets/locale/<lang>.ftl` in `load_locales`, which
+  runs when mods install; a game with no `PackLayout` never gets its own base
+  catalogue, which is why the chest example fills its labels by hand and why
+  `showcase::settings::install_locale` compiles `en-US.ftl` in and installs
+  it at `Startup` when nothing resolves the settings keys. Loading the base
+  file without a pack set, on native through the asset server and on wasm
+  through the bundle, belongs in `slotted-packs`.
+- **A rich placeholder in a Fluent string needs a string literal.** Braces
+  are Fluent's placeable syntax, so `{key:back}` in an `.ftl` file is a
+  parse error that drops the whole file; the footer writes
+  `{"{key:back}"}`. Documented in `rich-text.md`; a friendlier route is a
+  Fluent function (`{ KEY("back") }`) registered on the bundle.
+- **`slotted.test.open_screen` always opens over a menu.** The Lua runner's
+  `open_screen("demo:settings")` takes the `"empty"` fixture and opens a
+  menu-less screen with an empty menu behind it. Harmless for store bindings;
+  a `property` binding on such a screen would resolve against that empty
+  menu. An `open` op for menu-less screens is a small addition.
+- **The icon button still reads `ButtonInput<KeyCode>`**, for the shift
+  modifier of a pointer click (`on_icon_button_click`), which is not a key
+  decision and passes the contract's `KeyCode::` grep. A modifier state
+  resource fed by the emitter would remove the last raw keyboard read from
+  `widgets/`.
+- **Tree snapshots show localisation keys, not text.** `SemanticLabel` on a
+  control row is the label's key (`demo.settings.display.ui_scale`), so the
+  settings snapshots are stable across catalogues but a reviewer cannot read
+  the labels off them. Resolving the label through `Localization` at spawn
+  (and on catalogue change) would make the tree what a screen reader hears.
+
 ## Menus M0, 2026-09-07
 
 The foundation of the menus work (`docs/design/menus-m0-contract.md`,
@@ -20,22 +161,9 @@ The foundation of the menus work (`docs/design/menus-m0-contract.md`,
 - **Pop transitions.** A push fades or slides in; a pop is immediate. The
   popped root would have to outlive its entry for the length of the motion,
   which means the stack despawning on a timer rather than in the command. M1.
-- **Wheel scrolling of `overflow: scroll`.** The panel clips and carries a
-  `ScrollPosition`, and nothing writes to it yet. Goes with M1's `list` and
-  `scroll` controls, and a `Scroll` action if one is wanted (contract 1.1
-  lists none).
-- **Flex children of a scroll panel shrink** unless they carry `min_height`;
-  that is Taffy's default and `tests/layout.rs` documents it. A list widget
-  that sets `flex_shrink: 0` on its rows belongs with M1's scrolling.
 - **No opacity group.** The push fade covers the root panel's own background;
   text and slots inside it do not fade. A real opacity group is a Bevy
   feature we do not have.
-- **A rebound keyboard `Accept` does not activate a button.** Bevy's `Button`
-  turns Enter and Space into `Activate` itself, so `accept_focused` forwards
-  only gamepad-sourced presses to buttons to avoid a double activation. A
-  game that binds `Accept` to another key gets slots but not buttons on it
-  until `bevy_ui_widgets` exposes its key, or until M1's `button` widget
-  reads the action itself.
 - **The showcase's multiplayer scene pushes its second client as a scrim-less
   modal**, because two pages would hide the first; `Back` therefore pops one
   client, then the other. A side-by-side of two stacks (one per client) is

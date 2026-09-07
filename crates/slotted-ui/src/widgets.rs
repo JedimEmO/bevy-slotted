@@ -590,6 +590,7 @@ pub fn spawn_button(
         Hovered::default(),
         TabIndex(0),
         crate::focus_ring::Focusable,
+        AutoDirectionalNavigation::default(),
         Pickable::default(),
         WidgetNode(widget),
     ));

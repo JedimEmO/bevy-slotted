@@ -7,6 +7,167 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Menus M1: type scale, rich text, localisation arguments, value store, controls
+
+`docs/design/menus-proposal.md` sections 4.5 to 4.7, made binding by
+`docs/design/menus-m1-contract.md`. The controls a settings screen is made of,
+the store they bind to, the paragraph markup a footer is written in, and the
+type scale under all of it. No control reads a `KeyCode`; the one `KeyCode::`
+in `widgets/` is the key-binding row's capture.
+
+#### Added
+
+- **A type scale.** `tokens.typography` is a map of `TypeStyle { size, font,
+  weight, line_height }`; the three themes define `display`, `title`,
+  `heading`, `body`, `label` and `caption`. `Material::Text.size` is a
+  `ThemeSize` (a number or `"$name"`; `ThemeSize::px`, `::typography`,
+  `typography_ref`), and `Text` gains `weight`. A `$` size brings the style's
+  font and weight unless the material names its own. `Theme::size`,
+  `Theme::type_style`, `Theme::dangling_typography_refs`. `Paint` gains
+  `text_line_height` and the helpers `Paint::for_role`, `Paint::text_font`
+  and `Paint::text_color` for text the apply system cannot reach; `FontPaint`
+  and `TypeStyle` are re-exported. The apply system writes `TextFont.weight`
+  and Bevy's `LineHeight` on every text role.
+- **`sizes.control_height` and `control_height_compact`** (44/28 glass, 36/24
+  paper, 40/28 neon): every control row's height. A screen never sets one.
+- **`TextRole`** grows to `display`, `title`, `heading`, `body`, `muted`,
+  `label`, `caption`, `count`, mapping to `text.display`, `panel.title`,
+  `text.heading`, `text`, `text.muted`, `text.label`, `text.caption`, `count`.
+  A `text` node takes `args`, `wrap`, `align` and `max_lines` (`TextOpts`); a
+  `MaxLines(u16)` component is enforced by `enforce_max_lines`, which
+  truncates with `…` over a few frames.
+- **Rich text.** The `rich_text` node and `slotted_ui::rich`: `parse`,
+  `escape`, `substitute`, `value_text`, `RichRun { text, style: RunStyle, kind:
+  RunKind::{Text, Key, Icon} }`, `RichError` with byte offsets. Tags `[b]`,
+  `[i]`, `[color=$name|#RRGGBB]`, `[size=name|px]`, `{key:action}`,
+  `{icon:ns:path}`, `{name}` arguments, and `[[`, `]]`, `{{`, `}}` as literals.
+  `key_glyph_text(action, mode, bindings)`, `key_glyph(KeyCode)` and
+  `button_glyph(button)` are the glyph spelling; `RichKeySpan` marks a glyph
+  span and `refresh_key_glyphs` rewrites it when `InputMode` or `UiBindings`
+  change. `spawn_rich_text`, `render_rich_text`, `RichText`, `RichRuns`,
+  `RichPart`; `inline: true` lays fragments and `ImageNode` icons out as a
+  row. New roles `text.key` and `text.icon`.
+- **Localisation arguments.** `LocText` is `LocText { key, args }`
+  (`LocText::new`, `LocText::with_args`); `resolve_loc_text` re-resolves on
+  `Changed<LocText>`. `LocArgs = BTreeMap<String, Value>`,
+  `Localization::resolve_with` and `text_with`, `no_args()`. `LocaleTable`
+  converts to `FluentArgs`. The browser's status line resolves one key,
+  `browser.status.count`, with `count` as an argument and a Fluent plural
+  selector in `assets/locale/en-US.ftl`.
+- **The value store** (`slotted_ui::values`): `Value` (untagged `Bool`, `Int`,
+  `Float`, `Text`), `ValueStore` (`insert`, `get`, `remove`, `keys`, `iter`,
+  `version`), `ValueRules` of `ValueRule { min, max, step, options }`,
+  `ValueGuard` (a closure is one) and `ValueGuards`, the messages `SetValue`,
+  `ValueChanged` and `ValueRefused` with a `source` entity, `apply_set_values`
+  in `Navigate` (rule, guards in order, commit and `version` bump or refuse).
+  `ValueBinding { target: BindingTarget::{Store, Property} }` on every value
+  control, `ValueBinding::from_def`, the `BoundValue` entity event
+  `sync_value_bindings` delivers, `on_bound_property_changed` for the menu
+  mirror, and `ValueWriter` as a control's one write path.
+- **Focused actions.** `FocusedAction { entity, action, device, repeat }`, an
+  entity event `dispatch_focused_actions` triggers on the `InputFocus` entity
+  for every unclaimed action when it is `Focusable`, enabled and not under a
+  `FocusMask`. Controls observe it and claim what they consume.
+- **The button, rewritten.** `spawn_button(ctx, widget: Option<&WidgetKind>,
+  opts: &ButtonOpts)`; `ButtonOpts { label, icon, variant, disabled, compact
+  }`, `ButtonVariant::{Primary, Secondary, Danger}`, `ButtonState { variant,
+  disabled, pressed }`. `Accept` from any device triggers `Activate`
+  (`on_button_accept`); a click does too; `button_roles` swaps
+  `button.{primary|danger}.{hover|focus|pressed|disabled}`. `slotted:close`
+  is a `widget` (and a registry kind, `CloseWidget`) whose `Activate` pops
+  the stack. `slotted:button` through the registry takes the same options.
+- **The controls**, each a `UiNodeDef` variant, a `slotted:<type>` kind in
+  the registry (`kinds::all()` is 29) and a state component on the row:
+  `toggle` (`ToggleState`, `ToggleStyle::{Switch, Checkbox}`), `slider`
+  (`SliderState`, `SliderDef`, `format_readout`), `select` (`SelectState`,
+  `SelectPopup`, `SelectOptionNode`, `OpenSelectPopup`, `CloseSelectPopup`),
+  `radio_group` (`RadioState`), `key_binding` (`KeyBindingState`,
+  `capture_key_bindings`, `BindingChanged { action, device }`), `text_field`
+  (`TextFieldState`, `TextFieldParts`, `TextFieldEditable`, `CommittedText`,
+  `TextPlaceholder`, `TextEntryRequested { entity }`, `editable_filter`,
+  `TextFilter::{Any, Numeric, Integer}`), `list` (`ListState`, `ListRow`,
+  `ListFocusRequest`), `scroll` (`ScrollPanel { viewport }`,
+  `ScrollViewport`, `scroll_focus_into_view`, page actions), `tabs`
+  (`TabsState`, `TabButton`, `TabPage`, `TabDef`, `FocusMask` on hidden
+  pages), `separator`, `spacer` and `image` (`SemanticRole::Decor`,
+  `Decorative`, `Pickable::IGNORE`). `BindDef { bind, property, disabled }`
+  is the shared binding shape; `SelectOption { id, label }`.
+  `widgets::controls` holds `ControlLook`, `state_role`, `state_role_with`,
+  `spawn_control_row`, `spawn_control_label`, `spawn_control_spacer`.
+- **The virtual grid grew a shape.** `GridShape { columns, row_height, gap,
+  role }` and `spawn_shaped_virtual_grid`; `list` is a one-column grid of
+  `control_height_compact` rows wrapped in `ListRow`.
+- **Semantic roles** `Toggle`, `Slider`, `Select`, `RadioGroup`,
+  `KeyBinding`, `List`, `ListItem`, `ScrollView`, `Tabs`, `Decor`, with
+  AccessKit roles. **Theme roles:** 51 new ones (`roles::ALL` is 89),
+  defined in all three themes: `text.display`, `text.heading`, `text.label`,
+  `text.caption`, `text.key`, `text.icon`, `control.label`, `button.danger`,
+  `button.focus`, `button.pressed`, `button.disabled`, the `toggle.*`,
+  `checkbox.*`, `slider.*`, `select.*`, `radio.*`, `key_binding.*`,
+  `text_field.*`, `scroll.*`, `list.row.*`, `tabs.bar`, `tab.*` families and
+  `separator`.
+- **`sync_placeholders`** hides a `TextPlaceholder` beside a non-empty
+  `EditableText`; the browser's search field uses it.
+- **Harness.** `UiHarness::value`, `set_value`, `drag_slider`,
+  `select_option`, `type_into`, `switch_tab`, `capture_key`; `by::control`.
+  `slotted.test` gains `value(key)`, `set_value(key, value)` and
+  `type_into(loc, text)`, on both drivers.
+- **The settings demo.** `assets/screens/demo_settings.screen.ron`
+  (`demo:settings`, a modal with display, audio and controls tabs, every
+  control bound to a `settings.*` key, a `{key:back}` footer), its strings
+  in `assets/locale/en-US.ftl`, and `showcase::settings`, which registers it,
+  seeds the store and rules, and installs a guard that refuses a UI scale
+  above 2. The chest example opens it over the chest on `Menu` (Tab); `Back`
+  pops it. Tree snapshots in three themes and a gamepad walk over every
+  control in `crates/slotted-test/tests/settings.rs`.
+- **Guide:** `docs/guide/rich-text.md`, `docs/guide/values.md`; `screens.md`
+  documents every control, `themes.md` the type scale and control sizes,
+  `input.md` focused actions, `testing.md` the control helpers.
+
+#### Changed
+
+- **Text sizes follow the scale.** `text` is 15/14/15 px (was 13),
+  `text.muted` 12/11/12 (was 11), `panel.title` 24/22/26 (was 15/15/17),
+  `count` 12/11/12 (was 11/11/12), in glass/paper/neon. The chest header is
+  the visible change. `body` carries a line height (1.4/1.45/1.3).
+- **`Localizer::resolve(&self, key, args: &LocArgs)`.** `NoLocalization`
+  ignores the arguments. `LocText` is a struct, not a newtype.
+- **The dispatch skips claimed actions**, and `directional_nav_actions`
+  skips a claimed direction; a slider that consumed `Left` keeps the focus
+  where it is.
+- **`track_text_entry_focus` reads `TextFieldState::editing`**, so a focused
+  but idle `text_field` row does not swallow keyboard actions. The M0 bare
+  `TextField` role and the browser's search field behave as before.
+- **The icon button's `Accept`** arrives as a `FocusedAction` rather than a
+  `FocusedInput<KeyboardInput>` for Enter or Space.
+- **Grid paging is action paging.** `page_virtual_grids` reads an unclaimed
+  `PagePrev` / `PageNext` while focus is on a grid or one of its cells.
+- **The browser docks right on a near tie.** `dock::choose` prefers the right
+  strip unless the left one is wider by more than `SIDE_TIE` (2 px), so a
+  theme's title font cannot flip the side.
+- **Control rows and buttons are in the directional graph.** Every
+  `spawn_control_row` row and every M1 button carries
+  `AutoDirectionalNavigation`, so a d-pad walks from a tab button to a
+  slider to a button; before, `Down` from a tab did nothing and the walk
+  skipped every row that was not a text field. A consequence: Bevy's
+  navigator takes any node whose centre is in the pressed half-plane as a
+  neighbour, so a button under a grid is now "left" of its first slot
+  (`focus_ring.rs`'s nav-link test says so).
+- **A hidden tab page is `Display::None`.** `Visibility::Hidden` alone kept
+  every page's height in the column, so a tabs node was as tall as all its
+  pages together; the settings demo's footer sat below the window.
+
+#### Removed
+
+- **`nav::accept_focused`.** Its slot half is `on_slot_accept` (an observer
+  on `FocusedAction`); its button half is `widgets::on_button_accept`.
+- **`on_virtual_grid_key`**, the grid's `PageUp` / `PageDown` observer.
+- **`bevy_ui_widgets::Button` on `slotted-ui` buttons.** The rail, the side
+  tab and the browser's own buttons keep working through the new observers.
+- **`SearchPlaceholder`** and the browser's own placeholder visibility code.
+- **`browser-status-item` and `browser-status-items`** locale keys and
+  `keys::STATUS_ITEM` / `STATUS_ITEMS`, replaced by `browser.status.count`.
+
 ### Menus M0: input model, focus ring, screen stack, layout model
 
 `docs/design/menus-proposal.md` sections 4.1 to 4.4, made binding by

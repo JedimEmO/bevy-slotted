@@ -544,9 +544,9 @@ Available only in a mod's `tests/*.lua`, which the harness runs headless. See [t
 
 **Tests.** [`slotted.test.test`](#slottedtesttestname-fn)
 
-**Actions.** [`slotted.test.open_screen`](#slottedtestopen_screenkind-fixture), [`slotted.test.click`](#slottedtestclickloc), [`slotted.test.shift_click`](#slottedtestshift_clickloc), [`slotted.test.right_click`](#slottedtestright_clickloc), [`slotted.test.hover`](#slottedtesthoverloc), [`slotted.test.key`](#slottedtestkeykey), [`slotted.test.type_text`](#slottedtesttype_texttext), [`slotted.test.settle`](#slottedtestsettle), [`slotted.test.step`](#slottedteststepframes), [`slotted.test.cycle`](#slottedtestcycleloc-forward), [`slotted.test.gamepad`](#slottedtestgamepadbutton), [`slotted.test.action`](#slottedtestactionname)
+**Actions.** [`slotted.test.open_screen`](#slottedtestopen_screenkind-fixture), [`slotted.test.click`](#slottedtestclickloc), [`slotted.test.shift_click`](#slottedtestshift_clickloc), [`slotted.test.right_click`](#slottedtestright_clickloc), [`slotted.test.hover`](#slottedtesthoverloc), [`slotted.test.key`](#slottedtestkeykey), [`slotted.test.type_text`](#slottedtesttype_texttext), [`slotted.test.settle`](#slottedtestsettle), [`slotted.test.step`](#slottedteststepframes), [`slotted.test.cycle`](#slottedtestcycleloc-forward), [`slotted.test.gamepad`](#slottedtestgamepadbutton), [`slotted.test.action`](#slottedtestactionname), [`slotted.test.set_value`](#slottedtestset_valuekey-value), [`slotted.test.type_into`](#slottedtesttype_intoloc-text)
 
-**Queries.** [`slotted.test.stack_at`](#slottedteststack_atloc), [`slotted.test.text_of`](#slottedtesttext_ofloc), [`slotted.test.property_of`](#slottedtestproperty_ofloc), [`slotted.test.tank_fill`](#slottedtesttank_fillloc), [`slotted.test.is_visible`](#slottedtestis_visibleloc), [`slotted.test.log_contains`](#slottedtestlog_containstext), [`slotted.test.focused`](#slottedtestfocused)
+**Queries.** [`slotted.test.stack_at`](#slottedteststack_atloc), [`slotted.test.text_of`](#slottedtesttext_ofloc), [`slotted.test.property_of`](#slottedtestproperty_ofloc), [`slotted.test.tank_fill`](#slottedtesttank_fillloc), [`slotted.test.is_visible`](#slottedtestis_visibleloc), [`slotted.test.log_contains`](#slottedtestlog_containstext), [`slotted.test.focused`](#slottedtestfocused), [`slotted.test.value`](#slottedtestvaluekey)
 
 **Expectations.** [`slotted.test.expect`](#slottedtestexpectcond-msg), [`slotted.test.expect_eq`](#slottedtestexpect_eqa-b-msg), [`slotted.test.expect_stack`](#slottedtestexpect_stackloc-item-count)
 
@@ -785,6 +785,43 @@ slotted.test.action("down")
 slotted.test.action("accept")
 ```
 
+#### `slotted.test.set_value(key, value)`
+
+*Stage: `test`.*
+
+Write a value through the store, as a control would: the key's rule
+clamps and snaps it, every guard may refuse it, and each bound control
+repaints from what the store kept.
+
+| Argument | Type | |
+|---|---|---|
+| `key` | `string` | A `ValueStore` key: `"settings.ui_scale"`. |
+| `value` | `any` | A boolean, a number or a string. |
+
+Returns nothing.
+
+```lua
+slotted.test.set_value("settings.ui_scale", 1.5)
+```
+
+#### `slotted.test.type_into(loc, text)`
+
+*Stage: `test`.*
+
+Focus a text field, start editing with `accept`, type `text` and commit
+with Enter, so the field's bound value is written.
+
+| Argument | Type | |
+|---|---|---|
+| `loc` | `table` | A locator for the text field row. |
+| `text` | `string` | What to type. |
+
+Returns nothing.
+
+```lua
+slotted.test.type_into({ test_id = "player_name" }, "Ada")
+```
+
 ### Queries
 
 #### `slotted.test.stack_at(loc)`
@@ -896,6 +933,23 @@ Returns `table`: The focused node's tags (`test_id`, `region`, ...), or `nil` wh
 ```lua
 slotted.test.gamepad("DPadRight")
 slotted.test.expect_eq(slotted.test.focused().region, "chest")
+```
+
+#### `slotted.test.value(key)`
+
+*Stage: `test`.*
+
+The value the store holds under `key`: what every control bound to it
+shows.
+
+| Argument | Type | |
+|---|---|---|
+| `key` | `string` | A `ValueStore` key. |
+
+Returns `any`: The value (a boolean, a number or a string), or `nil` when the store has no such key.
+
+```lua
+slotted.test.expect_eq(slotted.test.value("settings.reduced_motion"), true)
 ```
 
 ### Expectations

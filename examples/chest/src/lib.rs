@@ -15,6 +15,8 @@
 //!    [`slotted::prelude::ScreenDef`].
 //! 3. [`ChestDemoPlugin`] wires the screen to the keyboard: `Esc` closes it,
 //!    `E` opens it again, and the title and capacity labels are filled in.
+//!    [`ChestSettingsPlugin`] adds the settings screen over it: `Tab` (the
+//!    `Menu` action) pushes `demo:settings` as a modal, `Esc` pops it.
 //!
 //! The last two of those, and the contents table behind them, live in the
 //! shared [`showcase::chest`] module and are re-exported here, because the web
@@ -25,10 +27,35 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use slotted::prelude::ScreenDef;
+use bevy::prelude::*;
+use slotted::prelude::{ScreenDef, SlottedUiSet};
+use slotted::ui::UiActionEmit;
 use slotted_registry::{DataStage, DirSource, FrozenRegistries, ModId};
 
 pub use showcase::chest::*;
+pub use showcase::settings::{SETTINGS, SettingsDemoPlugin};
+
+/// The settings screen over the chest (menus M1): [`SettingsDemoPlugin`]
+/// registers `demo:settings`, seeds and guards its `ValueStore`, and this
+/// plugin opens it on the `Menu` action (`Tab`, or Start on a pad) as a
+/// modal over whatever is up. `Back` pops it through the stack, so `Esc`
+/// closes it and focus returns to the chest.
+///
+/// Added by `examples/chest` and its tests, not by the playground's scenes:
+/// the showcase gets its own settings scene in M4.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChestSettingsPlugin;
+
+impl Plugin for ChestSettingsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(SettingsDemoPlugin).add_systems(
+            Update,
+            showcase::settings::open_settings_on_menu
+                .in_set(SlottedUiSet::Input)
+                .after(UiActionEmit),
+        );
+    }
+}
 
 /// The workspace's shared `assets/` directory.
 ///

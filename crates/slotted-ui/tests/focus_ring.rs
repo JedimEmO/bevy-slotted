@@ -266,7 +266,20 @@ fn an_unresolved_nav_link_falls_through_to_the_navigator() {
     h.set_focus(Some(slot(&h, "chest", 1)));
     h.key(KeyCode::ArrowLeft);
     assert_eq!(h.focused(), Some(slot(&h, "chest", 0)));
-    // Pressing again with nothing to the left leaves focus alone.
+    // Pressing again falls through to the navigator again, which finds the
+    // `done` button: an M1 button is in the directional graph, and Bevy's
+    // navigator takes anything whose centre is in the west half-plane as a
+    // neighbour, however far below (docs/FOLLOWUPS.md, Menus M1). The link
+    // never blocks a press, which is what this test is about.
+    h.key(KeyCode::ArrowLeft);
+    assert_eq!(h.focused(), Some(h.find(&by::test_id("done"))));
+    // With the button gone from the graph's west, nothing is left of slot 0
+    // and focus stays put.
+    let done = h.find(&by::test_id("done"));
+    h.world_mut()
+        .entity_mut(done)
+        .remove::<bevy::ui::auto_directional_navigation::AutoDirectionalNavigation>();
+    h.set_focus(Some(slot(&h, "chest", 0)));
     h.key(KeyCode::ArrowLeft);
     assert_eq!(h.focused(), Some(slot(&h, "chest", 0)));
 }

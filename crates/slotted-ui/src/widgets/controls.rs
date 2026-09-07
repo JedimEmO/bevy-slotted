@@ -107,6 +107,9 @@ pub fn spawn_control_row(
         WidgetNode(kind),
         Focusable,
         TabIndex(0),
+        // In the directional graph, so a d-pad walks from row to row; a row
+        // that consumes a direction claims it before nav sees it.
+        bevy::ui::auto_directional_navigation::AutoDirectionalNavigation::default(),
         Hovered::default(),
         Pickable::default(),
     ));

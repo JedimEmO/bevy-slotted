@@ -215,8 +215,34 @@ function T.type_text(text) step({ op = "type_text", text = text }) end
 function T.settle() step({ op = "settle" }) end
 function T.step(frames) step({ op = "step", frames = frames or 1 }) end
 function T.cycle(loc, forward) step({ op = "cycle", loc = loc, forward = forward ~= false }) end
+--- Write a value through the store, as a control would: the key's rule
+--- clamps and snaps it, every guard may refuse it, and each bound control
+--- repaints from what the store kept.
+---
+--- @signature slotted.test.set_value(key, value)
+--- @stage test
+--- @param key string A `ValueStore` key: `"settings.ui_scale"`.
+--- @param value any A boolean, a number or a string.
+--- @return nil
+--- @luau set_value: (key: string, value: boolean | number | string) -> ()
+--- @example
+--- slotted.test.set_value("settings.ui_scale", 1.5)
+
+--- Focus a text field, start editing with `accept`, type `text` and commit
+--- with Enter, so the field's bound value is written.
+---
+--- @signature slotted.test.type_into(loc, text)
+--- @stage test
+--- @param loc table A locator for the text field row.
+--- @param text string What to type.
+--- @return nil
+--- @luau type_into: (loc: { [string]: any }, text: string) -> ()
+--- @example
+--- slotted.test.type_into({ test_id = "player_name" }, "Ada")
 function T.gamepad(button) step({ op = "gamepad", button = button }) end
 function T.action(name) step({ op = "action", action = name }) end
+function T.set_value(key, value) step({ op = "set_value", key = key, value = value }) end
+function T.type_into(loc, text) step({ op = "type_into", loc = loc, text = text }) end
 
 -- Queries.
 
@@ -298,7 +324,19 @@ function T.property_of(loc) return step({ op = "property_of", loc = loc }) end
 function T.tank_fill(loc) return step({ op = "tank_fill", loc = loc }) end
 function T.is_visible(loc) return step({ op = "is_visible", loc = loc }) end
 function T.log_contains(text) return step({ op = "log_contains", text = text }) end
+
+--- The value the store holds under `key`: what every control bound to it
+--- shows.
+---
+--- @signature slotted.test.value(key)
+--- @stage test
+--- @param key string A `ValueStore` key.
+--- @return any The value (a boolean, a number or a string), or `nil` when the store has no such key.
+--- @luau value: (key: string) -> (boolean | number | string)?
+--- @example
+--- slotted.test.expect_eq(slotted.test.value("settings.reduced_motion"), true)
 function T.focused() return step({ op = "focused" }) end
+function T.value(key) return step({ op = "value", key = key }) end
 
 -- Expectations: pure Lua, no yield.
 

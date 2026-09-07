@@ -25,7 +25,9 @@
 //! The browser panel docks beside the chest: type in its search field, press
 //! `R` over a card for its recipes, `U` for its uses, `A` to bookmark it, and
 //! `Backspace` to go back. The `+` button stays disabled because a chest has
-//! no crafting grid to fill.
+//! no crafting grid to fill. `Tab` opens the settings screen over the chest,
+//! every M1 control on three tabs bound to a value store; `E` and `Q` switch
+//! its tabs, `Esc` closes it.
 //!
 //! The scene, the orbit and the screenshot plumbing are lifted from
 //! `spikes/glass-ui`. Everything else comes out of `lib.rs`, which the headless
@@ -39,7 +41,7 @@ use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::ui::ui_transform::UiGlobalTransform;
 use bevy::window::{PrimaryWindow, WindowResolution};
-use chest::{ChestBinding, ChestDemoPlugin};
+use chest::{ChestBinding, ChestDemoPlugin, ChestSettingsPlugin};
 use showcase::backdrop::{BackdropPlugin as SceneBackdropPlugin, MainCamera};
 use slotted::prelude::*;
 use slotted::theme::blur::{BackdropPlugin, BackdropSource};
@@ -123,7 +125,7 @@ fn main() {
         divisor: 4,
         clear_color: Color::srgb(0.043, 0.055, 0.078),
     })
-    .add_plugins(ChestDemoPlugin)
+    .add_plugins((ChestDemoPlugin, ChestSettingsPlugin))
     .insert_resource(ClearColor(Color::srgb(0.043, 0.055, 0.078)))
     .insert_resource(chest::CheatMode(cli.cheat))
     // The HUD position editor: `F7` toggles it, and where the player leaves
@@ -177,7 +179,8 @@ fn mark_backdrop_source(mut commands: Commands, cameras: Query<Entity, With<Main
 /// running example hot-reloads: saving `assets/screens/demo_chest.screen.ron`
 /// re-registers the definition and respawns the open chest on the same menu.
 /// (`chest::demo_screen` still reads the same file with `std::fs`; the tests
-/// use it to skip the asset server entirely.)
+/// use it to skip the asset server entirely.) The settings screen is loaded
+/// the same way, over the compiled-in copy `SettingsDemoPlugin` registered.
 fn setup_screen(
     mut commands: Commands,
     assets: Res<AssetServer>,
@@ -188,6 +191,7 @@ fn setup_screen(
         assets.load(format!("themes/{}.theme.ron", cli.theme)),
     ));
     screen_assets.load(&assets, chest::SCREEN_PATH);
+    screen_assets.load(&assets, showcase::settings::SCREEN_PATH);
 }
 
 /// Opens the chest the first frame `demo:chest` is registered, which is the

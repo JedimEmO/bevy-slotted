@@ -437,6 +437,18 @@ pub mod by {
         }
     }
 
+    /// A control by its kind: `control("slider")` is every slider row,
+    /// `control("tabs")` every tabs root. A bare name is a built-in
+    /// (`slotted:<name>`); a namespaced id is taken as written.
+    pub fn control(kind: &str) -> Locator {
+        let id = if kind.contains(':') {
+            kind.to_owned()
+        } else {
+            format!("slotted:{kind}")
+        };
+        widget_kind(WidgetKind::new(&id))
+    }
+
     /// A node by its widget kind.
     pub fn widget_kind(kind: WidgetKind) -> Locator {
         Locator {

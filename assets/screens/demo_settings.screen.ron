@@ -1,0 +1,156 @@
+// The settings screen of `examples/chest` and the showcase (menus M1,
+// package D): a fixture that puts every M1 control on one screen, not yet
+// the M2 settings template.
+//
+// Every control is bound to a `settings.*` key of the `ValueStore`, which the
+// `showcase::settings` module seeds, rules and guards. The screen itself owns
+// no value: a control paints what the store holds and asks the store to
+// change it. No control writes its own height either; the theme's
+// `sizes.control_height` does.
+//
+// `initial_focus: tabs` lands on the first tab button, which is the first
+// focusable under the tabs node. `TabNext` (`E`, the right trigger) walks
+// the tabs from anywhere on the screen.
+#![enable(implicit_some)]
+(
+    kind: "demo:settings",
+    presentation: (mode: "modal", transition: "fade", back: "pop"),
+    initial_focus: "tabs",
+    root: (
+        type: "panel",
+        role: "panel",
+        layout: (direction: "column", gap: 2.0, padding: 3.0, width: 720.0),
+        tags: {"test_id": "settings_panel"},
+        children: [
+            (type: "text", key: "demo.settings.title", style: "title", tags: {"test_id": "title"}),
+            (
+                type: "tabs",
+                bind: "settings.tab",
+                tags: {"test_id": "tabs"},
+                tabs: [
+                    (id: "display", label: "demo.settings.tab.display"),
+                    (id: "audio", label: "demo.settings.tab.audio"),
+                    (id: "controls", label: "demo.settings.tab.controls"),
+                ],
+                children: [
+                    // Display: one of each value control.
+                    (
+                        type: "panel",
+                        role: "invisible",
+                        layout: (direction: "column", gap: 1.0),
+                        tags: {"test_id": "display_page"},
+                        children: [
+                            (type: "select", label: "demo.settings.display.resolution",
+                             bind: "settings.resolution",
+                             options: [
+                                 (id: "1280x720", label: "demo.settings.resolution.hd"),
+                                 (id: "1920x1080", label: "demo.settings.resolution.fhd"),
+                                 (id: "2560x1440", label: "demo.settings.resolution.qhd"),
+                             ],
+                             tags: {"test_id": "resolution"}),
+                            (type: "slider", label: "demo.settings.display.ui_scale",
+                             min: 0.5, max: 3.0, step: 0.25, format: "{value:.2}×",
+                             bind: "settings.ui_scale",
+                             tags: {"test_id": "ui_scale"}),
+                            (type: "toggle", label: "demo.settings.display.reduced_motion",
+                             style: "switch", bind: "settings.reduced_motion",
+                             tags: {"test_id": "reduced_motion"}),
+                            (type: "radio_group", label: "demo.settings.display.colour_mode",
+                             bind: "settings.colour_mode",
+                             options: [
+                                 (id: "normal", label: "demo.settings.colour.normal"),
+                                 (id: "deuteranopia", label: "demo.settings.colour.deuteranopia"),
+                                 (id: "high_contrast", label: "demo.settings.colour.high_contrast"),
+                             ],
+                             tags: {"test_id": "colour_mode"}),
+                        ],
+                    ),
+                    // Audio: twelve rows in a scroll panel, three of them sliders.
+                    (
+                        type: "scroll",
+                        layout: (direction: "column", gap: 1.0, height: 220.0),
+                        tags: {"test_id": "audio_scroll"},
+                        children: [
+                            (type: "text", key: "demo.settings.audio.volume", style: "heading",
+                             tags: {"test_id": "audio_heading_volume"}),
+                            (type: "slider", label: "demo.settings.audio.master",
+                             min: 0.0, max: 100.0, step: 5.0, format: "{value}%",
+                             bind: "settings.audio.master", tags: {"test_id": "audio_master"}),
+                            (type: "slider", label: "demo.settings.audio.music",
+                             min: 0.0, max: 100.0, step: 5.0, format: "{value}%",
+                             bind: "settings.audio.music", tags: {"test_id": "audio_music"}),
+                            (type: "slider", label: "demo.settings.audio.effects",
+                             min: 0.0, max: 100.0, step: 5.0, format: "{value}%",
+                             bind: "settings.audio.effects", tags: {"test_id": "audio_effects"}),
+                            (type: "separator", tags: {"test_id": "audio_sep_1"}),
+                            (type: "text", key: "demo.settings.audio.output", style: "heading",
+                             tags: {"test_id": "audio_heading_output"}),
+                            (type: "select", label: "demo.settings.audio.device",
+                             bind: "settings.audio.device",
+                             options: [
+                                 (id: "auto", label: "demo.settings.device.auto"),
+                                 (id: "speakers", label: "demo.settings.device.speakers"),
+                                 (id: "headphones", label: "demo.settings.device.headphones"),
+                             ],
+                             tags: {"test_id": "audio_device"}),
+                            (type: "toggle", label: "demo.settings.audio.mute_in_background",
+                             style: "switch", bind: "settings.audio.mute_in_background",
+                             tags: {"test_id": "audio_mute"}),
+                            (type: "toggle", label: "demo.settings.audio.subtitles",
+                             style: "checkbox", bind: "settings.audio.subtitles",
+                             tags: {"test_id": "audio_subtitles"}),
+                            (type: "separator", tags: {"test_id": "audio_sep_2"}),
+                            (type: "text", key: "demo.settings.audio.accessibility", style: "heading",
+                             tags: {"test_id": "audio_heading_accessibility"}),
+                            (type: "toggle", label: "demo.settings.audio.mono",
+                             style: "checkbox", bind: "settings.audio.mono",
+                             tags: {"test_id": "audio_mono"}),
+                        ],
+                    ),
+                    // Controls: four keyboard bindings and a name.
+                    (
+                        type: "panel",
+                        role: "invisible",
+                        layout: (direction: "column", gap: 1.0),
+                        tags: {"test_id": "controls_page"},
+                        children: [
+                            (type: "key_binding", action: "accept", device: "keyboard",
+                             label: "demo.settings.controls.accept", tags: {"test_id": "bind_accept"}),
+                            (type: "key_binding", action: "back", device: "keyboard",
+                             label: "demo.settings.controls.back", tags: {"test_id": "bind_back"}),
+                            (type: "key_binding", action: "tab_prev", device: "keyboard",
+                             label: "demo.settings.controls.tab_prev", tags: {"test_id": "bind_tab_prev"}),
+                            (type: "key_binding", action: "tab_next", device: "keyboard",
+                             label: "demo.settings.controls.tab_next", tags: {"test_id": "bind_tab_next"}),
+                            (type: "separator", tags: {"test_id": "controls_sep"}),
+                            (type: "text_field", label: "demo.settings.controls.player_name",
+                             placeholder: "demo.settings.controls.player_name_hint",
+                             max_len: 16, bind: "settings.player_name",
+                             tags: {"test_id": "player_name"}),
+                        ],
+                    ),
+                ],
+            ),
+            (type: "separator", tags: {"test_id": "footer_sep"}),
+            // Footer: a hint that reads the live bindings, the reset button
+            // pushed to the right.
+            (
+                type: "panel",
+                role: "invisible",
+                layout: (direction: "row", gap: 1.0, align: "center"),
+                tags: {"test_id": "footer"},
+                children: [
+                    (type: "image", path: "icons/hint_info.png", width: 16.0, height: 16.0,
+                     tags: {"test_id": "footer_icon"}),
+                    (type: "rich_text", key: "demo.settings.footer", style: "muted", wrap: false,
+                     tags: {"test_id": "footer_hint"}),
+                    (type: "spacer", tags: {"test_id": "footer_spacer"}),
+                    (type: "button", label: "demo.settings.reset", variant: "secondary", compact: true,
+                     tags: {"test_id": "reset"}),
+                    (type: "button", widget: "slotted:close", label: "demo.settings.done",
+                     variant: "primary", compact: true, tags: {"test_id": "done"}),
+                ],
+            ),
+        ],
+    ),
+)

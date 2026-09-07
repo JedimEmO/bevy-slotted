@@ -19,9 +19,12 @@ use bevy::prelude::*;
 use bevy::window::WindowRef;
 use slotted_ecs::{MenuAction, Modifiers, SlotClicked};
 use slotted_model::{Button, ClickAction};
+use slotted_ui::widgets::select::SelectOptionNode;
+use slotted_ui::widgets::slider::SliderParts;
 use slotted_ui::{
-    FocusRing, FocusRingState, InputMode, InputModeChanged, ScreenKind, ScreenStack,
-    TooltipRequest, TooltipTier, UiAction, UiBindings,
+    FocusRing, FocusRingState, InputMode, InputModeChanged, ScreenKind, ScreenStack, SelectState,
+    SetValue, SliderState, TabButton, TabsState, TooltipRequest, TooltipTier, UiAction, UiBindings,
+    Value, ValueStore,
 };
 
 use crate::harness::UiHarness;
@@ -455,6 +458,133 @@ impl UiHarness {
             .world_mut()
             .query_filtered::<&FocusRingState, With<FocusRing>>();
         q.iter(self.app.world()).next().copied().unwrap_or_default()
+    }
+}
+
+impl UiHarness {
+    // ---- values and controls (menus M1) --------------------------------------
+
+    /// The `ValueStore` entry under `key`, if any.
+    pub fn value(&self, key: &str) -> Option<Value> {
+        self.world()
+            .get_resource::<ValueStore>()
+            .and_then(|store| store.get(key).cloned())
+    }
+
+    /// Writes a `SetValue` for `key` with no source and runs one frame, so
+    /// the store's rules and guards apply and every bound control repaints.
+    /// What a game or a mod does; a test that wants to bypass the rules
+    /// seeds `ValueStore::insert` directly.
+    pub fn set_value(&mut self, key: &str, value: impl Into<Value>) {
+        self.world_mut().write_message(SetValue {
+            key: key.to_owned(),
+            value: value.into(),
+            source: None,
+        });
+        self.step(1);
+    }
+
+    /// Presses on a slider's track where the thumb is, drags to `fraction`
+    /// (`0.0..=1.0` along the track) and releases. Every intermediate move
+    /// is a write with the slider as source, as a real scrub is.
+    ///
+    /// `entity` is the slider row (the node carrying `SliderState`).
+    pub fn drag_slider(&mut self, entity: Entity, fraction: f32) {
+        let state = self
+            .world()
+            .get::<SliderState>(entity)
+            .unwrap_or_else(|| panic!("{entity} is not a slider row"))
+            .clone();
+        let parts = *self
+            .world()
+            .get::<SliderParts>(entity)
+            .expect("a slider row carries its parts");
+        let track = self.rect_of(parts.track);
+        let at = |f: f32| Vec2::new(track.min.x + track.width() * f, track.center().y);
+        #[allow(clippy::cast_possible_truncation)]
+        let from = state.fraction() as f32;
+        self.pointer_move_to(at(from));
+        self.pointer_press(PointerButton::Primary);
+        // Two moves, so a target that equals the start still produces a drag
+        // Bevy's picking recognises (a zero delta is "standing still").
+        self.pointer_move_to(at(f32::midpoint(from, fraction.clamp(0.0, 1.0))));
+        self.pointer_move_to(at(fraction.clamp(0.0, 1.0)));
+        self.pointer_release(PointerButton::Primary);
+    }
+
+    /// Opens a select's popup with a click on the row and clicks the option
+    /// whose id is `id`. Panics when the select has no such option.
+    ///
+    /// `entity` is the select row (the node carrying `SelectState`).
+    pub fn select_option(&mut self, entity: Entity, id: &str) {
+        let state = self
+            .world()
+            .get::<SelectState>(entity)
+            .unwrap_or_else(|| panic!("{entity} is not a select row"))
+            .clone();
+        let index = state.index_of(id).unwrap_or_else(|| {
+            let ids: Vec<&str> = state.options.iter().map(|o| o.id.as_str()).collect();
+            panic!("the select {entity} has no option {id:?}; it has {ids:?}")
+        });
+        self.click(entity);
+        self.settle();
+        let mut q = self.app.world_mut().query::<(Entity, &SelectOptionNode)>();
+        let option = q
+            .iter(self.app.world())
+            .find(|(_, node)| node.select == entity && node.index == index)
+            .map_or_else(
+                || panic!("the click on {entity} opened no popup with option {id:?}"),
+                |(e, _)| e,
+            );
+        self.click(option);
+        self.step(1);
+    }
+
+    /// Focuses a text field row, enters editing with `Accept`, types `text`
+    /// and commits with Enter. The field ends up focused, not editing.
+    pub fn type_into(&mut self, entity: Entity, text: &str) {
+        self.set_focus(Some(entity));
+        self.action(UiAction::Accept);
+        self.type_text(text);
+        self.key(KeyCode::Enter);
+    }
+
+    /// Clicks the tab button of `id` on a `tabs` node. Panics when the tabs
+    /// node has no such tab.
+    ///
+    /// `entity` is the tabs root (the node carrying `TabsState`).
+    pub fn switch_tab(&mut self, entity: Entity, id: &str) {
+        let state = self
+            .world()
+            .get::<TabsState>(entity)
+            .unwrap_or_else(|| panic!("{entity} is not a tabs node"))
+            .clone();
+        let index = state
+            .tabs
+            .iter()
+            .position(|tab| tab.id == id)
+            .unwrap_or_else(|| {
+                let ids: Vec<&str> = state.tabs.iter().map(|t| t.id.as_str()).collect();
+                panic!("the tabs {entity} have no tab {id:?}; they have {ids:?}")
+            });
+        let mut q = self.app.world_mut().query::<(Entity, &TabButton)>();
+        let button = q
+            .iter(self.app.world())
+            .find(|(_, b)| b.tabs == entity && b.index == index)
+            .map(|(e, _)| e)
+            .expect("every tab has a button");
+        self.click(button);
+        self.settle();
+    }
+
+    /// Focuses a `key_binding` row, starts a capture with `Accept` and
+    /// presses `key`, which becomes the action's first binding.
+    pub fn capture_key(&mut self, entity: Entity, key: KeyCode) {
+        self.set_focus(Some(entity));
+        self.action(UiAction::Accept);
+        self.step(1);
+        self.key(key);
+        self.step(1);
     }
 }
 

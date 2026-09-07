@@ -79,6 +79,9 @@ uuid = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
 slotted = { path = "../slotted", version = "0.1.0", features = ["script-luaur"] }
+# The settings demo (`tests/settings.rs`): the screen, its store seed, rules
+# and guard are the showcase's, so the test drives what the example opens.
+showcase = { path = "../../examples/showcase" }
 slotted-testutils = { workspace = true }
 pretty_assertions = { workspace = true }
 

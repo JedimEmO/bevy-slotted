@@ -1,6 +1,6 @@
 # bevy_slotted implementation plan
 
-Status: v2.1, 2026-09-07, Phases 0 to 7 complete; Menus M0 (input model, focus ring, screen stack, layout model) landed. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
+Status: v2.2, 2026-09-07, Phases 0 to 7 complete; Menus M0 (input model, focus ring, screen stack, layout model) and M1 (type scale, rich text, localisation arguments, value store, controls) landed. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
 
 ## 1. Goal and non-goals
 
@@ -417,9 +417,19 @@ the left stick; `InputMode` and a focus ring; explicit `nav.*` links and
 `initial_focus`; a `ScreenStack` with `page`, `modal` and `overlay`
 presentation and `Back` popping it; and a layout model with `align`,
 `justify`, `grow`, `wrap`, `overflow`, `place` and typed lengths. The
-inventory screens and the examples open through the stack. M1 to M4 (the
-typography and rich text, the controls, the settings bindings, the
-`slotted-menu` crate) follow the proposal.
+inventory screens and the examples open through the stack. M1 is done too
+(2026-09-07, contract `docs/design/menus-m1-contract.md`, notes
+`docs/design/menus-m1-notes-{A,B,C,D}.md`): a type scale in the theme tokens
+with every text role pointing into it; `rich_text` with bold, colour, size,
+`{key:..}` glyphs and `{icon:..}`; Fluent arguments on every localised
+string; a `ValueStore` with rules, guards and the `SetValue` /
+`ValueChanged` / `ValueRefused` messages; `FocusedAction` as the one way a
+control gets input; and the controls themselves (`button` rewritten,
+`toggle`, `slider`, `select`, `radio_group`, `key_binding`, `text_field`,
+`list`, `scroll`, `tabs`, `separator`, `spacer`, `image`), exercised by the
+`demo:settings` fixture the chest example opens on Tab. M2 to M4 (the
+settings bindings and templates, the `slotted-menu` crate) follow the
+proposal.
 
 ## 7. Testing strategy
 
@@ -484,7 +494,7 @@ each). What shipped, crate by crate:
 | `slotted-test`, `slotted-testutils` | The public headless harness and the internal fakes. |
 | `slotted` | The facade: `SlottedPlugins`, the prelude, the feature flags. `SlottedPlugins::server()` with `--no-default-features --features server` is a real dedicated-server graph: 160 crates against a default build's 300, with no Bevy UI stack on either target. |
 
-**1054 tests pass** (after Menus M0) with every feature on, plus two more that compile only in
+**1142 tests pass** (after Menus M1) with every feature on, plus two more that compile only in
 the dedicated-server profile and run from `just server-check`, and three behind
 a GPU gate that cannot currently be lifted (see the limitations below). The three native
 examples and the web playground all run, each covered by its own harness tests

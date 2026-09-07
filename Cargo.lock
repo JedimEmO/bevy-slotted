@@ -5552,6 +5552,7 @@ dependencies = [
  "pretty_assertions",
  "ron",
  "serde",
+ "showcase",
  "slotted",
  "slotted-browser",
  "slotted-ecs",

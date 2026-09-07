@@ -5,15 +5,17 @@
 //! live the modules the native examples and the web playground share: the
 //! chest's menu and contents ([`chest`]), the machine's simulation and face
 //! widget ([`machine`]), the copper chest the Lua mods build ([`mods`]), the
-//! cube ring and orbit every scene sits in front of ([`backdrop`]), and the
-//! two screen files compiled in so a scene switch never waits on an asset
-//! handle ([`screens`]).
+//! cube ring and orbit every scene sits in front of ([`backdrop`]), the
+//! settings screen's store, rules and guard ([`settings`]), and the screen
+//! files compiled in so a scene switch never waits on an asset handle
+//! ([`screens`]).
 
 pub mod backdrop;
 pub mod chest;
 pub mod machine;
 pub mod mods;
 pub mod screens;
+pub mod settings;
 
 /// One of the eight scenes, in rail order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

@@ -38,7 +38,7 @@ any theme, and a theme that forgets a role is caught by
     roles: {
         "panel": Glass(tint: "#141A247A", border: "#FFFFFF1A", radius: 16.0,
                        elevation: Some("high")),
-        "panel.title": Text(color: "$text", size: 15.0),
+        "panel.title": Text(color: "$text", size: "$title"),
         "slot": Solid(fill: "#0B0E14A6", border: "$hairline", radius: 8.0),
         "slot.hover": Solid(fill: "#7FD1FF1F", border: "$accent", radius: 8.0),
     },
@@ -69,22 +69,42 @@ how you opt into distinguishing it.
 State changes are role changes. The slot widget swaps `slot` for `slot.hover`,
 and only the changed node repaints.
 
-`roles::ALL` is the 36 well-known roles. A theme that covers them covers every
+`roles::ALL` is the 89 well-known roles. A theme that covers them covers every
 shipped widget.
 
 | Group | Roles |
 |---|---|
 | Panels | `panel`, `panel.title` |
 | Slots | `slot`, `slot.hover`, `slot.focus`, `slot.carried`, `count` |
-| Text | `text`, `text.muted` |
-| Buttons | `button`, `button.primary`, `button.hover` |
+| Text | `text`, `text.muted`, `text.display`, `text.heading`, `text.label`, `text.caption`, `text.key` (a `{key:..}` glyph), `text.icon` (an item name in a paragraph), `control.label` (a control's label) |
+| Buttons | `button`, `button.primary`, `button.danger`, `button.hover`, `button.focus`, `button.pressed`, `button.disabled` |
+| Toggles | `toggle`, `toggle.on`, `toggle.thumb`, `toggle.hover`, `toggle.focus`, `toggle.disabled`, `checkbox`, `checkbox.on` |
+| Sliders | `slider`, `slider.fill`, `slider.thumb`, `slider.text`, `slider.focus`, `slider.disabled` |
+| Selects | `select`, `select.hover`, `select.focus`, `select.popup`, `select.option`, `select.option.active`, `radio`, `radio.active` |
+| Key bindings | `key_binding`, `key_binding.capturing` |
+| Text fields | `text_field`, `text_field.focus`, `text_field.disabled`, `text_field.placeholder` |
+| Scrolling and lists | `scroll.bar`, `scroll.thumb`, `list.row`, `list.row.hover`, `list.row.focus`, `list.row.selected` |
+| Tabs | `tabs.bar`, `tab`, `tab.active`, `tab.hover`, `tab.focus` |
+| Decor | `separator` |
 | Tooltips | `tooltip`, `tooltip.frame` |
-| Rails and tabs | `rail`, `tab.rail`, `tab.side`, `tab.side.open`, `tab.side.header`, `tab.side.content` |
+| Rails and side tabs | `rail`, `tab.rail`, `tab.side`, `tab.side.open`, `tab.side.header`, `tab.side.content` |
 | Meters | `tank`, `tank.fill`, `bar`, `bar.fill`, `bar.text`, `progress`, `progress.fill` |
 | Icon buttons | `icon_button`, `icon_button.hover` |
 | Virtual grids | `virtual_grid`, `virtual_grid.scrollbar`, `virtual_grid.thumb` |
 | Viewports | `viewport` |
+| Focus and stack | `focus.ring`, `scrim` |
 | HUD | `hud.panel`, `hud.crosshair`, `hud.edit.frame` |
+
+The controls follow one convention: `<control>` at rest, then `.hover`,
+`.focus`, `.active` (or `.on`, `.pressed`, `.selected`, `.capturing` where the
+word fits) and `.disabled`, and the states stack, so a focused primary button
+asks for `button.primary.focus` and a hovered active radio segment for
+`radio.active.hover`. The dotted fallback resolves each of those through
+`button.primary`, then `button`, which is why the table above lists the
+states once per control rather than every combination. When two states hold at
+once the control picks the role in the order `disabled`, then `active`, then
+`focus`, then `hover`. A theme may define `button` once and let every state
+fall through to it, or draw each one.
 
 `carried`, the stack following the pointer, is deliberately outside `ALL`:
 leaving it out is legal and the item view draws the stack unadorned.
@@ -101,7 +121,7 @@ spaces its children uses it, and no theme defines a material for it.
 | `Sliced` | `image`, `border` inset in image pixels, `scale` (default `1.0`), optional `tint` |
 | `Glass` | `tint`, optional `blur` radius, `fallback_alpha_boost` (default `0.35`), plus the `Solid` fields |
 | `Shader` | `shader` path and a map of `f32` `params`. Logged and skipped for now |
-| `Text` | `color`, `size` in pixels, optional `font` (a `tokens.fonts` key) and `shadow` colour |
+| `Text` | `color`, `size` (a number in pixels or `"$name"` into `tokens.typography`), optional `font` (a `tokens.fonts` key), `weight` (100 to 900) and `shadow` colour. See [Typography](#typography) |
 | `Tiled` | `image` of a repeating tile, `scale`, optional `tint`, plus the `Solid` fields. Paper's dot grid |
 | `Dashed` | `fill`, `stroke`, `width`, `dash` and `gap` in pixels, plus `radius` and `elevation`. Paper's hatched rarity stamp |
 | `CutCorners` | `fill`, optional `border` and `border_width`, `cut` length, `corners`, optional `bar` with `bar_height` and `glow`, plus `elevation`. Neon's chamfer and rarity bar |
@@ -135,11 +155,12 @@ elevation colours and rarity colours.
 | Token | Fields | Meaning |
 |---|---|---|
 | `spacing` | `xs`, `sm`, `md`, `lg`, `xl` | Logical pixels. `xs` icon to count, `sm` slot gap, `md` panel padding, `lg` between sections, `xl` between panels. A screen's `gap` and `padding` are multiples of `sm`. |
-| `sizes` | `slot_size`, `slot_gap`, `panel_width`, `card_width`, `card_height`, `chrome_height` | Widget geometry in UI units. Every field is optional and defaults to the number the code used before it was a token: a 44 px slot, the spacing scale's `sm` step between slots, and the item browser's 352 px panel of 75x94 cards above 190 px of chrome. See [Sizes and UI scale](#sizes-and-ui-scale). |
+| `sizes` | `slot_size`, `slot_gap`, `panel_width`, `card_width`, `card_height`, `chrome_height`, `control_height`, `control_height_compact` | Widget geometry in UI units. Every field is optional and defaults to the number the code used before it was a token: a 44 px slot, the spacing scale's `sm` step between slots, the item browser's 352 px panel of 75x94 cards above 190 px of chrome, and a 44 px control row (28 compact). See [Sizes and UI scale](#sizes-and-ui-scale). |
 | `radii` | `sm`, `md`, `lg` | Slots and small buttons, buttons and tooltips, panels. |
 | `elevation` | a map of `(x, y, blur, spread, color)` | Named shadow levels, `low`, `mid` and `high` by convention. `x` defaults to 0; paper's ink shadows are `2px 2px 0`. |
 | `durations` | `fast`, `normal`, `slow`, `hover_delay` | Milliseconds. The first three are motion tiers before scaling: hover and press, fades, squashes and fly-to-slot, stagger. `hover_delay` is how long a slot is hovered before its compact tooltip appears; it defaults to 120 and is not scaled by `Motion`. |
 | `fonts` | a map of names to `(family, path, system)` | What a text role's `font` names. With `path` the file is loaded; with `system: true` the family goes to the OS font database; with neither, Bevy's default face is used and the family name documents which file completes the look. The three shipped themes use `path`, pointing at the OFL faces under `assets/fonts/`; see `assets/fonts/README.md`. |
+| `typography` | a map of names to `(size, font, weight, line_height)` | The type scale a `Text` material's `"$name"` size points at. See [Typography](#typography). |
 | `motion` | `easing` and a map of `MotionPreset` to `(duration, easing)` | Per-preset overrides of the duration tiers and the curve. |
 | `blur` | `radius`, `backdrop_divisor` | Read only with the `blur` feature. |
 | `palette` | a map of names to colours | The `$name` targets. |
@@ -170,6 +191,65 @@ Two numbers are deliberately not tokens yet. The recipe layouts in
 `slotted-browser` (`category.rs`) place their slots from the default constants,
 because `RecipeCategory::size` and `layout` are a public trait a mod
 implements, and threading sizes through them changes that contract.
+
+## Typography
+
+A theme carries a type scale, and every text role points into it rather than
+naming a pixel size:
+
+```ron
+typography: {
+    "display": (size: 40.0, font: "display", weight: 600),
+    "title":   (size: 24.0, font: "body", weight: 600),
+    "heading": (size: 18.0, font: "body", weight: 600),
+    "body":    (size: 15.0, font: "body", line_height: 1.4),
+    "label":   (size: 13.0, font: "body", weight: 500),
+    "caption": (size: 12.0, font: "body"),
+},
+roles: {
+    "panel.title": Text(color: "$text", size: "$title"),
+    "text":        Text(color: "$text", size: "$body"),
+    "text.key":    Text(color: "$accent", size: "$label", weight: 700),
+},
+```
+
+A `TypeStyle` is a `size` in pixels, an optional `font` (a `tokens.fonts`
+key), an optional variable-font `weight` (100 to 900, 400 when absent) and an
+optional `line_height` relative to the font size. A `Text` material's `size`
+is a `ThemeSize`: a bare number, or `"$name"`. A `$` size brings the style's
+font and weight with it unless the material names its own, and the style's
+line height is written as Bevy's `LineHeight` on every text node the role
+paints, so swapping roles never keeps the last one's metric.
+
+The six steps, in every shipped theme, in descending size:
+
+| Step | glass | paper | neon | `TextRole` |
+|---|---|---|---|---|
+| `display` | 40 Barlow Condensed | 36 IBM Plex Sans | 42 Rajdhani | `display` |
+| `title` | 24 | 22 | 26 Rajdhani | `title` (`panel.title`) |
+| `heading` | 18 | 17 | 19 | `heading` |
+| `body` | 15, line height 1.4 | 14, 1.45 | 15, 1.3 | `body` (`text`) |
+| `label` | 13 | 12 IBM Plex Mono | 13 | `label` |
+| `caption` | 12 | 11 | 12 | `caption`, `muted`, `count` |
+
+`Theme::size(&ThemeSize)` resolves a size to pixels, `Theme::type_style` hands
+back the style a `$` size names, and `Theme::dangling_typography_refs()` lists
+every `$name` no step defines, beside `dangling_palette_refs()`; a dangling
+size paints at 13 px so the screen stays legible while the log says which
+role. Anything that paints text the apply system cannot reach (a rich text
+span, a slider's readout) goes through `Paint::for_role`, `Paint::text_font`
+and `Paint::text_color`, so it cannot disagree with a themed node.
+
+## Control sizes
+
+`sizes.control_height` (44 in glass, 36 in paper, 40 in neon) and
+`control_height_compact` (28, 24, 28) are the height of every M1 control row
+(buttons, toggles, sliders, selects, key bindings, text fields) and of the
+compact ones (rail buttons, list rows, tab buttons). A screen file never sets
+a control's height; a theme that wants denser settings changes these two
+numbers and every screen follows. The tokens decide the rest of a control's
+geometry too: the toggle's thumb travels `spacing.md`, the slider track is
+`spacing.sm + 2` tall, the corners take `radii.sm`.
 
 ## Motion
 

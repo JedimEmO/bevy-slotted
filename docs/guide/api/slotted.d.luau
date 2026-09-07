@@ -140,6 +140,10 @@ export type SlottedTest = {
 	gamepad: (button: string) -> (),
 	--- Perform a UI action through the first keyboard key bound to it, so a test reads as what the player meant rather than which key they pressed.
 	action: (name: string) -> (),
+	--- Write a value through the store, as a control would: the key's rule clamps and snaps it, every guard may refuse it, and each bound control repaints from what the store kept.
+	set_value: (key: string, value: boolean | number | string) -> (),
+	--- Focus a text field, start editing with `accept`, type `text` and commit with Enter, so the field's bound value is written.
+	type_into: (loc: { [string]: any }, text: string) -> (),
 	--- What is in a slot.
 	stack_at: (loc: { [string]: any }) -> { item: string, count: number }?,
 	--- The rendered text of a node, after localisation.
@@ -154,6 +158,8 @@ export type SlottedTest = {
 	log_contains: (text: string) -> boolean,
 	--- The tags of the node that has focus, which is where the focus ring sits and what `accept` would activate.
 	focused: () -> { [string]: string }?,
+	--- The value the store holds under `key`: what every control bound to it shows.
+	value: (key: string) -> (boolean | number | string)?,
 	--- Fail the test unless `cond` is truthy. Expectations are plain Lua and do not yield.
 	expect: (cond: any, msg: string?) -> (),
 	--- Fail the test unless `a == b`, reporting both values.

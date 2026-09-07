@@ -169,16 +169,211 @@ where only the visible rows exist as entities. For a list of thousands.
 
 ### `text`
 
-| Field | Type | |
-|---|---|---|
-| `key` | string | A locale key. Shown verbatim when no locale resolves it. |
-| `style` | string | `title`, `body`, `muted` or `count`, mapping to the theme roles `panel.title`, `text`, `text.muted` and `count`. |
+| Field | Type | Default | |
+|---|---|---|---|
+| `key` | string | required | A locale key. Shown verbatim when no locale resolves it. |
+| `style` | string | required | `display`, `title`, `heading`, `body`, `muted`, `label`, `caption` or `count`, mapping to the theme roles `text.display`, `panel.title`, `text.heading`, `text`, `text.muted`, `text.label`, `text.caption` and `count`. |
+| `args` | map of name to value | `{}` | Fluent arguments: `args: {"count": 3}` fills `{ $count }` in the string. A value is a bool, a number or a string. |
+| `wrap` | bool | `true` | Wrap at the node's width. `false` is one line, however wide. |
+| `align` | `left`, `center`, `right` | `left` | Line alignment. |
+| `max_lines` | integer | none | Truncate with `…` once the laid-out paragraph passes this many lines. |
+
+A `text` node is plain: markup tags in the string are shown as written. For
+bold runs and key glyphs use `rich_text`.
+
+### `rich_text`
+
+A paragraph in the [rich-text markup](rich-text.md): `[b]`, `[i]`, `[color=..]`,
+`[size=..]`, `{key:accept}`, `{icon:demo:chest}`.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `key` | string | required | A locale key. The resolved string is the markup, so `.ftl` files may carry tags. |
+| `style` | string | `body` | The base style, as for `text`. |
+| `args`, `wrap`, `align` | | as for `text` | `max_lines` is accepted but ignored on a `rich_text`. |
+| `inline` | bool | `false` | A single-line row whose `{icon:..}` runs are real images beside the text rather than item names in it. |
+
+```ron
+(type: "rich_text", key: "settings.footer", style: "caption",
+ tags: {"test_id": "footer"}),
+```
+
+with `settings-footer = {key:back} back · {key:tab_next} next tab` in the
+locale file renders `Esc back · E next tab` on a keyboard and `B back · RB next
+tab` on a pad, re-rendering when the input mode flips or a binding changes.
 
 ### `button`
 
+| Field | Type | Default | |
+|---|---|---|---|
+| `widget` | `"namespace:path"` | none | The behaviour: `slotted:sort` on a rail, `slotted:close` to pop the screen stack. Without one the button is a plain `Activate` source whose `tags` reach a mod's `widget_activate`. |
+| `label` | locale key | none | The text. |
+| `icon` | `IconDef` | none | An icon before the label. |
+| `variant` | `primary`, `secondary`, `danger` | `secondary` | Which of `button`, `button.primary`, `button.danger` it paints in. |
+| `disabled` | bool | `false` | Inert, and painted `.disabled`. |
+| `compact` | bool | `false` | `control_height_compact` tall rather than `control_height`. |
+
+A focused button activates on `Accept` from any device, and on a click. It does
+not carry `bevy_ui_widgets::Button`, so a rebound `Accept` key reaches it.
+
+### Value controls
+
+The five controls below and `text_field`, `list` and `tabs` are views of a
+value: each carries a binding, paints from it, and writes a `SetValue` when the
+player acts. The store validates the write and the control repaints from
+whatever the store decided, so a refused write snaps back with no code in the
+control. [values.md](values.md) is the store's page.
+
+Every one of them takes the same three binding fields:
+
 | Field | Type | |
 |---|---|---|
-| `widget` | `"namespace:path"` | The behaviour, `slotted:sort` or `slotted:close`. |
+| `bind` | string | A `ValueStore` key, `"settings.ui_scale"`. |
+| `property` | integer | A menu property instead. Only `Int` travels this way. |
+| `disabled` | bool | Inert, and painted `.disabled`. |
+
+A node with both `bind` and `property` is a load error naming the node. A node
+with neither keeps its own state. Each control writes one `Value` type:
+
+| Control | Writes |
+|---|---|
+| `toggle` | `Bool` |
+| `slider` | `Float` |
+| `select`, `radio_group` | `Text`, the option's `id` |
+| `key_binding` | nothing; it edits `UiBindings` |
+| `text_field` | `Text` |
+| `list` | `Int`, the selected row |
+| `tabs` | `Text`, the active tab's `id` |
+
+A screen never writes a control's height. The theme's `sizes.control_height`
+(44 in glass, 36 in paper, 40 in neon) and `control_height_compact` decide it,
+so the same settings screen sits right in all three ([themes.md](themes.md)).
+
+### `toggle`
+
+A switch or a checkbox with a label on its left. `Accept` flips it; so does a
+click anywhere on the row.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `label` | locale key | none | |
+| `style` | `switch`, `checkbox` | `switch` | A sliding thumb in `toggle` / `toggle.on`, or a square with a tick in `checkbox` / `checkbox.on`. |
+
+### `slider`
+
+A track with a fill, a thumb and a readout.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `label` | locale key | none | |
+| `min`, `max` | number | required | The range. |
+| `step` | number | `0` | The grid. `0` is one percent of the range. |
+| `format` | string | `"{value}"` | The readout: `{value}`, `{min}`, `{max}`, and `{value:.1}` for one decimal. |
+
+`Left` and `Right` step, repeating while held; `PagePrev` and `PageNext` move a
+tenth of the range. A press on the track jumps, a drag scrubs, and every move
+is its own `SetValue`, so a guard sees each one.
+
+### `select`
+
+A pill showing the current option between two chevrons.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `label` | locale key | none | |
+| `options` | array of `(id: ..., label: ...)` | required | `id` is what is written; `label` is a locale key. |
+
+`Left` and `Right` cycle in place, with wrap. In pointer mode `Accept` (or a
+click on the pill) opens a popup of the options under the pill: `Up` and `Down`
+move, `Accept` picks, `Back` closes the popup and is claimed, so the screen
+stays open.
+
+### `radio_group`
+
+The same data as `select`, laid out as a row of segments (`radio`,
+`radio.active`). `Left` and `Right` move and write at once, and stop at the
+ends. A click on a segment picks it.
+
+### `key_binding`
+
+A row that rebinds one action on one device.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `label` | locale key | the action's name | |
+| `action` | `UiAction` name | required | `accept`, `back`, `tab_next`, ... |
+| `device` | `keyboard`, `gamepad` | required | Which binding of the action. |
+| `disabled` | bool | `false` | |
+
+The cell shows the current binding as the same glyph text `{key:..}` uses.
+`Accept` enters capture (the cell shows `…` in `key_binding.capturing`); the
+next key or button replaces the action's first binding in `UiBindings` and
+writes `BindingChanged`. `Back` cancels; Escape can never be bound. This node
+has no `bind`: `UiBindings` is what it edits.
+
+### `text_field`
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `label` | locale key | none | To the left of the frame. |
+| `placeholder` | locale key | none | Shown while empty. |
+| `filter` | `any`, `numeric`, `integer` | `any` | What typing accepts. |
+| `max_len` | integer | none | Character cap. |
+
+Focus does not edit: a focused field shows the ring, and `Accept` or a click
+starts editing. Enter commits and writes; `Back` reverts to the bound value
+and is claimed. A filtered field writes on every change, so a guard's clamp
+shows live. A gamepad `Accept` writes `TextEntryRequested` for a game's own
+on-screen keyboard and nothing else.
+
+### `list`
+
+A one-column `virtual_grid` whose rows are focusable.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `source` | `"namespace:path"` | required | A registered `VirtualGridSource`. |
+| `rows` | integer | `6` | Visible rows, each `control_height_compact` tall. |
+
+`Up` and `Down` walk row to row and scroll the window. `Accept` (or a click)
+selects the row, writes its index, and triggers `Activate` on the row with a
+`row` tag carrying the index.
+
+### `scroll`
+
+A panel that clips and scrolls, with the wheel, with `PagePrev` / `PageNext`
+from a focused descendant, and by following focus into view.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `layout` | `Layout` | all defaults | `overflow` is forced to `scroll`. |
+| `scrollbar` | bool | `true` | Draw `scroll.bar` and `scroll.thumb` beside the content. |
+| `children` | array | `[]` | Direct children never shrink. |
+
+### `tabs`
+
+A tab bar over one page per tab. Exactly one page is visible; the others are
+hidden and take no focus.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `tabs` | array of `(id: ..., label: ..., icon: ...)` | required | `icon` is optional. |
+| `children` | array | `[]` | One page per tab, in the same order. |
+
+`TabPrev` and `TabNext` switch from anywhere on the screen and wrap; a click on
+a tab, or `Accept` on a focused one, switches too. Focus moves into the new
+page. `bind` carries the active tab's `id`.
+
+### `separator`, `spacer`, `image`
+
+Decoration: none is focusable, none is picked, and the harness ignores their
+motion when settling.
+
+| Node | Fields | |
+|---|---|---|
+| `separator` | `direction`: `row` (default) or `column` | A 1 px hairline in `separator` across the cross axis. |
+| `spacer` | `size`: a `Length`, default `"fill"` | Empty space; `fill` grows to take what is left. |
+| `image` | `path`, `width`, `height` | An image asset at a fixed size. |
 
 ### `tank`
 
@@ -289,11 +484,15 @@ A registered widget kind.
 | `params` | any value | unit | Interpreted by the widget. |
 | `children` | array | `[]` | Handed to the widget. |
 
-The built-in kinds are `slotted:panel`, `slotted:text`, `slotted:slot`,
-`slotted:slot_grid`, `slotted:button`, `slotted:action_rail`, `slotted:hotbar`,
-`slotted:tooltip`, `slotted:tank`, `slotted:bar`, `slotted:progress`,
-`slotted:side_tab`, `slotted:icon_button`, `slotted:virtual_grid` and
-`slotted:viewport`. The two you write by hand most often are
+The built-in kinds are `slotted:panel`, `slotted:text`, `slotted:rich_text`,
+`slotted:slot`, `slotted:slot_grid`, `slotted:button`, `slotted:close`,
+`slotted:action_rail`, `slotted:hotbar`, `slotted:tooltip`, `slotted:tank`,
+`slotted:bar`, `slotted:progress`, `slotted:side_tab`, `slotted:icon_button`,
+`slotted:virtual_grid`, `slotted:viewport`, and one per M1 control
+(`slotted:toggle`, `slotted:slider`, `slotted:select`, `slotted:radio_group`,
+`slotted:key_binding`, `slotted:text_field`, `slotted:list`, `slotted:scroll`,
+`slotted:tabs`, `slotted:separator`, `slotted:spacer`, `slotted:image`), whose
+`params` are the typed node's fields. The two you write by hand most often are
 
 ```ron
 (type: "custom", kind: "slotted:hotbar", params: (first: 54))
@@ -311,7 +510,10 @@ not write it in the file. It is what `bevy_a11y` announces and what a locator
 matches on: `Screen`, `Panel`, `Grid`, `Slot`, `Button`, `Text`, `Tooltip`,
 `Rail`, `Hotbar`, `Anchor`, `Carried`, `Browser`, `TextField`, `Chip`, `Card`,
 `RecipeView`, `RecipeSlot`, `Tab`, `Bookmark`, `Tank`, `Bar`, `SideTab`,
-`Viewport`, `HudLayer`, and `Custom(name)` for anything with no better fit.
+`Viewport`, `HudLayer`, the control roles `Toggle`, `Slider`, `Select`,
+`RadioGroup`, `KeyBinding`, `List`, `ListItem` (a list row, or a select
+popup's option), `ScrollView`, `Tabs`, `Decor` (a separator, spacer or image),
+and `Custom(name)` for anything with no better fit.
 
 ## Injection
 

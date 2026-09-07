@@ -13,7 +13,7 @@
 #![allow(clippy::unwrap_used)]
 
 use bevy::prelude::*;
-use chest::{ChestBinding, ChestDemoPlugin};
+use chest::{ChestBinding, ChestDemoPlugin, ChestSettingsPlugin};
 use pretty_assertions::assert_eq;
 use slotted_model::{InventoryRef, ToolbarAction};
 use slotted_test::prelude::*;
@@ -29,7 +29,7 @@ fn open_demo_chest_in(theme: &str) -> (UiHarness, Opened) {
     let registries = chest::load_registries();
     let mut harness = UiHarness::builder()
         .plugins(SlottedPlugins::headless())
-        .plugins(ChestDemoPlugin)
+        .plugins((ChestDemoPlugin, ChestSettingsPlugin))
         .registries(registries.clone())
         .resolution(1600.0, 900.0)
         .theme(theme)
@@ -364,6 +364,71 @@ fn escape_closes_the_chest_through_the_stack() {
     assert!(harness.stack().is_empty(), "East popped the entry");
     assert!(harness.try_find(&by::screen(kind)).is_none());
     assert!(harness.world().resource::<ChestBinding>().open.is_none());
+    harness.assert_conserved();
+}
+
+/// `Tab` (the `Menu` action) pushes the settings screen over the chest as a
+/// modal; the chest stays visible under it and `Escape` pops it back, with
+/// focus returning to the chest. The settings screen is the real
+/// `assets/screens/demo_settings.screen.ron` over the showcase's store seed.
+#[test]
+fn tab_opens_settings_over_the_chest_and_escape_closes_it() {
+    let (mut harness, opened) = open_demo_chest();
+    let chest = ScreenKind::new(chest::CHEST);
+    let settings = ScreenKind::new(chest::SETTINGS);
+    let first = chest_slot(&harness, 0);
+    assert_eq!(harness.focused(), Some(first));
+
+    harness.key(KeyCode::Tab);
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![chest.clone(), settings.clone()],
+        "Tab pushed the settings screen over the chest"
+    );
+    let root = harness.find(&by::screen(settings.clone()));
+    assert!(harness.is_visible(root));
+    assert!(
+        harness.is_visible(first),
+        "a modal keeps the chest visible under it"
+    );
+    assert_eq!(
+        harness.focused(),
+        Some(harness.find(&by::role(SemanticRole::Tab).within(root).index(0))),
+        "the modal's `initial_focus` is its first tab"
+    );
+    assert_eq!(
+        harness.find_all(&by::control("slider").within(root)).len(),
+        4,
+        "the settings controls are up"
+    );
+    assert!(
+        harness.world().resource::<ChestBinding>().open.is_some(),
+        "the chest is still open underneath"
+    );
+
+    // A second Tab does nothing: the screen is already on top.
+    harness.key(KeyCode::Tab);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![chest.clone(), settings]);
+
+    harness.key(KeyCode::Escape);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![chest], "Escape popped the settings");
+    assert!(
+        harness
+            .try_find(&by::screen(ScreenKind::new(chest::SETTINGS)))
+            .is_none()
+    );
+    assert_eq!(
+        harness
+            .focused()
+            .and_then(|e| harness.world().get::<slotted::ecs::SlotRef>(e).copied())
+            .map(|s| s.menu),
+        Some(opened.menu),
+        "focus is back on a chest slot"
+    );
+    assert!(harness.world().resource::<ChestBinding>().open.is_some());
     harness.assert_conserved();
 }
 

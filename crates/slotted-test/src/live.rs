@@ -11,6 +11,7 @@ use bevy::ui::ui_transform::UiGlobalTransform;
 use bevy::window::{PrimaryWindow, WindowRef};
 use slotted_model::Value;
 use slotted_script::{TestLocator, TestOp};
+use slotted_ui::UiAction;
 
 use crate::lua_tests::{StepOutcome, TestDriver, ops};
 
@@ -111,6 +112,59 @@ impl LiveDriver {
     }
 }
 
+impl LiveDriver {
+    /// `TypeInto`, one frame per sub-step: focus the row, the `Accept` key
+    /// down, up, every character (a press and a release each), Enter down,
+    /// Enter up. Spread over frames because a press and a release in one
+    /// frame never show up as `just_pressed`.
+    fn type_into(&mut self, world: &mut World, loc: &TestLocator, text: &str) -> StepOutcome {
+        let entity = match ops::resolve_one(world, loc) {
+            Ok(entity) => entity,
+            Err(message) => return self.finish(Err(message)),
+        };
+        let chars: Vec<char> = text.chars().collect();
+        let Some(accept) = world
+            .resource::<slotted_ui::UiBindings>()
+            .first_key(UiAction::Accept)
+        else {
+            return self.finish(Err("UiBindings binds no key to Accept".to_owned()));
+        };
+        let last = 4 + chars.len();
+        match self.waited as usize {
+            0 => {
+                world
+                    .resource_mut::<bevy::input_focus::InputFocus>()
+                    .set(entity, bevy::input_focus::FocusCause::Navigated);
+                self.wait()
+            }
+            1 => {
+                send_key(world, accept, logical_key(accept), ButtonState::Pressed);
+                self.wait()
+            }
+            2 => {
+                send_key(world, accept, logical_key(accept), ButtonState::Released);
+                self.wait()
+            }
+            n if n - 3 < chars.len() => {
+                let key = Key::Character(chars[n - 3].to_string().into());
+                let code =
+                    KeyCode::Unidentified(bevy::input::keyboard::NativeKeyCode::Unidentified);
+                send_key(world, code, key.clone(), ButtonState::Pressed);
+                send_key(world, code, key, ButtonState::Released);
+                self.wait()
+            }
+            n if n < last => {
+                send_key(world, KeyCode::Enter, Key::Enter, ButtonState::Pressed);
+                self.wait()
+            }
+            _ => {
+                send_key(world, KeyCode::Enter, Key::Enter, ButtonState::Released);
+                self.finish(Ok(Value::Null))
+            }
+        }
+    }
+}
+
 impl TestDriver for LiveDriver {
     fn perform(&mut self, world: &mut World, op: &TestOp) -> StepOutcome {
         if let Some(answer) = ops::query(world, op) {
@@ -162,6 +216,19 @@ impl TestDriver for LiveDriver {
             }
             TestOp::Action { action } => self.action(world, action),
             TestOp::Gamepad { button } => self.gamepad(world, button),
+            TestOp::SetValue { key, value } => {
+                // Written this frame, applied by `apply_set_values` on the
+                // next, which is when the test may read it back.
+                if self.waited == 0 {
+                    if let Err(message) = ops::set_value(world, key, value) {
+                        return self.finish(Err(message));
+                    }
+                    self.wait()
+                } else {
+                    self.finish(Ok(Value::Null))
+                }
+            }
+            TestOp::TypeInto { loc, text } => self.type_into(world, loc, text),
             TestOp::TypeText { text } => {
                 for ch in text.chars() {
                     let key = Key::Character(ch.to_string().into());
