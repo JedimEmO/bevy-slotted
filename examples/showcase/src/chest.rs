@@ -335,7 +335,9 @@ pub fn fill_labels(
     binding: Res<ChestBinding>,
     menus: Query<&OpenMenu>,
     inventories: Query<&slotted::ecs::menu::Inventory>,
-    mut labels: Query<(&mut Text, Option<&TestId>)>,
+    mut labels: Query<(Entity, &mut Text, Option<&TestId>)>,
+    parents: Query<&ChildOf>,
+    roots: Query<&ScreenRoot>,
 ) {
     let used = binding
         .open
@@ -352,8 +354,24 @@ pub fn fill_labels(
     // The rail names its own buttons now: `slotted_ui::spawn_action_rail`
     // resolves `slotted.rail.<action>` through the `Localization` port and
     // falls back to the library's English, on the `Text` and the
-    // `SemanticLabel` alike, so this demo only fills its own three labels.
-    for (mut text, id) in &mut labels {
+    // `SemanticLabel` alike, so this demo only fills its own three labels,
+    // and only inside its own screen: the settings screen tags its title
+    // `title` too (menus M1), and it is not a chest.
+    let chest = ScreenKind::new(CHEST);
+    for (entity, mut text, id) in &mut labels {
+        let mut root = entity;
+        let in_chest = loop {
+            if let Ok(screen) = roots.get(root) {
+                break screen.kind == chest;
+            }
+            match parents.get(root) {
+                Ok(parent) => root = parent.parent(),
+                Err(_) => break false,
+            }
+        };
+        if !in_chest {
+            continue;
+        }
         let replacement = match id.map(|id| id.0.as_str()) {
             Some("title") => "Copper Chest".to_owned(),
             Some("inventory_label") => "Inventory".to_owned(),

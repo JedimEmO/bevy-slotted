@@ -222,6 +222,7 @@
         "text.caption": Text(color: "$muted", size: "$caption"),
         "text.key": Text(color: "$orange", size: "$label", font: "mono"),
         "text.icon": Text(color: "$teal", size: "$body", weight: 600),
+        "text.inverse": Text(color: "$sheet", size: "$label", font: "mono"),
         "control.label": Text(color: "$ink", size: "$body"),
         "button.danger": Solid(fill: "$sheet", border: "$danger", radius: 2.0, elevation: "ink"),
         "button.focus": Solid(fill: "#FFFCF4", border: "$orange", radius: 2.0, elevation: "ink"),

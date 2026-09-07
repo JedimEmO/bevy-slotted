@@ -224,6 +224,7 @@ fn spawn_tab_button(
         Node::default(),
         Text::new(tab.label.0.clone()),
         Themed(roles::TEXT_LABEL),
+        crate::widgets::controls::LabelRole(roles::TEXT_LABEL),
         LocText::new(tab.label.clone()),
         Pickable::IGNORE,
         ChildOf(button),

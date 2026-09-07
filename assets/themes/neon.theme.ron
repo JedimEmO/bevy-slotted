@@ -217,6 +217,7 @@
         "text.caption": Text(color: "$muted", size: "$caption"),
         "text.key": Text(color: "$magenta", size: "$label", font: "display", weight: 600),
         "text.icon": Text(color: "$lime", size: "$body", weight: 600),
+        "text.inverse": Text(color: "$charcoal", size: "$label", weight: 700),
         "control.label": Text(color: "$text", size: "$body"),
         "button.danger": CutCorners(fill: "$slate", border: "$danger", cut: 8.0),
         "button.focus": CutCorners(fill: "#2C3140", border: "$magenta", cut: 8.0),

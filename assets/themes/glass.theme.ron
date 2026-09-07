@@ -236,6 +236,7 @@
         "text.caption": Text(color: "$muted", size: "$caption"),
         "text.key": Text(color: "$accent", size: "$label", font: "display", weight: 600),
         "text.icon": Text(color: "$warm", size: "$body", weight: 600),
+        "text.inverse": Text(color: "$base", size: "$label", weight: 600),
         "control.label": Text(color: "$text", size: "$body"),
         "button.danger": Solid(fill: "#FF6B6B33", border: "$danger", radius: 8.0),
         "button.focus": Solid(fill: "#243447E6", border: "$accent", radius: 8.0),

@@ -370,6 +370,7 @@ pub fn on_open_select_popup(
             Node::default(),
             Text::new(option.label.0.clone()),
             Themed(roles::CONTROL_LABEL),
+            crate::widgets::controls::LabelRole(roles::CONTROL_LABEL),
             LocText::new(option.label.clone()),
             Pickable::IGNORE,
             ChildOf(node),

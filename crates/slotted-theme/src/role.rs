@@ -246,8 +246,12 @@ pub mod roles {
     /// A hairline separator. Menus M1.
     pub const SEPARATOR: Role = Role::new_static("separator");
 
+    /// Text on an accent fill: an active tab, a selected row, a primary
+    /// button. Menus M1.
+    pub const TEXT_INVERSE: Role = Role::new_static("text.inverse");
+
     /// Every well-known role, for completeness checks.
-    pub const ALL: [Role; 89] = [
+    pub const ALL: [Role; 90] = [
         PANEL,
         PANEL_TITLE,
         SLOT,
@@ -337,6 +341,7 @@ pub mod roles {
         TAB_HOVER,
         TAB_FOCUS,
         SEPARATOR,
+        TEXT_INVERSE,
     ];
 }
 

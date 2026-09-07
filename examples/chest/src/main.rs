@@ -7,6 +7,7 @@
 //! cargo run -p chest -- --paint --shot shots/chest-paint.png   a right-drag mid-paint
 //! cargo run -p chest -- --cheat                  browser Ctrl+click gives
 //! cargo run -p chest -- --recipe minecraft:coal --shot shots/chest-recipe.png
+//! cargo run -p chest -- --settings --shot shots/chest-settings.png
 //! cargo run -p chest -- --record session.ron       record input, replay it in a test
 //! cargo run -p chest -- --theme paper              the same screen in another theme
 //! ```
@@ -67,6 +68,8 @@ struct Cli {
     cheat: bool,
     /// Open the browser's recipe page for this item before capturing.
     recipe: Option<String>,
+    /// Open the settings screen over the chest before capturing (menus M1).
+    settings: bool,
     /// Record every input to this RON file, written on exit.
     record: Option<PathBuf>,
     /// Theme name: `glass` (default), `paper` or `neon`, loaded from
@@ -83,6 +86,7 @@ fn main() {
         paint: args.iter().any(|a| a == "--paint"),
         cheat: args.iter().any(|a| a == "--cheat"),
         recipe: value("--recipe"),
+        settings: args.iter().any(|a| a == "--settings"),
         record: value("--record").map(PathBuf::from),
         theme: value("--theme").unwrap_or_else(|| "glass".to_owned()),
     };
@@ -144,6 +148,7 @@ fn main() {
             park_pointer,
             park_paint,
             open_recipe_page,
+            open_settings_for_shot,
             shot_and_exit,
         ),
     );
@@ -343,6 +348,23 @@ fn open_recipe_page(
     out.write(slotted::browser::OpenRecipes(
         slotted::browser::Ingredient::item(item),
     ));
+}
+
+/// `--settings`: push the settings screen once, before the shot, and put the
+/// player on the keyboard so the focus ring shows.
+fn open_settings_for_shot(
+    cli: Res<Cli>,
+    time: Res<Time>,
+    mut mode: ResMut<slotted::ui::InputMode>,
+    mut commands: Commands,
+    mut done: Local<bool>,
+) {
+    if !cli.settings || *done || time.elapsed_secs() < SHOT_AT * 0.5 {
+        return;
+    }
+    *done = true;
+    *mode = slotted::ui::InputMode::Keyboard;
+    showcase::settings::open_settings(&mut commands);
 }
 
 /// `--shot`: capture at [`SHOT_AT`] seconds, then leave.

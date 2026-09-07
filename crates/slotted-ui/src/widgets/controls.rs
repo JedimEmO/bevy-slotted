@@ -72,11 +72,53 @@ pub fn spawn_control_label(world: &mut World, parent: Entity, key: &LocKey) -> E
             },
             Text::new(key.0.clone()),
             Themed(roles::CONTROL_LABEL),
+            LabelRole(roles::CONTROL_LABEL),
             LocText::new(key.clone()),
             Pickable::IGNORE,
             ChildOf(parent),
         ))
         .id()
+}
+
+/// On a control's label: the role it rests in. While the control's own role
+/// is an accent fill (`*.active`, `*.selected`, `button.primary`,
+/// `button.danger`) the label is painted `text.inverse` instead, so a
+/// theme's active fill never has to be legible under its ordinary text
+/// colour; [`invert_active_labels`] swaps it and swaps it back.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct LabelRole(pub Role);
+
+/// Whether a control role is an accent fill that wants the inverse label.
+pub fn is_accent_fill(role: &Role) -> bool {
+    let name = role.as_str();
+    name.ends_with(".active")
+        || name.ends_with(".selected")
+        || name == roles::BUTTON_PRIMARY.as_str()
+        || name == roles::BUTTON_DANGER.as_str()
+}
+
+/// `SlottedUiSet::Render`, after every `paint_*`: labels under an accent
+/// fill read `text.inverse`; every other label reads its [`LabelRole`].
+pub fn invert_active_labels(
+    controls: Query<(&Themed, &Children), (Changed<Themed>, Without<LabelRole>)>,
+    mut labels: Query<(&LabelRole, &mut Themed)>,
+) {
+    for (themed, children) in &controls {
+        let inverse = is_accent_fill(&themed.0);
+        for child in children.iter() {
+            let Ok((rest, mut label)) = labels.get_mut(child) else {
+                continue;
+            };
+            let wanted = if inverse {
+                roles::TEXT_INVERSE
+            } else {
+                rest.0.clone()
+            };
+            if label.0 != wanted {
+                label.0 = wanted;
+            }
+        }
+    }
 }
 
 /// Spawns a control's row: `control_height` tall, a flex row with the
@@ -256,6 +298,16 @@ pub fn build(app: &mut App) {
                 key_binding::paint_key_bindings,
             )
                 .after(crate::values::ValueSync)
+                .in_set(crate::plugin::SlottedUiSet::Render),
+        )
+        .add_systems(
+            Update,
+            invert_active_labels
+                .after(crate::widgets::button_roles)
+                .after(radio_group::paint_radio_groups)
+                .after(select::paint_selects)
+                .after(crate::widgets::tabs::sync_tabs)
+                .after(crate::widgets::list::list_row_roles)
                 .in_set(crate::plugin::SlottedUiSet::Render),
         );
 }

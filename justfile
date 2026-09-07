@@ -85,6 +85,7 @@ shot-chest:
     cargo run -p chest -- --shot examples/chest/shots/chest-browser.png
     cargo run -p chest -- --recipe minecraft:coal --shot examples/chest/shots/chest-recipe.png
     cargo run -p chest -- --paint --shot examples/chest/shots/chest-paint.png
+    cargo run -p chest -- --settings --shot examples/chest/shots/chest-settings.png
     just shot-check
 
 # Are the icons actually in the captures?
@@ -106,6 +107,8 @@ shot-chest-themes:
     cargo run -p chest -- --theme neon --shot examples/chest/shots/chest-neon.png
     cargo run -p chest -- --theme paper --recipe minecraft:coal --shot examples/chest/shots/chest-recipe-paper.png
     cargo run -p chest -- --theme neon --recipe minecraft:coal --shot examples/chest/shots/chest-recipe-neon.png
+    cargo run -p chest -- --theme paper --settings --shot examples/chest/shots/chest-settings-paper.png
+    cargo run -p chest -- --theme neon --settings --shot examples/chest/shots/chest-settings-neon.png
 
 # The modded example in a window: three mods, loaded from disk, hot reloading.
 run-modded:
