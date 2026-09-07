@@ -176,14 +176,29 @@ pub struct DataSourceId(pub Namespaced);
 string_enum! {
     /// Which text role a [`UiNodeDef::Text`] uses. Maps onto theme text roles.
     pub enum TextRole {
+        /// `text.display`: a screen's headline (menus M1).
+        Display = "display",
         /// `panel.title`.
         Title = "title",
+        /// `text.heading`: a section heading (menus M1).
+        Heading = "heading",
         /// `text`.
         Body = "body",
         /// `text.muted`.
         Muted = "muted",
+        /// `text.label`: a control's label (menus M1).
+        Label = "label",
+        /// `text.caption`: a footnote (menus M1).
+        Caption = "caption",
         /// `count`.
         Count = "count",
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for TextRole {
+    fn default() -> Self {
+        Self::Body
     }
 }
 
@@ -192,12 +207,185 @@ impl TextRole {
     pub const fn role(self) -> Role {
         use slotted_theme::roles;
         match self {
+            Self::Display => roles::TEXT_DISPLAY,
             Self::Title => roles::PANEL_TITLE,
+            Self::Heading => roles::TEXT_HEADING,
             Self::Body => roles::TEXT,
             Self::Muted => roles::TEXT_MUTED,
+            Self::Label => roles::TEXT_LABEL,
+            Self::Caption => roles::TEXT_CAPTION,
             Self::Count => roles::COUNT,
         }
     }
+}
+
+string_enum! {
+    /// Horizontal alignment of a text node's lines.
+    pub enum TextAlign {
+        /// Lines start at the left edge.
+        Left = "left",
+        /// Lines are centred.
+        Center = "center",
+        /// Lines end at the right edge.
+        Right = "right",
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for TextAlign {
+    fn default() -> Self {
+        Self::Left
+    }
+}
+
+/// The optional fields of a `text` or `rich_text` node (menus M1 contract
+/// 1.3). Flattened into the node in data; a struct in Rust so a literal can
+/// write `..Default::default()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextOpts {
+    /// Fluent arguments, substituted by the localiser.
+    #[serde(default)]
+    pub args: BTreeMap<String, crate::values::Value>,
+    /// Wrap at the node's width. `false` = one line.
+    #[serde(default = "yes")]
+    pub wrap: bool,
+    /// Line alignment.
+    #[serde(default)]
+    pub align: TextAlign,
+    /// Truncate with `…` past this many lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lines: Option<u16>,
+    /// `rich_text` only: a single-line run whose `{icon:..}` tags are real
+    /// images beside the text rather than item names in it.
+    #[serde(default)]
+    pub inline: bool,
+}
+
+const fn yes() -> bool {
+    true
+}
+
+impl Default for TextOpts {
+    fn default() -> Self {
+        Self {
+            args: BTreeMap::new(),
+            wrap: true,
+            align: TextAlign::Left,
+            max_lines: None,
+            inline: false,
+        }
+    }
+}
+
+string_enum! {
+    /// A button's look (menus M1 contract 3.2).
+    pub enum ButtonVariant {
+        /// The accent button: one per screen.
+        Primary = "primary",
+        /// The plain button.
+        Secondary = "secondary",
+        /// A destructive button.
+        Danger = "danger",
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for ButtonVariant {
+    fn default() -> Self {
+        Self::Secondary
+    }
+}
+
+/// The optional fields of a `button` node (menus M1 contract 1.3).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ButtonOpts {
+    /// The label, a locale key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<LocKey>,
+    /// An icon before the label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<IconDef>,
+    /// The look.
+    #[serde(default)]
+    pub variant: ButtonVariant,
+    /// Inert and drawn as such.
+    #[serde(default)]
+    pub disabled: bool,
+    /// `sizes.control_height_compact` rather than `control_height`.
+    #[serde(default)]
+    pub compact: bool,
+}
+
+string_enum! {
+    /// A toggle's look (menus M1 contract 3.3).
+    pub enum ToggleStyle {
+        /// A sliding switch.
+        Switch = "switch",
+        /// A square with a tick.
+        Checkbox = "checkbox",
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for ToggleStyle {
+    fn default() -> Self {
+        Self::Switch
+    }
+}
+
+string_enum! {
+    /// What a text field accepts (menus M1 contract 4.1).
+    pub enum TextFilter {
+        /// Anything.
+        Any = "any",
+        /// Digits, one point, a leading minus.
+        Numeric = "numeric",
+        /// Digits and a leading minus.
+        Integer = "integer",
+    }
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for TextFilter {
+    fn default() -> Self {
+        Self::Any
+    }
+}
+
+/// One option of a `select` or `radio_group`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SelectOption {
+    /// The value written to the binding.
+    pub id: String,
+    /// The label, a locale key.
+    pub label: LocKey,
+}
+
+/// One tab of a `tabs` node.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TabDef {
+    /// The value written to the binding.
+    pub id: String,
+    /// The label, a locale key.
+    pub label: LocKey,
+    /// An icon before the label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<IconDef>,
+}
+
+/// What a value control is bound to (menus M1 contract 1.3): a store key or
+/// a menu property, never both.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BindDef {
+    /// A `ValueStore` key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bind: Option<String>,
+    /// A menu property.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub property: Option<PropertyId>,
+    /// Inert and drawn as such.
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 string_enum! {
@@ -567,25 +755,25 @@ pub struct Layout {
     #[serde(default)]
     pub padding: Padding,
     /// Width. `None` = fit content.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width: Option<Length>,
     /// Height. `None` = fit content.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<Length>,
     /// Minimum width.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_width: Option<Length>,
     /// Maximum width.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_width: Option<Length>,
     /// Minimum height.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_height: Option<Length>,
     /// Maximum height.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_height: Option<Length>,
     /// Cross-axis alignment of children.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub align: Option<Align>,
     /// Main-axis distribution of children.
     #[serde(default)]
@@ -600,7 +788,7 @@ pub struct Layout {
     #[serde(default)]
     pub overflow: Overflow,
     /// Absolute placement inside the parent.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place: Option<Place>,
     /// Deprecated alias for `align: center`; honoured only when `align` is
     /// unset.
@@ -711,7 +899,7 @@ pub struct Presentation {
     #[serde(default)]
     pub mode: PresentationMode,
     /// Draw a scrim under it. Defaults to `mode == modal`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scrim: Option<bool>,
     /// Arrival motion.
     #[serde(default)]
@@ -817,6 +1005,22 @@ fn default_unit() -> String {
     "mB".to_owned()
 }
 
+fn six() -> u16 {
+    6
+}
+
+fn value_format() -> String {
+    "{value}".to_owned()
+}
+
+const fn row() -> LayoutDirection {
+    LayoutDirection::Row
+}
+
+const fn fill() -> Length {
+    Length::Percent(100.0)
+}
+
 fn three() -> u16 {
     3
 }
@@ -893,14 +1097,211 @@ pub enum UiNodeDef {
         key: LocKey,
         /// Style.
         style: TextRole,
+        /// Arguments, wrapping, alignment, truncation (menus M1).
+        #[serde(flatten)]
+        opts: TextOpts,
         /// Locator tags.
         #[serde(default)]
         tags: Tags,
     },
-    /// A button whose behaviour is `widget`.
+    /// A paragraph in the rich-text markup (menus M1 contract 2.2).
+    RichText {
+        /// Localisation key; the resolved string is the markup.
+        key: LocKey,
+        /// Base style.
+        #[serde(default)]
+        style: TextRole,
+        /// Arguments, wrapping, alignment, truncation, `inline`.
+        #[serde(flatten)]
+        opts: TextOpts,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A button. `widget` is its behaviour kind (`slotted:sort`,
+    /// `slotted:close`); without one it is a plain `Activate` source.
     Button {
-        /// Behaviour kind (`slotted:sort`, `slotted:close`...).
-        widget: WidgetKind,
+        /// Behaviour kind.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        widget: Option<WidgetKind>,
+        /// Label, icon, variant, disabled, compact (menus M1).
+        #[serde(flatten)]
+        opts: ButtonOpts,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A switch or checkbox bound to a `Bool` (menus M1 contract 3.3).
+    Toggle {
+        /// Label to the left.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<LocKey>,
+        /// Switch or checkbox.
+        #[serde(default)]
+        style: ToggleStyle,
+        /// Binding.
+        #[serde(flatten)]
+        bind: BindDef,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A slider bound to a `Float` (menus M1 contract 3.4).
+    Slider {
+        /// Label to the left.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<LocKey>,
+        /// Range start.
+        min: f64,
+        /// Range end.
+        max: f64,
+        /// Step; `0` = one percent of the range.
+        #[serde(default)]
+        step: f64,
+        /// Readout format: `{value}`, `{value:.1}`, `{min}`, `{max}`.
+        #[serde(default = "value_format")]
+        format: String,
+        /// Binding.
+        #[serde(flatten)]
+        bind: BindDef,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A select bound to an option id (menus M1 contract 3.5).
+    Select {
+        /// Label to the left.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<LocKey>,
+        /// The options.
+        options: Vec<SelectOption>,
+        /// Binding.
+        #[serde(flatten)]
+        bind: BindDef,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A segmented control bound to an option id (menus M1 contract 3.5).
+    RadioGroup {
+        /// Label to the left.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<LocKey>,
+        /// The options.
+        options: Vec<SelectOption>,
+        /// Binding.
+        #[serde(flatten)]
+        bind: BindDef,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A row that rebinds one action on one device (menus M1 contract 3.6).
+    KeyBinding {
+        /// Label to the left; the action's name by default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<LocKey>,
+        /// Which action.
+        action: crate::actions::UiAction,
+        /// Keyboard or gamepad.
+        device: crate::actions::InputDevice,
+        /// Inert and drawn as such.
+        #[serde(default)]
+        disabled: bool,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A text field bound to a `Text` (menus M1 contract 4.1).
+    TextField {
+        /// Label to the left.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<LocKey>,
+        /// Shown while empty.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        placeholder: Option<LocKey>,
+        /// What it accepts.
+        #[serde(default)]
+        filter: TextFilter,
+        /// Maximum length in characters.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_len: Option<u16>,
+        /// Binding.
+        #[serde(flatten)]
+        bind: BindDef,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A one-column virtual grid of focusable rows (menus M1 contract 4.3).
+    List {
+        /// Data source.
+        source: DataSourceId,
+        /// Visible rows.
+        #[serde(default = "six")]
+        rows: u16,
+        /// Binding for the selected index.
+        #[serde(flatten)]
+        bind: BindDef,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A scrolling panel (menus M1 contract 4.2).
+    Scroll {
+        /// Layout; `overflow` is forced to `scroll`.
+        #[serde(default)]
+        layout: Layout,
+        /// Draw a scrollbar.
+        #[serde(default = "yes")]
+        scrollbar: bool,
+        /// Children.
+        #[serde(default)]
+        children: Vec<UiNodeDef>,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A tab bar over one page per tab (menus M1 contract 4.4).
+    Tabs {
+        /// The tabs, in order.
+        tabs: Vec<TabDef>,
+        /// Binding for the active tab id.
+        #[serde(flatten)]
+        bind: BindDef,
+        /// One page per tab, in the same order.
+        #[serde(default)]
+        children: Vec<UiNodeDef>,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// A hairline across the cross axis (menus M1 contract 4.5).
+    Separator {
+        /// The axis the line runs along.
+        #[serde(default = "row")]
+        direction: LayoutDirection,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// Empty space (menus M1 contract 4.5).
+    Spacer {
+        /// A length, or `"fill"` to grow.
+        #[serde(default = "fill")]
+        size: Length,
+        /// Locator tags.
+        #[serde(default)]
+        tags: Tags,
+    },
+    /// An image from the asset server (menus M1 contract 4.5).
+    Image {
+        /// Asset path.
+        path: String,
+        /// Width.
+        width: Length,
+        /// Height.
+        height: Length,
         /// Locator tags.
         #[serde(default)]
         tags: Tags,
@@ -914,10 +1315,10 @@ pub enum UiNodeDef {
         /// Fill direction.
         orientation: Orientation,
         /// Static fluid, by registry name.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         fluid: Option<Namespaced>,
         /// A property whose value is the frozen fluid id; wins over `fluid`.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         fluid_property: Option<PropertyId>,
         /// Unit shown in the label and tooltip.
         #[serde(default = "default_unit")]
@@ -961,7 +1362,7 @@ pub enum UiNodeDef {
         /// Which way the content opens.
         side: Side,
         /// Header label; the icon path when absent.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         label: Option<LocKey>,
         /// Start open.
         #[serde(default)]
@@ -978,7 +1379,7 @@ pub enum UiNodeDef {
         /// At least one state.
         states: Vec<IconButtonState>,
         /// Property that mirrors the state index, when the screen has a menu.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         property: Option<PropertyId>,
         /// Locator tags.
         #[serde(default)]
@@ -1029,7 +1430,20 @@ impl UiNodeDef {
             | Self::VirtualGrid { tags, .. }
             | Self::Slot { tags, .. }
             | Self::Text { tags, .. }
+            | Self::RichText { tags, .. }
             | Self::Button { tags, .. }
+            | Self::Toggle { tags, .. }
+            | Self::Slider { tags, .. }
+            | Self::Select { tags, .. }
+            | Self::RadioGroup { tags, .. }
+            | Self::KeyBinding { tags, .. }
+            | Self::TextField { tags, .. }
+            | Self::List { tags, .. }
+            | Self::Scroll { tags, .. }
+            | Self::Tabs { tags, .. }
+            | Self::Separator { tags, .. }
+            | Self::Spacer { tags, .. }
+            | Self::Image { tags, .. }
             | Self::Tank { tags, .. }
             | Self::Bar { tags, .. }
             | Self::Progress { tags, .. }
@@ -1046,6 +1460,8 @@ impl UiNodeDef {
         match self {
             Self::Panel { children, .. }
             | Self::SideTab { children, .. }
+            | Self::Scroll { children, .. }
+            | Self::Tabs { children, .. }
             | Self::Custom { children, .. } => children,
             _ => &[],
         }
@@ -1070,6 +1486,8 @@ impl UiNodeDef {
         match self {
             Self::Panel { children, .. }
             | Self::SideTab { children, .. }
+            | Self::Scroll { children, .. }
+            | Self::Tabs { children, .. }
             | Self::Custom { children, .. } => Some(children),
             _ => None,
         }
@@ -1107,7 +1525,7 @@ pub struct ScreenDef {
     pub kind: ScreenKind,
     /// A screen whose tree this one starts from; this one's anchors and
     /// injections apply on top. Resolved by [`crate::Screens`].
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inherits: Option<ScreenKind>,
     /// The tree.
     pub root: UiNodeDef,
@@ -1124,7 +1542,7 @@ pub struct ScreenDef {
     pub remove: Vec<String>,
     /// Node id ([`UiNodeDef::id`]) that takes focus when the screen opens.
     /// `None` = the first focusable node in tree order (menus contract 2.4).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_focus: Option<String>,
     /// How the screen sits on the stack (menus contract 1.3).
     #[serde(default)]
@@ -1223,5 +1641,104 @@ mod tests {
         // survive that path.
         let value: Value = ron::from_str(CHEST).expect("value parses");
         assert_eq!(ScreenDef::from_value(value).expect("typed"), def);
+    }
+}
+
+#[cfg(test)]
+mod m1_tests {
+    use super::*;
+
+    #[test]
+    fn flattened_control_fields_parse_through_the_untyped_path() {
+        let def = ScreenDef::from_ron(
+            r#"#![enable(implicit_some)]
+            (
+                kind: "demo:m1",
+                root: (type: "panel", role: "panel", children: [
+                    (type: "text", key: "a", style: "heading", wrap: false, align: "center",
+                     args: {"n": 3, "who": "you"}, max_lines: 2),
+                    (type: "rich_text", key: "b", inline: true),
+                    (type: "button", label: "ok", variant: "primary", disabled: true),
+                    (type: "button", widget: "slotted:close"),
+                    (type: "toggle", label: "t", style: "checkbox", bind: "audio.mute"),
+                    (type: "slider", min: 0, max: 100, step: 5, bind: "audio.master",
+                     format: "{value}%"),
+                    (type: "select", options: [(id: "low", label: "l"), (id: "high", label: "h")],
+                     property: 3),
+                    (type: "key_binding", action: "accept", device: "gamepad"),
+                    (type: "text_field", placeholder: "p", filter: "numeric", max_len: 4,
+                     bind: "name"),
+                    (type: "list", source: "demo:rows", rows: 4, bind: "row"),
+                    (type: "scroll", layout: (height: 200), children: [(type: "separator")]),
+                    (type: "tabs", tabs: [(id: "a", label: "A"), (id: "b", label: "B")],
+                     children: [(type: "spacer"), (type: "spacer", size: "3s")]),
+                    (type: "image", path: "icons/x.png", width: 32, height: "50%"),
+                ]),
+            )"#,
+        )
+        .expect("parses");
+        let kids = def.root.children();
+        assert_eq!(kids.len(), 13);
+        match &kids[0] {
+            UiNodeDef::Text { style, opts, .. } => {
+                assert_eq!(*style, TextRole::Heading);
+                assert!(!opts.wrap);
+                assert_eq!(opts.align, TextAlign::Center);
+                assert_eq!(opts.max_lines, Some(2));
+                assert_eq!(opts.args.get("n"), Some(&crate::values::Value::Int(3)));
+                assert_eq!(
+                    opts.args.get("who"),
+                    Some(&crate::values::Value::Text("you".into()))
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(&kids[1], UiNodeDef::RichText { opts, .. } if opts.inline));
+        assert!(
+            matches!(&kids[2], UiNodeDef::Button { widget: None, opts, .. }
+            if opts.variant == ButtonVariant::Primary && opts.disabled)
+        );
+        assert!(matches!(&kids[3], UiNodeDef::Button { widget: Some(w), .. }
+            if w.0.path() == "close"));
+        assert!(
+            matches!(&kids[4], UiNodeDef::Toggle { style: ToggleStyle::Checkbox, bind, .. }
+            if bind.bind.as_deref() == Some("audio.mute"))
+        );
+        assert!(matches!(&kids[5], UiNodeDef::Slider { step, format, .. }
+            if (*step - 5.0).abs() < f64::EPSILON && format == "{value}%"));
+        assert!(matches!(&kids[6], UiNodeDef::Select { bind, options, .. }
+            if bind.property == Some(PropertyId(3)) && options.len() == 2));
+        assert!(matches!(
+            &kids[7],
+            UiNodeDef::KeyBinding {
+                action: crate::actions::UiAction::Accept,
+                device: crate::actions::InputDevice::Gamepad,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &kids[8],
+            UiNodeDef::TextField {
+                filter: TextFilter::Numeric,
+                max_len: Some(4),
+                ..
+            }
+        ));
+        assert!(matches!(&kids[9], UiNodeDef::List { rows: 4, .. }));
+        assert!(matches!(&kids[10], UiNodeDef::Scroll { children, .. } if children.len() == 1));
+        assert!(matches!(&kids[11], UiNodeDef::Tabs { children, .. }
+            if matches!(children[1], UiNodeDef::Spacer { size: Length::Steps(_), .. })));
+        assert!(matches!(
+            &kids[12],
+            UiNodeDef::Image {
+                height: Length::Percent(_),
+                ..
+            }
+        ));
+
+        // And back out through RON, so a screen file round-trips.
+        let text = ron::to_string(&def).expect("serialises");
+        let again = ScreenDef::from_ron(&text).unwrap_or_else(|e| panic!("re-parses: {e}\n{text}"));
+        assert_eq!(again, def);
     }
 }

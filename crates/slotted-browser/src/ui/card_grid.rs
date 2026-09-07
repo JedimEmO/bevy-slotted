@@ -350,6 +350,7 @@ impl VirtualGridSource for CardSource {
     /// than a tree the widget path can make.
     fn cell(&self, _index: usize) -> UiNodeDef {
         UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey(String::new()),
             style: TextRole::Body,
             tags: Tags::new(),

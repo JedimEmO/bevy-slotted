@@ -215,6 +215,7 @@ fn tabbed_chest() -> ScreenDef {
                         label: Some(slotted_ui::LocKey("tab".to_owned())),
                         open: false,
                         children: vec![UiNodeDef::Text {
+                            opts: slotted_ui::TextOpts::default(),
                             key: slotted_ui::LocKey("a body wide enough to notice".to_owned()),
                             style: slotted_ui::TextRole::Body,
                             tags: slotted_ui::Tags::default(),

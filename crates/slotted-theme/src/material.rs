@@ -36,6 +36,70 @@ impl ThemeColor {
     }
 }
 
+/// A text size: a literal in px (`15` or `"15"`) or a `$name` reference into
+/// `tokens.typography` (menus M1 contract 1.4). Serialises as a number when
+/// literal and as the reference string otherwise.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ThemeSize(pub String);
+
+impl ThemeSize {
+    /// A literal size.
+    pub fn px(size: f32) -> Self {
+        Self(format!("{size}"))
+    }
+
+    /// A typography reference.
+    pub fn typography(name: &str) -> Self {
+        Self(format!("${name}"))
+    }
+
+    /// The typography name if this is a `$` reference.
+    pub fn typography_ref(&self) -> Option<&str> {
+        self.0.strip_prefix('$')
+    }
+
+    /// The literal size. `None` for references or a malformed literal.
+    pub fn parse_px(&self) -> Option<f32> {
+        if self.typography_ref().is_some() {
+            return None;
+        }
+        self.0.trim().parse().ok()
+    }
+}
+
+impl From<f32> for ThemeSize {
+    fn from(px: f32) -> Self {
+        Self::px(px)
+    }
+}
+
+impl serde::Serialize for ThemeSize {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self.parse_px() {
+            Some(px) => s.serialize_f32(px),
+            None => s.serialize_str(&self.0),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ThemeSize {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Num(f32),
+            Int(i64),
+            Str(String),
+        }
+        Ok(match Raw::deserialize(d)? {
+            Raw::Num(px) => Self::px(px),
+            #[allow(clippy::cast_precision_loss)]
+            Raw::Int(px) => Self::px(px as f32),
+            Raw::Str(s) => Self(s),
+        })
+    }
+}
+
 /// How a role is drawn. The apply system maps each variant onto `bevy_ui`
 /// components; see the contract for the exact component set per variant.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -121,11 +185,17 @@ pub enum Material {
     Text {
         /// Colour.
         color: ThemeColor,
-        /// Font size in px.
-        size: f32,
-        /// Name of an entry in `tokens.fonts`; `None` keeps Bevy's default.
+        /// Font size in px, or a `$name` into `tokens.typography`, in which
+        /// case the style's font and weight apply unless named here.
+        size: ThemeSize,
+        /// Name of an entry in `tokens.fonts`; `None` keeps Bevy's default
+        /// (or the type style's font for a `$` size).
         #[serde(default)]
         font: Option<String>,
+        /// Variable-font weight, 100 to 900. `None` = 400, or the type
+        /// style's weight for a `$` size.
+        #[serde(default)]
+        weight: Option<u16>,
         /// Drop shadow colour, one px down and right; `None` removes any
         /// `TextShadow` the widget spawned with. Glass and neon keep one
         /// under slot counts so they read over an icon; paper has none.

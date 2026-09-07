@@ -103,6 +103,7 @@ fn screen(kind: &str, presentation: Presentation) -> ScreenDef {
                 ..Layout::default()
             },
             children: vec![UiNodeDef::Text {
+                opts: slotted_ui::TextOpts::default(),
                 key: LocKey(format!("{kind}.label")),
                 style: TextRole::Body,
                 tags: Tags::new().with(Tags::TEST_ID, &format!("{kind}.label")),

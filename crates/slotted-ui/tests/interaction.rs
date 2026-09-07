@@ -121,6 +121,7 @@ fn tab(test_id: &str) -> UiNodeDef {
         label: Some(LocKey(format!("tab.{test_id}"))),
         open: false,
         children: vec![UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey("a body wide enough to notice".to_owned()),
             style: TextRole::Body,
             tags: Tags::new().with("test_id", &format!("{test_id}_body")),

@@ -138,6 +138,8 @@ pub struct Paint {
     pub font: Option<FontPaint>,
     /// `TextShadow` colour; `None` with `text` set removes the shadow.
     pub text_shadow: Option<Color>,
+    /// `TextFont::weight`; `None` with `text` set means 400.
+    pub text_weight: Option<u16>,
     /// The cut-corner material, when the theme asked for one and `blur` is on.
     pub cut: Option<CutPaint>,
 }
@@ -146,6 +148,7 @@ impl Paint {
     /// Resolves `material` against `theme`. Unknown palette references come
     /// back magenta rather than failing, and `Material::Shader` paints
     /// nothing in Phase 2.
+    #[allow(clippy::too_many_lines)]
     pub fn from_material(theme: &Theme, material: &Material) -> Self {
         let tokens = &theme.tokens;
         let color = |c: &ThemeColor| theme.color(c);
@@ -234,11 +237,17 @@ impl Paint {
                 size,
                 font,
                 shadow: text_shadow,
+                weight,
             } => {
-                paint.text = Some((color(c), *size));
+                // A `$name` size brings the type style's font and weight
+                // unless the material names its own (menus M1 contract 1.4).
+                let style = theme.type_style(size);
+                paint.text = Some((color(c), theme.size(size)));
+                paint.text_weight = weight.or_else(|| style.and_then(|s| s.weight));
                 paint.text_shadow = text_shadow.as_ref().map(&color);
                 paint.font = font
                     .as_deref()
+                    .or_else(|| style.and_then(|s| s.font.as_deref()))
                     .and_then(|name| tokens.font(name))
                     .and_then(|token| match (&token.path, token.system) {
                         (Some(path), _) => Some(FontPaint::Path(path.clone())),
@@ -608,17 +617,22 @@ fn paint_image_and_text(
             (Some(FontPaint::Family(family)), _) => FontSource::Family(family.as_str().into()),
             (None, _) => FontSource::default(),
         };
+        let weight = FontWeight(paint.text_weight.unwrap_or(400));
         match text_font {
             Some(mut text_font) => {
                 text_font.font_size = FontSize::Px(size);
                 if text_font.font != font {
                     text_font.font = font;
                 }
+                if text_font.weight != weight {
+                    text_font.weight = weight;
+                }
             }
             None => {
                 e.insert(TextFont {
                     font,
                     font_size: FontSize::Px(size),
+                    weight,
                     ..default()
                 });
             }

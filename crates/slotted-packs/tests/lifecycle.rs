@@ -645,7 +645,7 @@ fn loc_text_resolves_after_the_locale_loads_and_leaves_unknown_keys_verbatim() {
         .app
         .world_mut()
         .spawn((
-            LocText(LocKey("beta-item".to_owned())),
+            LocText::new(LocKey("beta-item".to_owned())),
             Text::new("beta-item"),
         ))
         .id();
@@ -653,7 +653,7 @@ fn loc_text_resolves_after_the_locale_loads_and_leaves_unknown_keys_verbatim() {
         .app
         .world_mut()
         .spawn((
-            LocText(LocKey("nobody.defines.me".to_owned())),
+            LocText::new(LocKey("nobody.defines.me".to_owned())),
             Text::new("nobody.defines.me"),
         ))
         .id();

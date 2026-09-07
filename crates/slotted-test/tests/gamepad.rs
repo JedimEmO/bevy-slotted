@@ -244,7 +244,8 @@ const PAUSE: &str = "test:pause";
 
 fn pause_screen() -> ScreenDef {
     let button = |id: &str| UiNodeDef::Button {
-        widget: WidgetKind::new("slotted:button"),
+        widget: Some(WidgetKind::new("slotted:button")),
+        opts: slotted_ui::ButtonOpts::default(),
         tags: Tags::new().with(Tags::TEST_ID, id),
     };
     ScreenDef {
@@ -266,6 +267,7 @@ fn pause_screen() -> ScreenDef {
             },
             children: vec![
                 UiNodeDef::Text {
+                    opts: slotted_ui::TextOpts::default(),
                     key: LocKey("pause.title".to_owned()),
                     style: TextRole::Title,
                     tags: Tags::new().with(Tags::TEST_ID, "title"),

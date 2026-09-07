@@ -64,7 +64,8 @@ fn chest_screen(initial_focus: Option<&str>, mode: PresentationMode) -> ScreenDe
                         .with("test_id", "player_grid"),
                 ),
                 UiNodeDef::Button {
-                    widget: slotted_ui::widgets::kinds::button(),
+                    widget: Some(slotted_ui::widgets::kinds::button()),
+                    opts: slotted_ui::ButtonOpts::default(),
                     tags: Tags::new().with("test_id", "done"),
                 },
             ],
@@ -314,7 +315,7 @@ fn every_shipped_theme_defines_the_ring_and_the_scrim() {
     const GLASS: &str = include_str!("../../../assets/themes/glass.theme.ron");
     const PAPER: &str = include_str!("../../../assets/themes/paper.theme.ron");
     const NEON: &str = include_str!("../../../assets/themes/neon.theme.ron");
-    assert_eq!(roles::ALL.len(), 38);
+    assert_eq!(roles::ALL.len(), 89);
     assert!(roles::ALL.contains(&roles::FOCUS_RING));
     assert!(roles::ALL.contains(&roles::SCRIM));
     for (name, text) in [("glass", GLASS), ("paper", PAPER), ("neon", NEON)] {

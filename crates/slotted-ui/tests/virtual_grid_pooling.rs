@@ -67,6 +67,7 @@ impl VirtualGridSource for Plain {
     }
     fn cell(&self, index: usize) -> UiNodeDef {
         UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey(format!("cell {index}")),
             style: TextRole::Body,
             tags: Tags::new(),

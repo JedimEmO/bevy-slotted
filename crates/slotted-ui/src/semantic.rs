@@ -60,6 +60,26 @@ pub enum SemanticRole {
     Viewport,
     /// A HUD layer root (Phase 6).
     HudLayer,
+    /// A switch or checkbox (menus M1).
+    Toggle,
+    /// A slider (menus M1).
+    Slider,
+    /// A select's value pill (menus M1); its popup options are `Button`s.
+    Select,
+    /// A segmented control (menus M1); its segments are `Tab`s.
+    RadioGroup,
+    /// A key binding row (menus M1).
+    KeyBinding,
+    /// A list of rows (menus M1); rows are `ListItem`s.
+    List,
+    /// One list row (menus M1).
+    ListItem,
+    /// A scrolling panel (menus M1).
+    ScrollView,
+    /// A tab bar (menus M1); its tabs are `Tab`s.
+    Tabs,
+    /// A separator, spacer or image (menus M1).
+    Decor,
     /// A widget with no better role.
     Custom(String),
 }
@@ -70,7 +90,9 @@ impl SemanticRole {
         use accesskit::Role;
         match self {
             Self::Screen => Role::Dialog,
-            Self::Panel | Self::Anchor | Self::Carried | Self::Custom(_) => Role::GenericContainer,
+            Self::Panel | Self::Anchor | Self::Carried | Self::Decor | Self::Custom(_) => {
+                Role::GenericContainer
+            }
             Self::Grid | Self::Hotbar => Role::Grid,
             Self::Slot | Self::RecipeSlot => Role::Cell,
             Self::Button => Role::Button,
@@ -78,13 +100,20 @@ impl SemanticRole {
             Self::Tooltip => Role::Tooltip,
             Self::Rail => Role::Toolbar,
             Self::Browser | Self::HudLayer => Role::Pane,
-            Self::TextField => Role::TextInput,
+            Self::TextField | Self::KeyBinding => Role::TextInput,
             Self::Chip => Role::CheckBox,
             Self::Card | Self::Bookmark => Role::ListItem,
             Self::RecipeView => Role::Group,
             Self::Tab | Self::SideTab => Role::Tab,
             Self::Tank | Self::Bar => Role::ProgressIndicator,
             Self::Viewport => Role::Image,
+            Self::Toggle => Role::Switch,
+            Self::Slider => Role::Slider,
+            Self::Select => Role::ComboBox,
+            Self::RadioGroup | Self::Tabs => Role::TabList,
+            Self::List => Role::ListBox,
+            Self::ListItem => Role::ListBoxOption,
+            Self::ScrollView => Role::ScrollView,
         }
     }
 }
@@ -135,8 +164,28 @@ pub struct WidgetNode(pub WidgetKind);
 /// it through the layered Fluent bundles and rewrites `Text` when a locale
 /// loads or changes (Phase 4 contract section 2.7). `SemanticLabel` keeps the
 /// key so locators and snapshots do not depend on a language.
-#[derive(Component, Debug, Clone, PartialEq, Eq)]
-pub struct LocText(pub crate::def::LocKey);
+#[derive(Component, Debug, Clone, PartialEq)]
+pub struct LocText {
+    /// The key.
+    pub key: crate::def::LocKey,
+    /// Fluent arguments (menus M1 contract 2.3).
+    pub args: crate::loc::LocArgs,
+}
+
+impl LocText {
+    /// A key with no arguments.
+    pub fn new(key: crate::def::LocKey) -> Self {
+        Self {
+            key,
+            args: crate::loc::LocArgs::new(),
+        }
+    }
+
+    /// A key with arguments.
+    pub fn with_args(key: crate::def::LocKey, args: crate::loc::LocArgs) -> Self {
+        Self { key, args }
+    }
+}
 
 /// On an anchor node.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]

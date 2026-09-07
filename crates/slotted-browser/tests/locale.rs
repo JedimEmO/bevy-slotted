@@ -33,7 +33,7 @@ const CHEST: &str = "demo:chest";
 struct Fake(Vec<(&'static str, &'static str)>);
 
 impl Localizer for Fake {
-    fn resolve(&self, key: &LocKey) -> Option<String> {
+    fn resolve(&self, key: &LocKey, _args: &slotted_ui::LocArgs) -> Option<String> {
         self.0
             .iter()
             .find(|(k, _)| *k == key.0)

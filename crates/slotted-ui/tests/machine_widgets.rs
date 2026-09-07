@@ -144,6 +144,7 @@ fn screen() -> ScreenDef {
                     label: Some(LocKey("tab.redstone".to_owned())),
                     open: false,
                     children: vec![UiNodeDef::Text {
+                        opts: slotted_ui::TextOpts::default(),
                         key: LocKey("tab.body".to_owned()),
                         style: TextRole::Body,
                         tags: tags("tab_body"),
@@ -184,6 +185,7 @@ impl VirtualGridSource for ManyCells {
     }
     fn cell(&self, index: usize) -> UiNodeDef {
         UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey(format!("cell {index}")),
             style: TextRole::Body,
             tags: Tags::new(),

@@ -315,6 +315,7 @@ fn chest_screen() -> ScreenDef {
                     layout: slotted_ui::Layout::default(),
                     children: vec![
                         UiNodeDef::Text {
+                            opts: slotted_ui::TextOpts::default(),
                             key: LocKey("demo.chest.title".to_owned()),
                             style: TextRole::Title,
                             tags: Tags::new().with("test_id", "title"),
@@ -522,6 +523,7 @@ fn an_injection_at_an_anchor_adds_a_child_and_an_exclusion_zone() {
             target: ScreenKind::new("demo:chest"),
             anchor: AnchorId::new("title_end"),
             node: UiNodeDef::Text {
+                opts: slotted_ui::TextOpts::default(),
                 key: LocKey("injected".to_owned()),
                 style: TextRole::Muted,
                 tags: Tags::new().with("test_id", "injected"),

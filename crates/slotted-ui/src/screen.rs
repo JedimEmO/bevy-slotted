@@ -454,7 +454,99 @@ impl SpawnCtx<'_> {
                 children,
                 ..
             } => widgets::spawn_panel(self, role, layout, children),
-            UiNodeDef::Text { key, style, .. } => widgets::spawn_text(self, key, *style),
+            UiNodeDef::Text {
+                key, style, opts, ..
+            } => widgets::text::spawn_text(self, key, *style, opts),
+            UiNodeDef::RichText {
+                key, style, opts, ..
+            } => widgets::text::spawn_rich_text(self, key, *style, opts),
+            UiNodeDef::Toggle {
+                label, style, bind, ..
+            } => widgets::toggle::spawn_toggle(self, label.as_ref(), *style, bind),
+            UiNodeDef::Slider {
+                label,
+                min,
+                max,
+                step,
+                format,
+                bind,
+                ..
+            } => widgets::slider::spawn_slider(
+                self,
+                label.as_ref(),
+                widgets::slider::SliderDef {
+                    min: *min,
+                    max: *max,
+                    step: *step,
+                    format: format.clone(),
+                },
+                bind,
+            ),
+            UiNodeDef::Select {
+                label,
+                options,
+                bind,
+                ..
+            } => widgets::select::spawn_select(self, label.as_ref(), options, bind),
+            UiNodeDef::RadioGroup {
+                label,
+                options,
+                bind,
+                ..
+            } => widgets::radio_group::spawn_radio_group(self, label.as_ref(), options, bind),
+            UiNodeDef::KeyBinding {
+                label,
+                action,
+                device,
+                disabled,
+                ..
+            } => widgets::key_binding::spawn_key_binding(
+                self,
+                label.as_ref(),
+                *action,
+                *device,
+                *disabled,
+            ),
+            UiNodeDef::TextField {
+                label,
+                placeholder,
+                filter,
+                max_len,
+                bind,
+                ..
+            } => widgets::text_field::spawn_text_field(
+                self,
+                label.as_ref(),
+                placeholder.as_ref(),
+                *filter,
+                *max_len,
+                bind,
+            ),
+            UiNodeDef::List {
+                source, rows, bind, ..
+            } => widgets::list::spawn_list(self, source, *rows, bind),
+            UiNodeDef::Scroll {
+                layout,
+                scrollbar,
+                children,
+                ..
+            } => widgets::scroll::spawn_scroll(self, layout, *scrollbar, children),
+            UiNodeDef::Tabs {
+                tabs,
+                bind,
+                children,
+                ..
+            } => widgets::tabs::spawn_tabs(self, tabs, bind, children),
+            UiNodeDef::Separator { direction, .. } => {
+                widgets::decor::spawn_separator(self, *direction)
+            }
+            UiNodeDef::Spacer { size, .. } => widgets::decor::spawn_spacer(self, *size),
+            UiNodeDef::Image {
+                path,
+                width,
+                height,
+                ..
+            } => widgets::decor::spawn_image(self, path, *width, *height),
             UiNodeDef::Slot { slot, tags } => widgets::spawn_slot(self, *slot, tags, 0),
             UiNodeDef::SlotGrid {
                 inventory,
@@ -471,7 +563,9 @@ impl SpawnCtx<'_> {
                 tags,
                 SemanticRole::Grid,
             ),
-            UiNodeDef::Button { widget, .. } => widgets::spawn_button(self, widget, None),
+            UiNodeDef::Button { widget, opts, .. } => {
+                widgets::spawn_button(self, widget.as_ref(), opts)
+            }
             UiNodeDef::Anchor { id } => widgets::spawn_anchor(self, id),
             UiNodeDef::Custom {
                 kind,
@@ -930,6 +1024,7 @@ mod tests {
         UiNodeDef::Text {
             key: LocKey(id.to_owned()),
             style: TextRole::Body,
+            opts: crate::def::TextOpts::default(),
             tags: Tags::new().with(Tags::TEST_ID, id),
         }
     }

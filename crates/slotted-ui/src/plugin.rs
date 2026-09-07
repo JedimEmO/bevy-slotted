@@ -153,6 +153,29 @@ impl Plugin for SlottedUiPlugin {
         crate::actions::build(app);
         crate::focus_ring::build(app);
         crate::stack::build(app);
+        // Menus M1: values, rich text, the controls' systems.
+        crate::values::build(app);
+        crate::rich::build(app);
+        app.add_message::<crate::widgets::key_binding::BindingChanged>()
+            .add_message::<crate::widgets::text_field::TextEntryRequested>()
+            .add_systems(
+                Update,
+                (
+                    crate::nav::dispatch_focused_actions
+                        .after(crate::actions::UiActionEmit)
+                        .before(directional_nav_actions)
+                        .before(crate::nav::accept_focused)
+                        .in_set(SlottedUiSet::Input),
+                    crate::widgets::key_binding::capture_key_bindings
+                        .after(crate::actions::UiActionEmit)
+                        .in_set(SlottedUiSet::Input),
+                    (
+                        crate::widgets::text::enforce_max_lines,
+                        crate::widgets::scroll::scroll_focus_into_view,
+                    )
+                        .in_set(SlottedUiSet::Render),
+                ),
+            );
         app.add_observer(crate::nav::focus_on_spawn);
         #[cfg(feature = "viewport")]
         app.add_systems(

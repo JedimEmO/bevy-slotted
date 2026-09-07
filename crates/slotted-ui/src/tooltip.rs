@@ -166,6 +166,7 @@ impl TooltipParts {
 
 fn text_node(text: String, style: TextRole) -> UiNodeDef {
     UiNodeDef::Text {
+        opts: crate::def::TextOpts::default(),
         key: LocKey(text),
         style,
         tags: crate::def::Tags::new(),

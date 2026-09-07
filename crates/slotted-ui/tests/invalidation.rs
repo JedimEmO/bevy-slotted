@@ -118,6 +118,7 @@ fn text_injection(target: &str, anchor: &str, test_id: &str, owner: Owner) -> In
         target: ScreenKind::new(target),
         anchor: AnchorId::new(anchor),
         node: UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey("mod.rail".to_owned()),
             style: TextRole::Body,
             tags: Tags::new().with(Tags::TEST_ID, test_id),

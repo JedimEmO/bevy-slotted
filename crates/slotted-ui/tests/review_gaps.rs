@@ -194,6 +194,7 @@ fn injection(target: &str, anchor: &str, test_id: &str) -> Injection {
         target: ScreenKind::new(target),
         anchor: AnchorId::new(anchor),
         node: UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey("mod.button".to_owned()),
             style: slotted_ui::TextRole::Body,
             tags,
@@ -657,13 +658,13 @@ impl CountingLocalizer {
 struct RealLocalizer;
 
 impl Localizer for RealLocalizer {
-    fn resolve(&self, key: &LocKey) -> Option<String> {
+    fn resolve(&self, key: &LocKey, _args: &slotted_ui::LocArgs) -> Option<String> {
         (key.0 == "chest.title").then(|| "Copper Chest".to_owned())
     }
 }
 
 impl Localizer for CountingLocalizer {
-    fn resolve(&self, key: &LocKey) -> Option<String> {
+    fn resolve(&self, key: &LocKey, _args: &slotted_ui::LocArgs) -> Option<String> {
         self.asked.fetch_add(1, Ordering::Relaxed);
         self.keys.lock().expect("no panic").push(key.0.clone());
         None

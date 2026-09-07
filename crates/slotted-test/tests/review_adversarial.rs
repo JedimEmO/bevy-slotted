@@ -37,6 +37,7 @@ fn chest_screen() -> ScreenDef {
             },
             children: vec![
                 UiNodeDef::Text {
+                    opts: slotted_ui::TextOpts::default(),
                     key: LocKey("chest.title".to_owned()),
                     style: TextRole::Title,
                     tags: Tags::new().with("test_id", "title"),

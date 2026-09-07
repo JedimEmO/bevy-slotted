@@ -219,6 +219,38 @@ pub struct Sizes {
     /// status line.
     #[serde(default = "default_chrome_height")]
     pub chrome_height: f32,
+    /// Height of a menu control row (button, toggle, slider, select, text
+    /// field). Menus M1 contract 0.
+    #[serde(default = "default_control_height")]
+    pub control_height: f32,
+    /// Height of a control used inline or in a list row.
+    #[serde(default = "default_control_height_compact")]
+    pub control_height_compact: f32,
+}
+
+const fn default_control_height() -> f32 {
+    44.0
+}
+
+const fn default_control_height_compact() -> f32 {
+    28.0
+}
+
+/// One entry of the type scale (menus M1 contract 1.4): what a `$name` text
+/// size resolves to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TypeStyle {
+    /// Font size in px.
+    pub size: f32,
+    /// Name of an entry in `tokens.fonts`.
+    #[serde(default)]
+    pub font: Option<String>,
+    /// Variable-font weight, 100 to 900.
+    #[serde(default)]
+    pub weight: Option<u16>,
+    /// Line height as a multiple of the size.
+    #[serde(default)]
+    pub line_height: Option<f32>,
 }
 
 const fn default_slot_size() -> f32 {
@@ -246,6 +278,8 @@ impl Default for Sizes {
             card_width: default_card_width(),
             card_height: default_card_height(),
             chrome_height: default_chrome_height(),
+            control_height: default_control_height(),
+            control_height_compact: default_control_height_compact(),
         }
     }
 }
@@ -274,6 +308,10 @@ pub struct Tokens {
     /// `display` by convention).
     #[serde(default)]
     pub fonts: BTreeMap<String, FontToken>,
+    /// The type scale: `display`, `title`, `heading`, `body`, `label`,
+    /// `caption` by convention, referenced as `size: "$body"`.
+    #[serde(default)]
+    pub typography: BTreeMap<String, TypeStyle>,
     /// Backdrop blur.
     pub blur: Blur,
     /// Named colours that materials reference with `$name`.

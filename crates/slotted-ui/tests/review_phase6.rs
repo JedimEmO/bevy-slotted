@@ -98,6 +98,7 @@ fn side_tab(test_id: &str, open: bool) -> UiNodeDef {
         label: Some(LocKey(format!("tab.{test_id}"))),
         open,
         children: vec![UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey(format!("body.{test_id}")),
             style: TextRole::Body,
             tags: tags(&format!("{test_id}_body")),
@@ -127,6 +128,7 @@ impl VirtualGridSource for Cells {
     }
     fn cell(&self, index: usize) -> UiNodeDef {
         UiNodeDef::Text {
+            opts: slotted_ui::TextOpts::default(),
             key: LocKey(format!("cell {index}")),
             style: TextRole::Body,
             tags: Tags::new(),

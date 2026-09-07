@@ -31,7 +31,7 @@ pub mod cut;
 pub use apply::{
     ActiveTheme, CutPaint, GlassPaint, Paint, SlicedPaint, Themed, TiledPaint, apply_theme,
 };
-pub use material::{Corners, Material, ThemeColor};
+pub use material::{Corners, Material, ThemeColor, ThemeSize};
 pub use motion::{
     ActiveMotions, Easing, Motion, MotionPreset, Tween, TweenTarget, TweenValue, advance_tweens,
 };

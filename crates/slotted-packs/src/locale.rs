@@ -138,8 +138,8 @@ impl LocaleTable {
 
     /// `resolve`, logging once for a key nothing defines.
     #[cfg(feature = "ui")]
-    fn resolve_or_warn(&self, key: &LocKey) -> Option<String> {
-        if let Some(text) = self.resolve(key, None) {
+    fn resolve_or_warn(&self, key: &LocKey, args: Option<&FluentArgs<'_>>) -> Option<String> {
+        if let Some(text) = self.resolve(key, args) {
             return Some(text);
         }
         if let Ok(mut missing) = self.missing.lock()
@@ -162,8 +162,20 @@ impl Localizer for LocaleTable {
     /// The port `slotted-ui` and `slotted-browser` resolve through. It warns
     /// once per key that nothing defines, the same as a `LocText` does, so a
     /// browser card and a screen label report a missing key identically.
-    fn resolve(&self, key: &LocKey) -> Option<String> {
-        self.resolve_or_warn(key)
+    fn resolve(&self, key: &LocKey, args: &slotted_ui::LocArgs) -> Option<String> {
+        if args.is_empty() {
+            return self.resolve_or_warn(key, None);
+        }
+        let mut fluent = FluentArgs::new();
+        for (name, value) in args {
+            match value {
+                slotted_ui::Value::Bool(b) => fluent.set(name.as_str(), b.to_string()),
+                slotted_ui::Value::Int(i) => fluent.set(name.as_str(), *i),
+                slotted_ui::Value::Float(f) => fluent.set(name.as_str(), *f),
+                slotted_ui::Value::Text(t) => fluent.set(name.as_str(), t.as_str()),
+            }
+        }
+        self.resolve_or_warn(key, Some(&fluent))
     }
 }
 

@@ -8,9 +8,21 @@
 //! `slotted:hotbar` be written either way.
 
 pub mod bar;
+pub mod controls;
+pub mod decor;
 pub mod icon_button;
+pub mod key_binding;
+pub mod list;
+pub mod radio_group;
+pub mod scroll;
+pub mod select;
 pub mod side_tab;
+pub mod slider;
+pub mod tabs;
 pub mod tank;
+pub mod text;
+pub mod text_field;
+pub mod toggle;
 pub mod viewport;
 pub mod virtual_grid;
 
@@ -33,7 +45,7 @@ use crate::input::{
 };
 use crate::item::{ItemView, spawn_item_view_children};
 use crate::screen::{SpawnCtx, Widget, WidgetRegistry};
-use crate::semantic::{AnchorNode, LocText, SemanticLabel, SemanticRole, WidgetNode};
+use crate::semantic::{AnchorNode, SemanticLabel, SemanticRole, WidgetNode};
 use crate::tooltip::on_slot_over;
 
 /// Edge length of a slot in logical pixels, before any theme has loaded.
@@ -116,8 +128,65 @@ pub mod kinds {
         WidgetKind(ns("slotted:viewport"))
     }
 
+    /// A rich-text paragraph (menus M1).
+    pub fn rich_text() -> WidgetKind {
+        WidgetKind(ns("slotted:rich_text"))
+    }
+    /// A switch or checkbox (menus M1).
+    pub fn toggle() -> WidgetKind {
+        WidgetKind(ns("slotted:toggle"))
+    }
+    /// A slider (menus M1).
+    pub fn slider() -> WidgetKind {
+        WidgetKind(ns("slotted:slider"))
+    }
+    /// A select (menus M1).
+    pub fn select() -> WidgetKind {
+        WidgetKind(ns("slotted:select"))
+    }
+    /// A segmented control (menus M1).
+    pub fn radio_group() -> WidgetKind {
+        WidgetKind(ns("slotted:radio_group"))
+    }
+    /// A key binding row (menus M1).
+    pub fn key_binding() -> WidgetKind {
+        WidgetKind(ns("slotted:key_binding"))
+    }
+    /// A text field (menus M1).
+    pub fn text_field() -> WidgetKind {
+        WidgetKind(ns("slotted:text_field"))
+    }
+    /// A list of focusable rows (menus M1).
+    pub fn list() -> WidgetKind {
+        WidgetKind(ns("slotted:list"))
+    }
+    /// A scrolling panel (menus M1).
+    pub fn scroll() -> WidgetKind {
+        WidgetKind(ns("slotted:scroll"))
+    }
+    /// A tab bar over pages (menus M1).
+    pub fn tabs() -> WidgetKind {
+        WidgetKind(ns("slotted:tabs"))
+    }
+    /// A hairline (menus M1).
+    pub fn separator() -> WidgetKind {
+        WidgetKind(ns("slotted:separator"))
+    }
+    /// Empty space (menus M1).
+    pub fn spacer() -> WidgetKind {
+        WidgetKind(ns("slotted:spacer"))
+    }
+    /// An image (menus M1).
+    pub fn image() -> WidgetKind {
+        WidgetKind(ns("slotted:image"))
+    }
+    /// The button behaviour that pops the screen stack (menus M1).
+    pub fn close() -> WidgetKind {
+        WidgetKind(ns("slotted:close"))
+    }
+
     /// Every built-in kind.
-    pub fn all() -> [WidgetKind; 15] {
+    pub fn all() -> [WidgetKind; 29] {
         [
             panel(),
             text(),
@@ -134,6 +203,20 @@ pub mod kinds {
             icon_button(),
             virtual_grid(),
             viewport(),
+            rich_text(),
+            toggle(),
+            slider(),
+            select(),
+            radio_group(),
+            key_binding(),
+            text_field(),
+            list(),
+            scroll(),
+            tabs(),
+            separator(),
+            spacer(),
+            image(),
+            close(),
         ]
     }
 }
@@ -326,17 +409,7 @@ pub fn spawn_panel(
 
 /// Spawns a text label. Phase 2 has no locale table, so the key is the text;
 /// the font is Bevy's default handle.
-pub fn spawn_text(ctx: &mut SpawnCtx<'_>, key: &LocKey, style: TextRole) -> Entity {
-    ctx.spawn_node((
-        Node::default(),
-        Text::new(key.0.clone()),
-        Themed(style.role()),
-        SemanticRole::Text,
-        SemanticLabel(key.0.clone()),
-        WidgetNode(kinds::text()),
-        LocText(key.clone()),
-    ))
-}
+pub use text::spawn_text;
 
 // ---------------------------------------------------------------------------
 // Slot
@@ -444,8 +517,20 @@ pub fn spawn_slot_grid(
 // Button
 // ---------------------------------------------------------------------------
 
-/// Spawns a themed button carrying `widget` as its behaviour kind.
-pub fn spawn_button(ctx: &mut SpawnCtx<'_>, widget: &WidgetKind, label: Option<&str>) -> Entity {
+/// Spawns a themed button carrying `widget` as its behaviour kind (menus M1
+/// contract 3.2). The label is a locale key; `opts` carries icon, variant,
+/// disabled and compact.
+pub fn spawn_button(
+    ctx: &mut SpawnCtx<'_>,
+    widget: Option<&WidgetKind>,
+    opts: &crate::def::ButtonOpts,
+) -> Entity {
+    // M1-IMPL: B — the full control: icon child, variant roles, `Focusable`
+    // Accept through `FocusedAction`, pressed/disabled states, no
+    // `bevy::ui_widgets::Button`.
+    let label = opts.label.as_ref().map(|k| k.0.clone());
+    let widget = widget.cloned().unwrap_or_else(kinds::button);
+    let label = label.as_deref();
     let tokens = ctx.tokens();
     let entity = ctx.spawn_node((
         Node {
@@ -635,7 +720,15 @@ pub fn spawn_action_rail(ctx: &mut SpawnCtx<'_>, params: &ActionRailParams) -> E
             continue;
         };
         let label = rail_label(ctx.world, name);
-        let button = spawn_button(ctx, &kinds::button(), Some(&label));
+        let button = spawn_button(
+            ctx,
+            Some(&kinds::button()),
+            &crate::def::ButtonOpts {
+                label: Some(LocKey(label)),
+                compact: true,
+                ..Default::default()
+            },
+        );
         ctx.world
             .entity_mut(button)
             .insert((RailAction(action), Tags::new().with("action", name)));
@@ -859,7 +952,12 @@ impl Default for TextParams {
 impl Widget for TextWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
         let params: TextParams = params_of!(params, "slotted:text");
-        spawn_text(ctx, &params.key, params.style)
+        spawn_text(
+            ctx,
+            &params.key,
+            params.style,
+            &crate::def::TextOpts::default(),
+        )
     }
 }
 
@@ -897,6 +995,7 @@ impl Widget for SlotWidget {
     fn tooltip(&self, entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
         if let Some(hint) = world.get::<crate::preview::SlotHint>(entity) {
             out.push(UiNodeDef::Text {
+                opts: crate::def::TextOpts::default(),
                 key: LocKey(hint.tooltip().to_owned()),
                 style: TextRole::Body,
                 tags: Tags::new(),
@@ -983,7 +1082,14 @@ pub struct ButtonParams {
 impl Widget for ButtonWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
         let p: ButtonParams = params_of!(params, "slotted:button");
-        spawn_button(ctx, &kinds::button(), p.label.as_deref())
+        spawn_button(
+            ctx,
+            Some(&kinds::button()),
+            &crate::def::ButtonOpts {
+                label: p.label.map(LocKey),
+                ..Default::default()
+            },
+        )
     }
 }
 
@@ -1097,6 +1203,7 @@ impl Widget for IconButtonWidget {
             return;
         }
         out.push(UiNodeDef::Text {
+            opts: crate::def::TextOpts::default(),
             key: state.state().label.clone(),
             style: TextRole::Body,
             tags: Tags::new(),
@@ -1137,6 +1244,7 @@ fn fill_tooltip(entity: Entity, world: &World, out: &mut Vec<UiNodeDef>) {
         .get::<tank::TankFluidSource>(entity)
         .map_or("", |s| s.unit.as_str());
     out.push(UiNodeDef::Text {
+        opts: crate::def::TextOpts::default(),
         key: LocKey(tank::fill_label(fill, unit)),
         style: TextRole::Body,
         tags: Tags::new(),
@@ -1160,6 +1268,7 @@ pub fn register_builtins(registry: &mut WidgetRegistry) {
     registry.register(kinds::action_rail(), ActionRailWidget);
     registry.register(kinds::hotbar(), HotbarWidget);
     registry.register(kinds::tooltip(), TooltipWidget);
+    crate::widgets::controls::register(registry);
 }
 
 // ---------------------------------------------------------------------------

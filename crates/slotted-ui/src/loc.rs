@@ -14,7 +14,7 @@
 //! wants no localisation at all, and every test that does not load a mod, gets
 //! the key verbatim, which is what the Phase 2 and Phase 3 snapshots expect.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use bevy::ecs::resource::Resource;
@@ -30,8 +30,18 @@ use crate::semantic::LocText;
 /// use `Res<Localization>`'s change detection to know that every string it
 /// drew is stale.
 pub trait Localizer: Send + Sync + 'static {
-    /// The display text for `key`, or `None` when nothing defines it.
-    fn resolve(&self, key: &LocKey) -> Option<String>;
+    /// The display text for `key` with `args` substituted, or `None` when
+    /// nothing defines it (menus M1 contract 2.3).
+    fn resolve(&self, key: &LocKey, args: &LocArgs) -> Option<String>;
+}
+
+/// Arguments to a localised string: Fluent variables by name.
+pub type LocArgs = BTreeMap<String, crate::values::Value>;
+
+/// No arguments.
+pub fn no_args() -> &'static LocArgs {
+    static EMPTY: std::sync::OnceLock<LocArgs> = std::sync::OnceLock::new();
+    EMPTY.get_or_init(BTreeMap::new)
 }
 
 /// The [`Localizer`] that resolves nothing, so every key is drawn as written.
@@ -39,7 +49,7 @@ pub trait Localizer: Send + Sync + 'static {
 pub struct NoLocalization;
 
 impl Localizer for NoLocalization {
-    fn resolve(&self, _key: &LocKey) -> Option<String> {
+    fn resolve(&self, _key: &LocKey, _args: &LocArgs) -> Option<String> {
         None
     }
 }
@@ -59,7 +69,12 @@ impl Localization {
 
     /// The display text for `key`, or `None` when nothing defines it.
     pub fn resolve(&self, key: &LocKey) -> Option<String> {
-        self.0.resolve(key)
+        self.0.resolve(key, no_args())
+    }
+
+    /// The display text for `key` with `args`, or `None`.
+    pub fn resolve_with(&self, key: &LocKey, args: &LocArgs) -> Option<String> {
+        self.0.resolve(key, args)
     }
 
     /// The display text for `key`, falling back to the key itself.
@@ -68,6 +83,12 @@ impl Localization {
     /// bug report, where an empty label is not.
     pub fn text(&self, key: &LocKey) -> String {
         self.resolve(key).unwrap_or_else(|| key.0.clone())
+    }
+
+    /// [`text`](Self::text) with arguments.
+    pub fn text_with(&self, key: &LocKey, args: &LocArgs) -> String {
+        self.resolve_with(key, args)
+            .unwrap_or_else(|| key.0.clone())
     }
 
     /// [`text`](Self::text) for a key that is only a `&str`.
@@ -106,11 +127,12 @@ impl std::fmt::Debug for Localization {
 pub fn resolve_loc_text(
     locales: Res<Localization>,
     mut texts: Query<(Entity, &LocText, &mut Text)>,
-    fresh: Query<Entity, Added<LocText>>,
+    fresh: Query<Entity, Or<(Added<LocText>, Changed<LocText>)>>,
 ) {
     let all = locales.is_changed();
-    // Two `&mut Text` queries would conflict, so the freshly spawned entities
-    // arrive as a set of ids and the write goes through the one query.
+    // Two `&mut Text` queries would conflict, so the freshly spawned (or
+    // re-argued) entities arrive as a set of ids and the write goes through
+    // the one query.
     let fresh: HashSet<Entity> = if all {
         HashSet::new()
     } else {
@@ -123,7 +145,7 @@ pub fn resolve_loc_text(
         if !all && !fresh.contains(&entity) {
             continue;
         }
-        let want = locales.text(&key.0);
+        let want = locales.text_with(&key.key, &key.args);
         if text.0 != want {
             text.0 = want;
         }
@@ -132,13 +154,13 @@ pub fn resolve_loc_text(
 
 #[cfg(test)]
 mod tests {
-    use super::{LocKey, Localization, Localizer};
+    use super::{LocArgs, LocKey, Localization, Localizer};
     use pretty_assertions::assert_eq;
 
     struct One;
 
     impl Localizer for One {
-        fn resolve(&self, key: &LocKey) -> Option<String> {
+        fn resolve(&self, key: &LocKey, _args: &LocArgs) -> Option<String> {
             (key.0 == "copper_chest.item.copper_chest").then(|| "Copper Chest".to_owned())
         }
     }

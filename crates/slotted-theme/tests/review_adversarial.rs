@@ -393,7 +393,8 @@ fn an_uninstalled_font_family_paints_text_without_panicking() {
         roles::COUNT,
         Material::Text {
             color: ThemeColor::hex("#ffffff"),
-            size: 11.0,
+            size: (11.0).into(),
+            weight: None,
             font: Some("mono".to_owned()),
             shadow: None,
         },
@@ -429,7 +430,8 @@ fn a_text_role_naming_an_unknown_font_token_falls_back_to_the_default_face() {
         roles::COUNT,
         Material::Text {
             color: ThemeColor::hex("#ffffff"),
-            size: 11.0,
+            size: (11.0).into(),
+            weight: None,
             font: Some("a-token-nobody-defined".to_owned()),
             shadow: None,
         },

@@ -7,9 +7,9 @@ use bevy::color::Color;
 use bevy::reflect::TypePath;
 use serde::{Deserialize, Serialize};
 
-use crate::material::{Material, ThemeColor};
+use crate::material::{Material, ThemeColor, ThemeSize};
 use crate::role::{Role, roles};
-use crate::tokens::Tokens;
+use crate::tokens::{Tokens, TypeStyle};
 
 /// A complete skin: tokens plus a role-to-material map.
 ///
@@ -70,6 +70,45 @@ impl Theme {
                 .unwrap_or(Color::srgb(1.0, 0.0, 1.0));
         }
         c.parse_hex().unwrap_or(Color::srgb(1.0, 0.0, 1.0))
+    }
+
+    /// Resolves a text size: a literal, or `$name` through the type scale.
+    /// An unresolvable reference comes back as 13 px so a typo is visible
+    /// in the log, not fatal.
+    pub fn size(&self, size: &ThemeSize) -> f32 {
+        match size.typography_ref() {
+            Some(name) => self.tokens.typography.get(name).map_or_else(
+                || {
+                    tracing::warn!(reference = name, "unknown typography reference");
+                    13.0
+                },
+                |style| style.size,
+            ),
+            None => size.parse_px().unwrap_or(13.0),
+        }
+    }
+
+    /// The type style a `$name` size refers to, if any.
+    pub fn type_style(&self, size: &ThemeSize) -> Option<&TypeStyle> {
+        size.typography_ref()
+            .and_then(|name| self.tokens.typography.get(name))
+    }
+
+    /// Every `$name` size that has no typography entry.
+    pub fn dangling_typography_refs(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .roles
+            .values()
+            .filter_map(|m| match m {
+                Material::Text { size, .. } => size.typography_ref(),
+                _ => None,
+            })
+            .filter(|name| !self.tokens.typography.contains_key(*name))
+            .map(str::to_owned)
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
 
     /// Well-known roles this theme does not define even through fallback.

@@ -13,9 +13,10 @@ use bevy::input::gamepad::GamepadButton;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// What the player asked the UI to do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// What the player asked the UI to do. Written as a lowercase string in data
+/// (`"accept"`), like every other data enum, so it survives the untyped
+/// `Value` path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum UiAction {
     /// Activate the focused widget.
     Accept,
@@ -95,9 +96,28 @@ impl core::str::FromStr for UiAction {
     }
 }
 
-/// Which device produced an action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+impl core::fmt::Display for UiAction {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for UiAction {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for UiAction {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        String::deserialize(d)?
+            .parse()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+/// Which device produced an action. A lowercase string in data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InputDevice {
     /// Mouse or touch.
     Pointer,
@@ -105,6 +125,50 @@ pub enum InputDevice {
     Keyboard,
     /// Any gamepad.
     Gamepad,
+}
+
+impl InputDevice {
+    /// The data-file spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pointer => "pointer",
+            Self::Keyboard => "keyboard",
+            Self::Gamepad => "gamepad",
+        }
+    }
+}
+
+impl core::str::FromStr for InputDevice {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "pointer" => Ok(Self::Pointer),
+            "keyboard" => Ok(Self::Keyboard),
+            "gamepad" => Ok(Self::Gamepad),
+            other => Err(format!("unknown InputDevice `{other}`")),
+        }
+    }
+}
+
+impl core::fmt::Display for InputDevice {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for InputDevice {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for InputDevice {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        String::deserialize(d)?
+            .parse()
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 /// One action this frame. Written by [`emit_ui_actions`], at most once per

@@ -30,12 +30,14 @@ pub mod nav;
 pub mod plugin;
 pub mod preview;
 pub mod recording;
+pub mod rich;
 pub mod scale;
 pub mod screen;
 pub mod screen_asset;
 pub mod semantic;
 pub mod stack;
 pub mod tooltip;
+pub mod values;
 pub mod widgets;
 
 pub use actions::{
@@ -43,10 +45,11 @@ pub use actions::{
     UiActionEvent, UiBindings, emit_ui_actions, track_input_mode,
 };
 pub use def::{
-    AnchorId, DataSourceId, Direction, IconButtonState as IconButtonStateDef, IconDef, Layout,
-    LayoutDirection, Length, LocKey, NavLinks, NineAnchor, Orientation, Overflow, Padding, Place,
-    Presentation, PresentationMode, ScreenDef, ScreenKind, Side, Tags, TextRole, Transition,
-    UiNodeDef, ViewSubject, WidgetKind,
+    AnchorId, BindDef, ButtonOpts, ButtonVariant, DataSourceId, Direction,
+    IconButtonState as IconButtonStateDef, IconDef, Layout, LayoutDirection, Length, LocKey,
+    NavLinks, NineAnchor, Orientation, Overflow, Padding, Place, Presentation, PresentationMode,
+    ScreenDef, ScreenKind, SelectOption, Side, TabDef, Tags, TextAlign, TextFilter, TextOpts,
+    TextRole, ToggleStyle, Transition, UiNodeDef, ViewSubject, WidgetKind,
 };
 pub use fluids::{FluidDef, FluidId, Fluids};
 pub use focus_ring::{FocusRing, FocusRingFrame, FocusRingState, Focusable, update_focus_ring};
@@ -67,11 +70,12 @@ pub use layers::{
     CarriedItem, CarriedLayer, Decorative, ExclusionZone, Exclusions, TooltipLayer,
     update_carried_layer, zbands,
 };
-pub use loc::{Localization, Localizer, NoLocalization, resolve_loc_text};
+pub use loc::{LocArgs, Localization, Localizer, NoLocalization, no_args, resolve_loc_text};
 pub use motion::{
     FlyingItem, GestureTarget, HOVER_SCALE, MotionTarget, PRESS_SCALE, REST_SCALE, SQUASH_SCALE,
     SlotPressed, despawn_finished_flights, drop_squash, fly_to_slot, slot_motion,
 };
+pub use nav::{FocusMask, FocusedAction, dispatch_focused_actions};
 pub use nav::{
     TextEntryFocused, accept_focused, directional_nav_actions, focus_on_spawn,
     track_text_entry_focus,
@@ -82,6 +86,7 @@ pub use preview::{
     update_carried_validity, update_drag_phantoms, update_slot_hints,
 };
 pub use recording::{RECORDING_VERSION, RecordedButton, RecordedFrame, RecordedInput, Recording};
+pub use rich::{RichError, RichRun, RichRuns, RunKind, RunStyle, key_glyph_text};
 pub use scale::{UiUnits, ui_scale_of};
 pub use screen::{
     Injection, Injections, MAX_INHERIT_DEPTH, ScreenClosed, ScreenLaidOut, ScreenLayout,
@@ -104,15 +109,29 @@ pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,
     TooltipTier, TooltipUnplaced, clear_tooltip, despawn_orphan_tooltips,
 };
+pub use values::{
+    BindingTarget, SetValue, Value, ValueBinding, ValueChanged, ValueGuard, ValueGuards,
+    ValueRefused, ValueRule, ValueRules, ValueStore,
+};
 pub use widgets::bar::{BarState, BarStyle, BarText};
 pub use widgets::icon_button::{IconButtonCycle, IconButtonState};
+pub use widgets::key_binding::{BindingChanged, KeyBindingState};
+pub use widgets::list::ListState;
+pub use widgets::radio_group::RadioState;
+pub use widgets::scroll::ScrollPanel;
+pub use widgets::select::{SelectPopup, SelectState};
 pub use widgets::side_tab::{
     SideTabContent, SideTabHeader, SideTabPanel, SideTabState, SideTabToggle,
 };
+pub use widgets::slider::{SliderDef, SliderState};
+pub use widgets::tabs::TabsState;
 pub use widgets::tank::{
     FillNode, FillValue, PropertyBinding, TankFluid, TankFluidSource, TooltipSource,
     UnknownFluidWarned,
 };
+pub use widgets::text::{MaxLines, spawn_rich_text, spawn_text};
+pub use widgets::text_field::{TextEntryRequested, TextFieldState};
+pub use widgets::toggle::ToggleState;
 pub use widgets::viewport::{VIEWPORT_LAYER_BASE, ViewportSubject};
 pub use widgets::virtual_grid::{
     PooledCell, VirtualCell, VirtualGridSource, VirtualGridSources, VirtualGridState,

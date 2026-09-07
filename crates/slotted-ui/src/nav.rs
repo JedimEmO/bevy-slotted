@@ -205,6 +205,41 @@ pub fn directional_nav_actions(
     }
 }
 
+/// One action delivered to the focused node (menus M1 contract 1.2). Controls
+/// observe it, act, and claim what they consumed.
+#[derive(EntityEvent, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FocusedAction {
+    /// The focused entity.
+    pub entity: Entity,
+    /// The action.
+    pub action: crate::actions::UiAction,
+    /// Who pressed it.
+    pub device: crate::actions::InputDevice,
+    /// A held-key repeat rather than a fresh press.
+    pub repeat: bool,
+}
+
+/// On a hidden tab page (menus M1 contract 4.4): its focusable descendants
+/// take no focus and get no [`FocusedAction`].
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FocusMask;
+
+/// `SlottedUiSet::Input`, after `UiActionEmit` and before
+/// [`directional_nav_actions`] and [`accept_focused`]: triggers one
+/// [`FocusedAction`] on the `InputFocus` entity per `UiActionEvent` this
+/// frame, when that entity is `Focusable`, not `InteractionDisabled` and not
+/// under a `FocusMask`.
+pub fn dispatch_focused_actions(
+    _events: MessageReader<crate::actions::UiActionEvent>,
+    _focus: Option<Res<InputFocus>>,
+    _focusables: Query<Has<bevy::ui::InteractionDisabled>, With<crate::focus_ring::Focusable>>,
+    _masked: Query<(), With<FocusMask>>,
+    _parents: Query<&ChildOf>,
+    _commands: Commands,
+) {
+    // M1-IMPL: B
+}
+
 /// `SlottedUiSet::Input`, after `UiActionEmit`: `Accept` acts on the focused
 /// node, and is claimed when it did.
 ///

@@ -139,7 +139,10 @@ impl ScreenDependencies {
                 UiNodeDef::Anchor { id } => {
                     anchors.insert(id.clone());
                 }
-                UiNodeDef::Custom { kind, .. } | UiNodeDef::Button { widget: kind, .. } => {
+                UiNodeDef::Custom { kind, .. }
+                | UiNodeDef::Button {
+                    widget: Some(kind), ..
+                } => {
                     templates.insert(kind.clone());
                 }
                 _ => {}
