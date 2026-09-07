@@ -44,8 +44,12 @@ slotted.register_recipe("copper_chest", {
 })
 
 -- The demo chest tree with a localised title and an anchor other mods can
--- inject into. Same shape as assets/screens/demo_chest.screen.ron.
+-- inject into. Same shape as assets/screens/demo_chest.screen.ron: a `page`
+-- on the screen stack (the default, written out so the field is visible),
+-- with keyboard and gamepad focus starting on the chest grid.
 slotted.register_screen("chest", {
+    presentation = { mode = "page", transition = "fade", back = "pop" },
+    initial_focus = "chest_grid",
     root = {
         type = "panel",
         role = "panel",

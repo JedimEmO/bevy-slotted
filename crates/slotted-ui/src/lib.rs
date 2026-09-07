@@ -72,7 +72,10 @@ pub use motion::{
     FlyingItem, GestureTarget, HOVER_SCALE, MotionTarget, PRESS_SCALE, REST_SCALE, SQUASH_SCALE,
     SlotPressed, despawn_finished_flights, drop_squash, fly_to_slot, slot_motion,
 };
-pub use nav::{TextEntryFocused, directional_nav_actions, focus_on_spawn, track_text_entry_focus};
+pub use nav::{
+    TextEntryFocused, accept_focused, directional_nav_actions, focus_on_spawn,
+    track_text_entry_focus,
+};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use preview::{
     DragGhost, HintGlyphs, SlotHint, SlotPhantom, Validity, render_overlays,
@@ -95,7 +98,7 @@ pub use semantic::{
 };
 pub use stack::{
     ClearScreens, PopScreen, PopTo, PushScreen, ScreenStack, Scrim, StackChanged, StackEntry,
-    clear_screens, pop_screen, pop_to, push_screen, replace_screen,
+    clear_screens, pop_screen, pop_to, push_screen, push_screen_at, replace_screen,
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,

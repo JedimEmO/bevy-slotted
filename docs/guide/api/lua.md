@@ -544,9 +544,9 @@ Available only in a mod's `tests/*.lua`, which the harness runs headless. See [t
 
 **Tests.** [`slotted.test.test`](#slottedtesttestname-fn)
 
-**Actions.** [`slotted.test.open_screen`](#slottedtestopen_screenkind-fixture), [`slotted.test.click`](#slottedtestclickloc), [`slotted.test.shift_click`](#slottedtestshift_clickloc), [`slotted.test.right_click`](#slottedtestright_clickloc), [`slotted.test.hover`](#slottedtesthoverloc), [`slotted.test.key`](#slottedtestkeykey), [`slotted.test.type_text`](#slottedtesttype_texttext), [`slotted.test.settle`](#slottedtestsettle), [`slotted.test.step`](#slottedteststepframes), [`slotted.test.cycle`](#slottedtestcycleloc-forward)
+**Actions.** [`slotted.test.open_screen`](#slottedtestopen_screenkind-fixture), [`slotted.test.click`](#slottedtestclickloc), [`slotted.test.shift_click`](#slottedtestshift_clickloc), [`slotted.test.right_click`](#slottedtestright_clickloc), [`slotted.test.hover`](#slottedtesthoverloc), [`slotted.test.key`](#slottedtestkeykey), [`slotted.test.type_text`](#slottedtesttype_texttext), [`slotted.test.settle`](#slottedtestsettle), [`slotted.test.step`](#slottedteststepframes), [`slotted.test.cycle`](#slottedtestcycleloc-forward), [`slotted.test.gamepad`](#slottedtestgamepadbutton), [`slotted.test.action`](#slottedtestactionname)
 
-**Queries.** [`slotted.test.stack_at`](#slottedteststack_atloc), [`slotted.test.text_of`](#slottedtesttext_ofloc), [`slotted.test.property_of`](#slottedtestproperty_ofloc), [`slotted.test.tank_fill`](#slottedtesttank_fillloc), [`slotted.test.is_visible`](#slottedtestis_visibleloc), [`slotted.test.log_contains`](#slottedtestlog_containstext)
+**Queries.** [`slotted.test.stack_at`](#slottedteststack_atloc), [`slotted.test.text_of`](#slottedtesttext_ofloc), [`slotted.test.property_of`](#slottedtestproperty_ofloc), [`slotted.test.tank_fill`](#slottedtesttank_fillloc), [`slotted.test.is_visible`](#slottedtestis_visibleloc), [`slotted.test.log_contains`](#slottedtestlog_containstext), [`slotted.test.focused`](#slottedtestfocused)
 
 **Expectations.** [`slotted.test.expect`](#slottedtestexpectcond-msg), [`slotted.test.expect_eq`](#slottedtestexpect_eqa-b-msg), [`slotted.test.expect_stack`](#slottedtestexpect_stackloc-item-count)
 
@@ -749,6 +749,42 @@ Returns nothing.
 slotted.test.cycle({ test_id = "redstone_mode" })
 ```
 
+#### `slotted.test.gamepad(button)`
+
+*Stage: `test`.*
+
+Press and release one gamepad button. The harness owns one pad; the press
+lands on it and the UI reads it through `UiBindings` like any other.
+
+| Argument | Type | |
+|---|---|---|
+| `button` | `string` | A Bevy `GamepadButton` name: `"South"`, `"East"`, `"DPadRight"`, `"Start"`. |
+
+Returns nothing.
+
+```lua
+slotted.test.gamepad("DPadRight")
+slotted.test.gamepad("South")
+```
+
+#### `slotted.test.action(name)`
+
+*Stage: `test`.*
+
+Perform a UI action through the first keyboard key bound to it, so a test
+reads as what the player meant rather than which key they pressed.
+
+| Argument | Type | |
+|---|---|---|
+| `name` | `string` | A `UiAction` name: `"accept"`, `"back"`, `"secondary"`, `"up"`, `"down"`, `"left"`, `"right"`, `"tab_prev"`, `"tab_next"`, `"page_prev"`, `"page_next"`, `"menu"`. |
+
+Returns nothing.
+
+```lua
+slotted.test.action("down")
+slotted.test.action("accept")
+```
+
 ### Queries
 
 #### `slotted.test.stack_at(loc)`
@@ -846,6 +882,20 @@ Returns `boolean`.
 
 ```lua
 slotted.test.expect(slotted.test.log_contains("sorting"), "the handler ran")
+```
+
+#### `slotted.test.focused()`
+
+*Stage: `test`.*
+
+The tags of the node that has focus, which is where the focus ring sits
+and what `accept` would activate.
+
+Returns `table`: The focused node's tags (`test_id`, `region`, ...), or `nil` when nothing has focus.
+
+```lua
+slotted.test.gamepad("DPadRight")
+slotted.test.expect_eq(slotted.test.focused().region, "chest")
 ```
 
 ### Expectations

@@ -105,7 +105,8 @@ fn main() {
 #[derive(Component)]
 struct MainCamera;
 
-/// `Startup`: the inventories, the menu and the screen the demo opens on.
+/// `Startup`: the inventories, the menu and the screen the demo opens on,
+/// pushed through the stack so `Back` closes it.
 ///
 /// The screen file is read from this crate rather than from `assets/`: it is
 /// the example's own content, and reading it here is what lets `tests/ui.rs`
@@ -129,7 +130,7 @@ fn open_furnace(
         entities,
         slotted_model::Actor::SURVIVAL,
     );
-    spawn_screen(&mut commands, def, Some(menu));
+    push_screen(&mut commands, def, Some(menu));
 }
 
 /// Ground, one block, one light, one orbiting camera. The machine screen is

@@ -78,6 +78,63 @@ fn a_test_opens_a_screen_and_reads_a_slot() {
     assert!(report.results[0].steps >= 2, "one open and one query");
 }
 
+/// The gamepad API (menus M0, package C): `focused()` reads the focus the
+/// screen opened with, `gamepad("DPadRight")` moves it, `gamepad("South")`
+/// picks up, `action("back")` closes the screen through the stack. A bad
+/// button name and a bad action name are the test's failure, not a panic.
+#[test]
+fn a_test_drives_the_screen_with_a_gamepad_and_reads_focus() {
+    let mut harness = harness();
+    harness.register_fixture("chest", ChestFixture::filled());
+    let report = run(
+        &mut harness,
+        r#"
+        local t = slotted.test
+        t.test("the pad walks and picks up", function()
+            t.open_screen("demo:chest", "chest")
+            t.settle()
+            t.expect_eq(t.focused().region, "chest", "focus starts in the chest grid")
+            t.gamepad("DPadRight")
+            t.settle()
+            t.expect_eq(t.focused().region, "chest", "still in the grid")
+            t.gamepad("DPadLeft")
+            t.gamepad("South")
+            t.settle()
+            t.expect_stack({ role = "slot", tag = { region = "chest" }, index = 0 }, nil)
+            -- Past the double-click window, or the second press collects.
+            t.step(20)
+            t.gamepad("South")
+            t.settle()
+            t.expect_stack({ role = "slot", tag = { region = "chest" }, index = 0 },
+                "minecraft:cobblestone", 64)
+            t.action("back")
+            t.settle()
+            t.expect_eq(t.focused(), nil, "nothing focused once the screen is gone")
+        end)
+        t.test("a bad button is a failure with a name", function()
+            t.gamepad("Triangle")
+        end)
+        t.test("a bad action is a failure with a name", function()
+            t.action("jump")
+        end)
+        "#,
+    );
+    assert_eq!(report.results.len(), 3);
+    assert!(
+        report.results[0].passed,
+        "{:?}",
+        report.results[0].message.clone()
+    );
+    assert_eq!(
+        report.results[1].message.as_deref(),
+        Some("no gamepad button named \"Triangle\"")
+    );
+    assert_eq!(
+        report.results[2].message.as_deref(),
+        Some("no UI action named \"jump\"")
+    );
+}
+
 /// A failed expectation is that test's message, with no chunk or line in it,
 /// and the file's other tests still run.
 #[test]

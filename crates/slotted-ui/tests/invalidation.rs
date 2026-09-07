@@ -422,3 +422,116 @@ fn reconciling_mods_leaves_game_registrations_alone() {
         "a game screen no mod ever touched is untouched"
     );
 }
+
+// ---------------------------------------------------------------- the stack
+
+/// A hot reload of a screen the stack holds puts the new tree back in the
+/// same stack position (menus M0, package B's follow-up). Before this, the
+/// respawn went through `spawn_screen`, so the edited screen was open but no
+/// longer an entry and `Back` stopped closing it.
+#[test]
+fn respawning_a_stacked_screen_keeps_it_in_the_stack() {
+    let mut h = harness(&[BASE, DERIVED]);
+    let opened = h.open_screen(ScreenKind::new("inv:derived"), ChestFixture::empty());
+    h.settle();
+    assert_eq!(h.stack(), vec![ScreenKind::new("inv:derived")]);
+
+    h.world_mut()
+        .resource_mut::<Screens>()
+        .register(ScreenDef::from_ron(BASE_EDITED).unwrap());
+    respawn(&mut h, ChangeSet::screens([ScreenKind::new("inv:base")]));
+
+    let root = h.find(&by::screen(ScreenKind::new("inv:derived")));
+    assert_ne!(root, opened.screen, "a fresh tree");
+    assert!(h.try_find(&by::test_id("edited")).is_some());
+    assert_eq!(
+        h.stack(),
+        vec![ScreenKind::new("inv:derived")],
+        "still one entry, the same kind"
+    );
+    let entry = h
+        .world()
+        .resource::<slotted_ui::ScreenStack>()
+        .top()
+        .cloned()
+        .expect("the respawned screen is the top entry");
+    assert_eq!(entry.root, root, "the entry names the new root");
+    assert_eq!(entry.menu, Some(opened.menu), "on the same menu");
+
+    // And `Back` still closes it, menu and all.
+    h.action(slotted_ui::UiAction::Back);
+    h.settle();
+    assert!(h.stack().is_empty());
+    assert!(open_kinds(&h).is_empty());
+    assert!(h.world().get_entity(opened.menu).is_err());
+}
+
+/// The position is kept, not just the membership: a screen under a page is
+/// respawned under it, hidden, and the page stays on top with focus.
+#[test]
+fn respawning_a_screen_under_a_page_keeps_it_under_the_page() {
+    let mut h = harness(&[BASE, DERIVED, USES_TEMPLATE]);
+    h.world_mut()
+        .resource_mut::<WidgetRegistry>()
+        .register_owned(
+            WidgetKind::new("inv:badge"),
+            Badge("badge_v1"),
+            Owner::Mod("inv".to_owned()),
+        );
+    let below = h.open_screen(ScreenKind::new("inv:derived"), ChestFixture::empty());
+    let above = h.open(ScreenKind::new("inv:uses_template"));
+    h.settle();
+    assert_eq!(
+        h.stack(),
+        vec![
+            ScreenKind::new("inv:derived"),
+            ScreenKind::new("inv:uses_template")
+        ]
+    );
+    assert!(!h.is_visible(below.screen), "a page hides the entry below");
+
+    h.world_mut()
+        .resource_mut::<Screens>()
+        .register(ScreenDef::from_ron(BASE_EDITED).unwrap());
+    respawn(&mut h, ChangeSet::screens([ScreenKind::new("inv:base")]));
+
+    assert_eq!(
+        h.stack(),
+        vec![
+            ScreenKind::new("inv:derived"),
+            ScreenKind::new("inv:uses_template")
+        ],
+        "same order"
+    );
+    let respawned = h.find(&by::screen(ScreenKind::new("inv:derived")));
+    assert_ne!(respawned, below.screen);
+    assert!(
+        !h.is_visible(respawned),
+        "still under the page, still hidden"
+    );
+    assert!(h.is_visible(above), "the page above is untouched");
+    let top = h
+        .world()
+        .resource::<slotted_ui::ScreenStack>()
+        .top()
+        .map(|e| e.root);
+    assert_eq!(top, Some(above));
+    // Neither screen has a focusable node (Bevy parks focus on the window),
+    // so what matters is that the respawn did not hand it to the hidden
+    // screen.
+    let focused = h.focused().expect("Bevy's InputFocus starts on the window");
+    let mut e = focused;
+    let under_respawned = loop {
+        if e == respawned {
+            break true;
+        }
+        match h.world().get::<ChildOf>(e) {
+            Some(parent) => e = parent.parent(),
+            None => break false,
+        }
+    };
+    assert!(
+        !under_respawned,
+        "focus did not move into the hidden screen"
+    );
+}

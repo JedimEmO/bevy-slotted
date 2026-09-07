@@ -7,6 +7,10 @@
 
 use bevy::camera::NormalizedRenderTarget;
 use bevy::input::ButtonState;
+use bevy::input::gamepad::{
+    GamepadAxis, GamepadButton, RawGamepadAxisChangedEvent, RawGamepadButtonChangedEvent,
+    RawGamepadEvent,
+};
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::math::CompassOctant;
@@ -15,7 +19,10 @@ use bevy::prelude::*;
 use bevy::window::WindowRef;
 use slotted_ecs::{MenuAction, Modifiers, SlotClicked};
 use slotted_model::{Button, ClickAction};
-use slotted_ui::{TooltipRequest, TooltipTier};
+use slotted_ui::{
+    FocusRing, FocusRingState, InputMode, InputModeChanged, ScreenKind, ScreenStack,
+    TooltipRequest, TooltipTier, UiAction, UiBindings,
+};
 
 use crate::harness::UiHarness;
 
@@ -339,6 +346,115 @@ impl UiHarness {
             None => f.clear(),
         }
         self.step(1);
+    }
+
+    // ---- gamepad ------------------------------------------------------------
+
+    /// One raw gamepad event on the harness's pad, then one frame. Raw
+    /// because Bevy's processing system reads only `RawGamepadEvent`; the
+    /// `Gamepad` component every consumer queries is updated from that.
+    fn raw_gamepad(&mut self, event: RawGamepadEvent) {
+        self.world_mut().write_message(event);
+        self.step(1);
+    }
+
+    /// Press and release a gamepad button, one frame each.
+    pub fn gamepad(&mut self, button: GamepadButton) {
+        self.gamepad_hold(button);
+        self.gamepad_release(button);
+    }
+
+    /// Hold a gamepad button across later actions.
+    pub fn gamepad_hold(&mut self, button: GamepadButton) {
+        if self.held_buttons.contains(&button) {
+            return;
+        }
+        self.held_buttons.push(button);
+        let pad = self.gamepad;
+        self.raw_gamepad(RawGamepadEvent::Button(RawGamepadButtonChangedEvent::new(
+            pad, button, 1.0,
+        )));
+    }
+
+    /// Release a held gamepad button.
+    pub fn gamepad_release(&mut self, button: GamepadButton) {
+        self.held_buttons.retain(|b| *b != button);
+        let pad = self.gamepad;
+        self.raw_gamepad(RawGamepadEvent::Button(RawGamepadButtonChangedEvent::new(
+            pad, button, 0.0,
+        )));
+    }
+
+    /// Gamepad buttons currently held.
+    pub fn held_buttons(&self) -> &[GamepadButton] {
+        &self.held_buttons
+    }
+
+    /// Put the left stick at `value` (each axis in `-1.0..=1.0`, `+y` up)
+    /// and leave it there until the next `stick`; `stick(Vec2::ZERO)`
+    /// releases it. One frame.
+    pub fn stick(&mut self, value: Vec2) {
+        let pad = self.gamepad;
+        self.world_mut()
+            .write_message(RawGamepadEvent::Axis(RawGamepadAxisChangedEvent::new(
+                pad,
+                GamepadAxis::LeftStickX,
+                value.x,
+            )));
+        self.raw_gamepad(RawGamepadEvent::Axis(RawGamepadAxisChangedEvent::new(
+            pad,
+            GamepadAxis::LeftStickY,
+            value.y,
+        )));
+    }
+
+    // ---- actions ------------------------------------------------------------
+
+    /// Press and release the first keyboard key bound to `action` in
+    /// `UiBindings`. Panics when the action has no key, which is what a
+    /// test that rebinds and forgets wants to hear.
+    pub fn action(&mut self, action: UiAction) {
+        let key = self
+            .world()
+            .resource::<UiBindings>()
+            .first_key(action)
+            .unwrap_or_else(|| panic!("UiBindings binds no key to {action:?}"));
+        self.key(key);
+    }
+
+    /// Set `InputMode` directly, writing `InputModeChanged` when it differs,
+    /// then one frame so the focus ring reacts.
+    pub fn set_input_mode(&mut self, mode: InputMode) {
+        let world = self.world_mut();
+        let from = *world.resource::<InputMode>();
+        if from != mode {
+            *world.resource_mut::<InputMode>() = mode;
+            world.write_message(InputModeChanged { from, to: mode });
+        }
+        self.step(1);
+    }
+
+    /// The current `InputMode`.
+    pub fn input_mode(&self) -> InputMode {
+        *self.world().resource::<InputMode>()
+    }
+
+    /// The open screen kinds on the `ScreenStack`, bottom to top.
+    pub fn stack(&self) -> Vec<ScreenKind> {
+        self.world()
+            .get_resource::<ScreenStack>()
+            .map(ScreenStack::kinds)
+            .unwrap_or_default()
+    }
+
+    /// What the focus ring is doing. The default (no target, hidden) when
+    /// the app spawned no ring (`SlottedUiConfig::spawn_layers` off).
+    pub fn focus_ring(&mut self) -> FocusRingState {
+        let mut q = self
+            .app
+            .world_mut()
+            .query_filtered::<&FocusRingState, With<FocusRing>>();
+        q.iter(self.app.world()).next().copied().unwrap_or_default()
     }
 }
 

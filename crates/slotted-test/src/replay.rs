@@ -223,43 +223,21 @@ impl UiHarness {
         self.step(1);
     }
 
-    /// The gamepad entity a replayed gamepad event targets: the first one the
-    /// app has. A headless harness usually has none, and then the event is
-    /// dropped rather than invented.
-    fn gamepad(&mut self) -> Option<Entity> {
-        self.world_mut()
-            .query_filtered::<Entity, With<bevy::input::gamepad::Gamepad>>()
-            .iter(self.world())
-            .next()
-    }
-
+    /// A replayed gamepad event, through the same raw stream a real pad
+    /// writes ([`crate::cursor::feed`]).
     fn gamepad_button(&mut self, button: bevy::input::gamepad::GamepadButton, pressed: bool) {
-        let Some(entity) = self.gamepad() else {
-            self.step(1);
-            return;
-        };
-        let state = if pressed {
-            bevy::input::ButtonState::Pressed
-        } else {
-            bevy::input::ButtonState::Released
-        };
-        let value = if pressed { 1.0 } else { 0.0 };
-        self.world_mut()
-            .write_message(bevy::input::gamepad::GamepadEvent::Button(
-                bevy::input::gamepad::GamepadButtonChangedEvent::new(entity, button, state, value),
-            ));
+        crate::cursor::feed(
+            self.world_mut(),
+            &RecordedInput::GamepadButton { button, pressed },
+        );
         self.step(1);
     }
 
     fn gamepad_axis(&mut self, axis: bevy::input::gamepad::GamepadAxis, value: f32) {
-        let Some(entity) = self.gamepad() else {
-            self.step(1);
-            return;
-        };
-        self.world_mut()
-            .write_message(bevy::input::gamepad::GamepadEvent::Axis(
-                bevy::input::gamepad::GamepadAxisChangedEvent::new(entity, axis, value),
-            ));
+        crate::cursor::feed(
+            self.world_mut(),
+            &RecordedInput::GamepadAxis { axis, value },
+        );
         self.step(1);
     }
 }

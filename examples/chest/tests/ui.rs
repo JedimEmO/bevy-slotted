@@ -316,6 +316,57 @@ fn esc_closes_the_screen_and_e_opens_it_again() {
     harness.assert_conserved();
 }
 
+/// The chest is a stack entry, and Escape closes it *through* the stack: no
+/// handler of the demo's own reads the key any more. `Back` pops the entry,
+/// the stack closes the menu, the carried stack lands in `Dropped`, and the
+/// demo's binding notices the root is gone. East on a pad is the same `Back`.
+#[test]
+fn escape_closes_the_chest_through_the_stack() {
+    let (mut harness, opened) = open_demo_chest();
+    let kind = ScreenKind::new(chest::CHEST);
+    assert_eq!(
+        harness.stack(),
+        vec![kind.clone()],
+        "opened as a stack entry"
+    );
+    assert_eq!(
+        harness
+            .world()
+            .resource::<slotted::ui::ScreenStack>()
+            .top()
+            .map(|entry| (entry.root, entry.menu)),
+        Some((opened.screen, Some(opened.menu)))
+    );
+
+    // Pick something up first, so the close has a carried stack to drop.
+    let first = chest_slot(&harness, 0);
+    harness.click_slot(first, slotted_model::Button::Left, Modifiers::default());
+    harness.settle();
+    assert!(harness.carried(opened.menu).is_some());
+
+    harness.key(KeyCode::Escape);
+    harness.settle();
+    assert!(harness.stack().is_empty(), "Escape popped the entry");
+    assert!(harness.try_find(&by::screen(kind.clone())).is_none());
+    assert!(harness.world().get_entity(opened.menu).is_err());
+    assert!(
+        harness.world().resource::<ChestBinding>().open.is_none(),
+        "the binding forgot the chest"
+    );
+    harness.assert_conserved();
+
+    // `E` pushes again; East pops it the same way.
+    harness.key(KeyCode::KeyE);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![kind.clone()]);
+    harness.gamepad(bevy::input::gamepad::GamepadButton::East);
+    harness.settle();
+    assert!(harness.stack().is_empty(), "East popped the entry");
+    assert!(harness.try_find(&by::screen(kind)).is_none());
+    assert!(harness.world().resource::<ChestBinding>().open.is_none());
+    harness.assert_conserved();
+}
+
 /// Steps until the active theme asset is in `Assets<Theme>`, so a test can
 /// read its tokens. The file comes off disk through the asset server's own
 /// task, which `settle()` does not know to wait for.

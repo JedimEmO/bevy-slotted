@@ -195,7 +195,11 @@ impl Plugin for SlottedUiPlugin {
             (
                 (
                     crate::nav::track_text_entry_focus,
-                    (directional_nav_actions, hotbar_swap_keys)
+                    (
+                        directional_nav_actions,
+                        crate::nav::accept_focused,
+                        hotbar_swap_keys,
+                    )
                         .after(crate::nav::track_text_entry_focus)
                         .after(crate::actions::UiActionEmit),
                     clear_drag_suppression,

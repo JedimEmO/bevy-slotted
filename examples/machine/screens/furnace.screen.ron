@@ -7,6 +7,10 @@
 #![enable(implicit_some)]
 (
     kind: "machine:furnace",
+    // A page on the screen stack (the default, written out), and focus
+    // starts on the input slot.
+    presentation: (mode: "page"),
+    initial_focus: "input",
     root: (
         type: "panel",
         role: "invisible",

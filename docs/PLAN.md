@@ -1,6 +1,6 @@
 # bevy_slotted implementation plan
 
-Status: v2.0, 2026-09-06, Phases 0 to 7 complete. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
+Status: v2.1, 2026-09-07, Phases 0 to 7 complete; Menus M0 (input model, focus ring, screen stack, layout model) landed. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
 
 ## 1. Goal and non-goals
 
@@ -406,6 +406,21 @@ Tanks, bars, side tabs, icon buttons with state cycling, `Injection` registry, `
 
 Paper and neon themes prove the token set; missing roles are added rather than special-cased. `cargo doc` with examples per crate, a modding guide generated from the prelude's doc comments, Luau type stubs (`.d.luau`) for editor support, crates.io dry run.
 
+### Menus
+
+The work after Phase 7 is menus: the screens a game is made of that are not
+inventories. `docs/design/menus-proposal.md` is the proposal, in five
+milestones. M0, the foundation, is done (2026-09-07, contract
+`docs/design/menus-m0-contract.md`, notes `docs/design/menus-m0-notes-{A,B,C}.md`):
+one `UiAction` vocabulary with `UiBindings` over keyboard, gamepad buttons and
+the left stick; `InputMode` and a focus ring; explicit `nav.*` links and
+`initial_focus`; a `ScreenStack` with `page`, `modal` and `overlay`
+presentation and `Back` popping it; and a layout model with `align`,
+`justify`, `grow`, `wrap`, `overflow`, `place` and typed lengths. The
+inventory screens and the examples open through the stack. M1 to M4 (the
+typography and rich text, the controls, the settings bindings, the
+`slotted-menu` crate) follow the proposal.
+
 ## 7. Testing strategy
 
 Two audiences. Our own crates are tested with the usual unit and integration tests below. Games and mods are tested with `slotted-test`, and every example in this repo uses `slotted-test` for its own tests so the consumer path is exercised continuously.
@@ -469,7 +484,7 @@ each). What shipped, crate by crate:
 | `slotted-test`, `slotted-testutils` | The public headless harness and the internal fakes. |
 | `slotted` | The facade: `SlottedPlugins`, the prelude, the feature flags. `SlottedPlugins::server()` with `--no-default-features --features server` is a real dedicated-server graph: 160 crates against a default build's 300, with no Bevy UI stack on either target. |
 
-**951 tests pass** with every feature on, plus two more that compile only in
+**1054 tests pass** (after Menus M0) with every feature on, plus two more that compile only in
 the dedicated-server profile and run from `just server-check`, and three behind
 a GPU gate that cannot currently be lifted (see the limitations below). The three native
 examples and the web playground all run, each covered by its own harness tests

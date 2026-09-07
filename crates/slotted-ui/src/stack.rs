@@ -171,6 +171,50 @@ impl Command for PushScreen {
     }
 }
 
+/// Spawns `def` as a stack entry at position `index` (clamped to the end)
+/// rather than on top, keeping whatever is above it where it is. What a hot
+/// reload wants: `respawn_screens` closes a stacked root and puts the new
+/// tree back in the same place, so an edit to an open screen file does not
+/// drop the screen out of the stack.
+///
+/// The entry's presentation is the resolved `def`'s, so an edit that changes
+/// `presentation` takes effect like any other. No arrival transition: the
+/// screen was already there. Writes `StackChanged`.
+pub fn push_screen_at(
+    world: &mut World,
+    index: usize,
+    def: Arc<ScreenDef>,
+    menu: Option<Entity>,
+) -> Entity {
+    let root = world.spawn_empty().id();
+    let resolved = world
+        .get_resource::<Screens>()
+        .map_or_else(|| (*def).clone(), |s| s.resolve(&def));
+    let presentation = resolved.presentation;
+    {
+        let mut stack = world.resource_mut::<ScreenStack>();
+        let index = index.min(stack.entries.len());
+        stack.entries.insert(
+            index,
+            StackEntry {
+                root,
+                kind: resolved.kind.clone(),
+                presentation,
+                menu,
+                focus: None,
+            },
+        );
+    }
+    SpawnScreen {
+        root,
+        def: Arc::new(resolved),
+        menu,
+    }
+    .apply(world);
+    finish_change(world);
+    root
+}
+
 /// The command behind [`pop_screen`].
 #[derive(Debug, Clone, Copy)]
 pub struct PopScreen;

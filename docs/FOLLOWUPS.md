@@ -6,6 +6,41 @@ Entries the gap-closing round closed have been deleted rather than struck
 through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
 and summarised below. What is left here is open.
 
+## Menus M0, 2026-09-07
+
+The foundation of the menus work (`docs/design/menus-m0-contract.md`,
+`docs/design/menus-m0-notes-{A,B,C}.md`). What the three packages deferred.
+
+- **The focus ring does not fade.** The contract says its visibility toggles
+  through the `Fade` preset, but the only alpha the tween machinery drives is
+  `BackgroundColor`, and the ring is a border with no fill. It needs a border
+  alpha (or a colour) `TweenTarget` in `slotted-theme/src/motion.rs`; until
+  then the ring appears and disappears in one frame while its slide and
+  resize animate. M1.
+- **Pop transitions.** A push fades or slides in; a pop is immediate. The
+  popped root would have to outlive its entry for the length of the motion,
+  which means the stack despawning on a timer rather than in the command. M1.
+- **Wheel scrolling of `overflow: scroll`.** The panel clips and carries a
+  `ScrollPosition`, and nothing writes to it yet. Goes with M1's `list` and
+  `scroll` controls, and a `Scroll` action if one is wanted (contract 1.1
+  lists none).
+- **Flex children of a scroll panel shrink** unless they carry `min_height`;
+  that is Taffy's default and `tests/layout.rs` documents it. A list widget
+  that sets `flex_shrink: 0` on its rows belongs with M1's scrolling.
+- **No opacity group.** The push fade covers the root panel's own background;
+  text and slots inside it do not fade. A real opacity group is a Bevy
+  feature we do not have.
+- **A rebound keyboard `Accept` does not activate a button.** Bevy's `Button`
+  turns Enter and Space into `Activate` itself, so `accept_focused` forwards
+  only gamepad-sourced presses to buttons to avoid a double activation. A
+  game that binds `Accept` to another key gets slots but not buttons on it
+  until `bevy_ui_widgets` exposes its key, or until M1's `button` widget
+  reads the action itself.
+- **The showcase's multiplayer scene pushes its second client as a scrim-less
+  modal**, because two pages would hide the first; `Back` therefore pops one
+  client, then the other. A side-by-side of two stacks (one per client) is
+  the honest shape and is out of scope for a demo scene.
+
 ## Showcase, 2026-09-06
 
 The eight-scene showcase (`docs/design/showcase-contract.md`) landed as two

@@ -216,7 +216,7 @@ fn rewind(world: &mut World, screen: &Arc<ScreenDef>) -> Result<(), String> {
             entities,
             Actor::SURVIVAL,
         );
-        spawn_screen(&mut commands, screen.clone(), Some(menu));
+        push_screen(&mut commands, screen.clone(), Some(menu));
     }
     world.insert_resource(ids);
     world.flush();

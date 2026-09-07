@@ -19,6 +19,9 @@
 
 use bevy::camera::NormalizedRenderTarget;
 use bevy::input::ButtonState;
+use bevy::input::gamepad::{
+    Gamepad, RawGamepadAxisChangedEvent, RawGamepadButtonChangedEvent, RawGamepadEvent,
+};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::picking::pointer::{Location, PointerAction, PointerId, PointerInput};
 use bevy::prelude::*;
@@ -266,26 +269,17 @@ pub fn feed(world: &mut World, input: &RecordedInput) {
             });
         }
         RecordedInput::GamepadButton { button, pressed } => {
-            let Some(entity) = first_gamepad(world) else {
-                return;
-            };
-            let state = if *pressed {
-                ButtonState::Pressed
-            } else {
-                ButtonState::Released
-            };
+            let entity = ensure_gamepad(world);
             let value = if *pressed { 1.0 } else { 0.0 };
-            world.write_message(bevy::input::gamepad::GamepadEvent::Button(
-                bevy::input::gamepad::GamepadButtonChangedEvent::new(entity, *button, state, value),
-            ));
+            world.write_message(RawGamepadEvent::Button(RawGamepadButtonChangedEvent::new(
+                entity, *button, value,
+            )));
         }
         RecordedInput::GamepadAxis { axis, value } => {
-            let Some(entity) = first_gamepad(world) else {
-                return;
-            };
-            world.write_message(bevy::input::gamepad::GamepadEvent::Axis(
-                bevy::input::gamepad::GamepadAxisChangedEvent::new(entity, *axis, *value),
-            ));
+            let entity = ensure_gamepad(world);
+            world.write_message(RawGamepadEvent::Axis(RawGamepadAxisChangedEvent::new(
+                entity, *axis, *value,
+            )));
         }
     }
 }
@@ -338,9 +332,19 @@ fn primary_window_component(world: &mut World) -> Option<(Vec2, f32)> {
     })
 }
 
-fn first_gamepad(world: &mut World) -> Option<Entity> {
-    let mut query = world.query_filtered::<Entity, With<bevy::input::gamepad::Gamepad>>();
-    query.iter(world).next()
+/// The gamepad entity a fed gamepad event targets: the first `Gamepad` in
+/// the world, spawned if there is none.
+///
+/// A headless app has no `bevy_gilrs`, so nothing else spawns one. The
+/// events are written as `RawGamepadEvent`: Bevy's processing system reads
+/// only the raw stream and updates the `Gamepad` component from it; a
+/// `GamepadEvent` written by hand is a report nobody acts on.
+pub fn ensure_gamepad(world: &mut World) -> Entity {
+    let mut query = world.query_filtered::<Entity, With<Gamepad>>();
+    if let Some(entity) = query.iter(world).next() {
+        return entity;
+    }
+    world.spawn(Gamepad::default()).id()
 }
 
 #[cfg(test)]

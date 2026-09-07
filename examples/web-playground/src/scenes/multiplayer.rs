@@ -466,6 +466,24 @@ fn name_of(action: &ClickAction) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// Builds the server, the link, both clients and both screens.
+/// The screen client `index` pushes. Both clients go through the stack, and
+/// both have to stay on the canvas: a second `page` would hide the first, so
+/// every client after the first is a scrim-less `modal`, which keeps the
+/// entry below it visible. `Back` pops the top client, then the other.
+fn client_screen(screen: &Arc<ScreenDef>, index: usize) -> Arc<ScreenDef> {
+    if index == 0 {
+        return screen.clone();
+    }
+    Arc::new(ScreenDef {
+        presentation: Presentation {
+            mode: PresentationMode::Modal,
+            scrim: Some(false),
+            ..screen.presentation
+        },
+        ..(**screen).clone()
+    })
+}
+
 fn build(world: &mut World, registries: &FrozenRegistries) -> Result<NetLink, String> {
     let def = showcase::chest::menu_def();
     let seeded = showcase::chest::inventories(registries);
@@ -546,7 +564,7 @@ fn build(world: &mut World, registries: &FrozenRegistries) -> Result<NetLink, St
 
         let root = {
             let mut commands = world.commands();
-            spawn_screen(&mut commands, screen.clone(), Some(menu))
+            push_screen(&mut commands, client_screen(&screen, index), Some(menu))
         };
         world.flush();
         roots.push(root);

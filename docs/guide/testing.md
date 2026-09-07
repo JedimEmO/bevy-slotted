@@ -28,6 +28,24 @@ fn open_chest() -> (UiHarness, Opened) {
     harness.settle();
     (harness, opened)
 }
+```
+
+`open_screen` opens a menu over the fixture's inventories and pushes the screen
+through the screen stack, so `Opened.screen` is a stack entry: `Back` pops it
+and closes the menu exactly as it does in the game. `open(screen)` does the same
+for a screen with no menu (a settings page, a pause modal) and returns the root.
+A test that wants a screen outside the stack calls `spawn_screen` itself.
+
+```rust
+#[test]
+fn escape_closes_the_pause_menu() {
+    let (mut harness, _) = open_chest();
+    harness.open(my_game::pause_screen());
+    assert_eq!(harness.stack().len(), 2);
+    harness.action(UiAction::Back);
+    harness.settle();
+    assert_eq!(harness.stack().len(), 1);
+}
 
 #[test]
 fn shift_clicking_a_stack_sends_it_to_the_chest() {
@@ -72,12 +90,24 @@ is usually enough to see what changed. `try_find` returns an `Option` and
 `key_with_modifiers`, `activate`, `cycle`, `toggle_side_tab`, `menu_action`,
 `click_slot`, `request_tooltip`.
 
+Input the way a player produces it: `gamepad(button)` presses and releases a
+pad button, `gamepad_hold` and `gamepad_release` split the two, `stick(Vec2)`
+holds the left stick until `stick(Vec2::ZERO)`, `action(UiAction)` presses the
+first keyboard key bound to an action, and `set_input_mode(InputMode)` puts the
+UI in pointer, keyboard or gamepad mode directly. The harness owns one
+`Gamepad` entity; a replayed recording's pad events land on it too. See
+[input.md](input.md) for what the actions mean.
+
 ### Queries
 
 `stack_at`, `displayed_stack`, `carried`, `text_of`, `tooltip`, `is_visible`,
 `is_focused`, `focused`, `rect_of`, `center_of`, `fill_of`, `tank_fill`,
 `property_of`, `side_tab_open`, `viewport_subject`, `exclusion_zones`,
 `hud_layers`, `hud_tree`, `screen_tree`.
+
+For the input side: `focused()` is Bevy's `InputFocus`, `input_mode()` the
+current `InputMode`, `stack()` the open screen kinds bottom to top, and
+`focus_ring()` the ring's `FocusRingState` (its target and whether it shows).
 
 `assert_conserved()` checks that no item was created or destroyed since the
 harness opened, which is the assertion worth putting at the end of anything that
@@ -148,6 +178,11 @@ while real frames happen between the lines.
 
 A locator is a table: `role` (a semantic role in snake case), `tag` (a map),
 `test_id`, `text`, `widget`, `item` and `index`. Every key given must match.
+
+A test drives the pad and the action vocabulary too: `t.gamepad("DPadRight")`
+presses a button, `t.action("back")` presses whatever key `Back` is bound to,
+and `t.focused()` returns the focused node's tags, so a mod can assert where
+the focus ring sits without knowing which key moved it.
 
 The full list of actions, queries and expectations is in
 [api/lua.md](api/lua.md#slottedtest).

@@ -152,7 +152,8 @@ fn register_browser_handler(mut handlers: ResMut<ScreenHandlers>) {
     );
 }
 
-/// `Startup`: spawn the inventories, open the menu, spawn the mod's screen.
+/// `Startup`: spawn the inventories, open the menu, push the mod's screen
+/// through the stack.
 ///
 /// By `Startup` the loader has already run in `PreStartup`, so `Registries`
 /// holds the mods' items and `Screens` holds the mod's screen.
@@ -186,7 +187,7 @@ fn open_modded_chest(
         entities,
         slotted_model::Actor::SURVIVAL,
     );
-    spawn_screen(&mut commands, def, Some(menu));
+    push_screen(&mut commands, def, Some(menu));
 }
 
 // ---------------------------------------------------------------------------

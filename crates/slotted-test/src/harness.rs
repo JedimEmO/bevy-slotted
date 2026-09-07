@@ -13,7 +13,7 @@ use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{PrimaryWindow, Window, WindowResolution};
 use slotted_ecs::{Inventory, MenuIdAllocator, PendingRoundTrips, open_menu};
 use slotted_theme::{ActiveMotions, Motion};
-use slotted_ui::spawn_screen;
+use slotted_ui::push_screen;
 
 use crate::fixture::{MenuFixture, Opened, ScreenSource};
 
@@ -225,15 +225,21 @@ impl UiHarnessBuilder {
             app.insert_resource(slotted_theme::ActiveTheme(handle));
         }
 
+        // One gamepad, so `gamepad(..)` and `stick(..)` have a device to
+        // press and a replay's pad events land on the same entity.
+        let gamepad = crate::cursor::ensure_gamepad(app.world_mut());
+
         let mut h = UiHarness {
             app,
             window,
             camera,
             pointer,
+            gamepad,
             pointer_pos: Vec2::new(-1.0, -1.0),
             frame_delta: self.frame_delta,
             max_settle_frames: self.max_settle_frames,
             held: Vec::new(),
+            held_buttons: Vec::new(),
             last_layout: 0,
             last_rects: HashMap::new(),
             prev_rects: HashMap::new(),
@@ -314,10 +320,12 @@ pub struct UiHarness {
     pub(crate) window: Entity,
     pub(crate) camera: Entity,
     pub(crate) pointer: Entity,
+    pub(crate) gamepad: Entity,
     pub(crate) pointer_pos: Vec2,
     pub(crate) frame_delta: Duration,
     pub(crate) max_settle_frames: usize,
     pub(crate) held: Vec<KeyCode>,
+    pub(crate) held_buttons: Vec<bevy::input::gamepad::GamepadButton>,
     pub(crate) last_layout: u64,
     pub(crate) last_rects: HashMap<Entity, [u32; 4]>,
     pub(crate) prev_rects: HashMap<Entity, [u32; 4]>,
@@ -343,6 +351,11 @@ impl UiHarness {
     /// The primary pointer entity (`PointerId::Mouse`).
     pub fn pointer(&self) -> Entity {
         self.pointer
+    }
+
+    /// The one `Gamepad` entity the harness presses.
+    pub fn gamepad_entity(&self) -> Entity {
+        self.gamepad
     }
 
     /// Virtual time per frame.
@@ -548,9 +561,33 @@ impl UiHarness {
         hasher.finish()
     }
 
+    /// Pushes a menu-less screen (a settings page, a pause menu) through the
+    /// [`slotted_ui::ScreenStack`] and runs one frame so the tree exists.
+    /// Returns the screen root.
+    ///
+    /// `screen` is resolved like [`open_screen`](Self::open_screen)'s. The
+    /// conservation baseline is taken too, so `assert_conserved` works on a
+    /// test that opens no menu.
+    pub fn open(&mut self, screen: impl ScreenSource) -> Entity {
+        let screen_def = screen.screen_def(self.app.world_mut());
+        let world = self.app.world_mut();
+        let root = {
+            let mut commands = world.commands();
+            push_screen(&mut commands, screen_def, None)
+        };
+        world.flush();
+        self.step(1);
+        self.conserved = Some(census(self.world()));
+        root
+    }
+
     /// Spawns inventory entities from `fixture`, opens the menu, resolves
-    /// `screen` and spawns it bound to that menu. Runs one frame so the tree
-    /// exists.
+    /// `screen` and pushes it through the [`slotted_ui::ScreenStack`] bound
+    /// to that menu. Runs one frame so the tree exists.
+    ///
+    /// `Opened.screen` is a stack entry: `Back` pops it and closes the menu,
+    /// the same as a game that pushed it. The low-level `spawn_screen` path
+    /// is a call away for a test that wants a screen outside the stack.
     ///
     /// `screen` is either a [`slotted_ui::ScreenKind`] already registered in
     /// [`slotted_ui::Screens`] (this panics listing the known kinds if not) or a
@@ -572,7 +609,7 @@ impl UiHarness {
         let (menu, screen) = {
             let mut commands = world.commands();
             let menu = open_menu(&mut commands, &mut ids, def, inventories.clone(), actor);
-            let screen = spawn_screen(&mut commands, screen_def, Some(menu));
+            let screen = push_screen(&mut commands, screen_def, Some(menu));
             (menu, screen)
         };
         world.insert_resource(ids);

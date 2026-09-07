@@ -120,6 +120,21 @@ pub enum TestOp {
         /// Forward or back.
         forward: bool,
     },
+    /// Press and release a gamepad button by its `GamepadButton` name
+    /// (`South`, `DPadRight`).
+    Gamepad {
+        /// Button name.
+        button: String,
+    },
+    /// Press and release the first keyboard key bound to a `UiAction`
+    /// (`accept`, `back`, `down`).
+    Action {
+        /// Action name, the data-file spelling.
+        action: String,
+    },
+    /// Replies the focused node's tags as a table, or nothing when no node
+    /// has focus.
+    Focused,
 }
 
 fn unit() -> Value {

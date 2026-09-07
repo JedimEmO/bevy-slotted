@@ -400,6 +400,7 @@ pub mod ops {
                 resolve_one(world, loc).map(|e| Value::Bool(crate::queries::is_visible(world, e)))
             }
             TestOp::LogContains { text } => Ok(Value::Bool(log_contains(world, text))),
+            TestOp::Focused => Ok(focused_tags(world)),
             _ => return None,
         };
         Some(answer)
@@ -469,6 +470,26 @@ pub mod ops {
         Value::Null
     }
 
+    /// The focused node's tags as a table, or `Null` when nothing has focus
+    /// (or the focused entity is not a slotted node).
+    fn focused_tags(world: &World) -> Value {
+        let focused = world
+            .get_resource::<bevy::input_focus::InputFocus>()
+            .and_then(bevy::input_focus::InputFocus::get);
+        let Some(entity) = focused else {
+            return Value::Null;
+        };
+        let Some(tags) = world.get::<slotted_ui::Tags>(entity) else {
+            return Value::Null;
+        };
+        Value::Map(
+            tags.0
+                .iter()
+                .map(|(k, v)| (k.clone(), Value::Str(v.clone())))
+                .collect(),
+        )
+    }
+
     /// Whether any script console line contains `needle`.
     fn log_contains(world: &World, needle: &str) -> bool {
         world
@@ -482,6 +503,44 @@ pub mod ops {
             .find(|code| format!("{code:?}").eq_ignore_ascii_case(name))
             .copied()
     }
+
+    /// A `GamepadButton` by the name a test writes (`South`, `DPadRight`,
+    /// `start`).
+    pub fn gamepad_button(name: &str) -> Option<bevy::input::gamepad::GamepadButton> {
+        BUTTONS
+            .iter()
+            .find(|button| format!("{button:?}").eq_ignore_ascii_case(name))
+            .copied()
+    }
+
+    /// A `UiAction` by its data-file name (`accept`, `tab_next`).
+    pub fn ui_action(name: &str) -> Option<slotted_ui::UiAction> {
+        name.parse().ok()
+    }
+
+    /// The buttons a test may name, the `Debug` form again.
+    const BUTTONS: &[bevy::input::gamepad::GamepadButton] = {
+        use bevy::input::gamepad::GamepadButton as G;
+        &[
+            G::South,
+            G::East,
+            G::North,
+            G::West,
+            G::LeftTrigger,
+            G::LeftTrigger2,
+            G::RightTrigger,
+            G::RightTrigger2,
+            G::Select,
+            G::Start,
+            G::Mode,
+            G::LeftThumb,
+            G::RightThumb,
+            G::DPadUp,
+            G::DPadDown,
+            G::DPadLeft,
+            G::DPadRight,
+        ]
+    };
 
     /// The keys a test may name. Matching on the `Debug` form keeps this a
     /// list rather than a second spelling of every name.
@@ -802,6 +861,18 @@ impl UiHarness {
             }
             TestOp::TypeText { text } => {
                 self.type_text(text);
+                Ok(Value::Null)
+            }
+            TestOp::Gamepad { button } => {
+                let button = ops::gamepad_button(button)
+                    .ok_or_else(|| format!("no gamepad button named {button:?}"))?;
+                self.gamepad(button);
+                Ok(Value::Null)
+            }
+            TestOp::Action { action } => {
+                let action = ops::ui_action(action)
+                    .ok_or_else(|| format!("no UI action named {action:?}"))?;
+                self.action(action);
                 Ok(Value::Null)
             }
             TestOp::Settle => self

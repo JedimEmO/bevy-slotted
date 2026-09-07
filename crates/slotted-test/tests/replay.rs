@@ -197,3 +197,59 @@ fn frame(n: u64, input: RecordedInput) -> RecordedFrame {
         inputs: vec![input],
     }
 }
+
+/// A recorded gamepad press reaches the UI. The replay used to write
+/// `GamepadEvent`, which Bevy's processing ignores (it reads only the raw
+/// stream), so a recorded d-pad walk replayed to nothing; the cursor and the
+/// harness both write `RawGamepadEvent` now and the `Gamepad` component
+/// follows.
+#[test]
+fn a_recorded_gamepad_press_replays_through_the_raw_stream() {
+    use bevy::input::gamepad::{Gamepad, GamepadButton};
+
+    let (mut h, _) = open_chest();
+    let first = chest_slot(&h, 0);
+    assert_eq!(
+        h.focused(),
+        Some(first),
+        "the screen focused its first slot"
+    );
+
+    let recording = Recording {
+        version: slotted_ui::RECORDING_VERSION,
+        resolution: Vec2::new(WIDTH, HEIGHT),
+        scale_factor: 1.0,
+        frame_delta_us: 16_667,
+        frames: vec![
+            frame(
+                0,
+                RecordedInput::GamepadButton {
+                    button: GamepadButton::DPadRight,
+                    pressed: true,
+                },
+            ),
+            frame(
+                1,
+                RecordedInput::GamepadButton {
+                    button: GamepadButton::DPadRight,
+                    pressed: false,
+                },
+            ),
+        ],
+    };
+    h.replay_recording(&recording).expect("the replay runs");
+    h.settle();
+
+    assert_eq!(
+        h.focused(),
+        Some(chest_slot(&h, 1)),
+        "the replayed d-pad press moved focus"
+    );
+    let pad = h.gamepad_entity();
+    let gamepad = h.world().get::<Gamepad>(pad).expect("the harness pad");
+    assert!(
+        !gamepad.pressed(GamepadButton::DPadRight),
+        "and the release reached the component too"
+    );
+    assert_eq!(h.input_mode(), slotted_ui::InputMode::Gamepad);
+}

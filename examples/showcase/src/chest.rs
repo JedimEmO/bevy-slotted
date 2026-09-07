@@ -279,24 +279,26 @@ pub fn track_open_screens(
     }
 }
 
-/// `Esc` closes the screen and its menu; `E` opens it again over the same
-/// inventories.
+/// `E` opens the chest again over the same inventories.
+///
+/// Closing is not here any more: the chest is a stack entry, so `Back`
+/// (Escape, or East on a pad) pops it and the stack closes its menu, with
+/// the carried stack dropped exactly as the hand-written Escape did. The
+/// binding forgets the chest when its screen root is gone, whichever way it
+/// went.
 pub fn toggle_chest_screen(
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
     mut binding: ResMut<ChestBinding>,
     mut ids: ResMut<MenuIdAllocator>,
     screens: Res<Screens>,
-    menus: Query<&OpenMenu>,
+    roots: Query<(), With<ScreenRoot>>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) {
-        if let Some(open) = binding.open.take() {
-            slotted::ui::close_screen(&mut commands, open.screen);
-            if let Ok(menu) = menus.get(open.menu) {
-                slotted::ecs::close_menu(&mut commands, open.menu, menu.id);
-            }
-        }
-        return;
+    if binding
+        .open
+        .is_some_and(|open| !roots.contains(open.screen))
+    {
+        binding.open = None;
     }
 
     if !keys.just_pressed(KeyCode::KeyE) || binding.open.is_some() {
@@ -317,7 +319,7 @@ pub fn toggle_chest_screen(
         binding.inventories.clone(),
         binding.actor,
     );
-    let screen = spawn_screen(&mut commands, screen_def, Some(menu));
+    let screen = push_screen(&mut commands, screen_def, Some(menu));
     // `track_open_screens` will confirm this next frame; setting it here stops
     // a second `E` in the meantime from opening a duplicate.
     binding.open = Some(OpenChest { menu, screen });
@@ -367,8 +369,9 @@ pub fn fill_labels(
     }
 }
 
-/// Spawns the demo's inventory entities, opens the menu and spawns the
-/// screen, taking the screen definition from the [`Screens`] registry.
+/// Spawns the demo's inventory entities, opens the menu and pushes the
+/// screen through the stack, taking the screen definition from the
+/// [`Screens`] registry.
 ///
 /// The same three calls a game makes when a player right-clicks a chest.
 pub fn open_chest(commands: &mut Commands, registries: &FrozenRegistries, cheat: bool) {
@@ -395,9 +398,9 @@ pub fn spawn_inventories(commands: &mut Commands, registries: &FrozenRegistries)
         .collect()
 }
 
-/// Opens `def` over `entities`, exclusively. The showcase's scenes call this
-/// directly: a `SceneHandler` already holds the whole world and has no
-/// `Commands` queue that would flush a frame later.
+/// Opens `def` over `entities`, exclusively, as a stack entry. The
+/// showcase's scenes call this directly: a `SceneHandler` already holds the
+/// whole world and has no `Commands` queue that would flush a frame later.
 ///
 /// Returns the menu and the screen root.
 pub fn open_over(
@@ -412,7 +415,7 @@ pub fn open_over(
     let open = {
         let mut commands = world.commands();
         let menu = open_menu(&mut commands, &mut ids, menu_def(), entities, actor(cheat));
-        let screen = spawn_screen(&mut commands, def, Some(menu));
+        let screen = push_screen(&mut commands, def, Some(menu));
         OpenChest { menu, screen }
     };
     world.insert_resource(ids);

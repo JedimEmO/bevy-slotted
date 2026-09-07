@@ -181,6 +181,30 @@ end
 --- @luau cycle: (loc: { [string]: any }, forward: boolean?) -> ()
 --- @example
 --- slotted.test.cycle({ test_id = "redstone_mode" })
+
+--- Press and release one gamepad button. The harness owns one pad; the press
+--- lands on it and the UI reads it through `UiBindings` like any other.
+---
+--- @signature slotted.test.gamepad(button)
+--- @stage test
+--- @param button string A Bevy `GamepadButton` name: `"South"`, `"East"`, `"DPadRight"`, `"Start"`.
+--- @return nil
+--- @luau gamepad: (button: string) -> ()
+--- @example
+--- slotted.test.gamepad("DPadRight")
+--- slotted.test.gamepad("South")
+
+--- Perform a UI action through the first keyboard key bound to it, so a test
+--- reads as what the player meant rather than which key they pressed.
+---
+--- @signature slotted.test.action(name)
+--- @stage test
+--- @param name string A `UiAction` name: `"accept"`, `"back"`, `"secondary"`, `"up"`, `"down"`, `"left"`, `"right"`, `"tab_prev"`, `"tab_next"`, `"page_prev"`, `"page_next"`, `"menu"`.
+--- @return nil
+--- @luau action: (name: string) -> ()
+--- @example
+--- slotted.test.action("down")
+--- slotted.test.action("accept")
 function T.open_screen(kind, fixture) return step({ op = "open_screen", kind = kind, fixture = fixture or "empty" }) end
 function T.click(loc) step({ op = "click", loc = loc }) end
 function T.shift_click(loc) step({ op = "shift_click", loc = loc }) end
@@ -191,6 +215,8 @@ function T.type_text(text) step({ op = "type_text", text = text }) end
 function T.settle() step({ op = "settle" }) end
 function T.step(frames) step({ op = "step", frames = frames or 1 }) end
 function T.cycle(loc, forward) step({ op = "cycle", loc = loc, forward = forward ~= false }) end
+function T.gamepad(button) step({ op = "gamepad", button = button }) end
+function T.action(name) step({ op = "action", action = name }) end
 
 -- Queries.
 
@@ -255,12 +281,24 @@ function T.cycle(loc, forward) step({ op = "cycle", loc = loc, forward = forward
 --- @luau log_contains: (text: string) -> boolean
 --- @example
 --- slotted.test.expect(slotted.test.log_contains("sorting"), "the handler ran")
+
+--- The tags of the node that has focus, which is where the focus ring sits
+--- and what `accept` would activate.
+---
+--- @signature slotted.test.focused()
+--- @stage test
+--- @return table The focused node's tags (`test_id`, `region`, ...), or `nil` when nothing has focus.
+--- @luau focused: () -> { [string]: string }?
+--- @example
+--- slotted.test.gamepad("DPadRight")
+--- slotted.test.expect_eq(slotted.test.focused().region, "chest")
 function T.stack_at(loc) return step({ op = "stack_at", loc = loc }) end
 function T.text_of(loc) return step({ op = "text_of", loc = loc }) end
 function T.property_of(loc) return step({ op = "property_of", loc = loc }) end
 function T.tank_fill(loc) return step({ op = "tank_fill", loc = loc }) end
 function T.is_visible(loc) return step({ op = "is_visible", loc = loc }) end
 function T.log_contains(text) return step({ op = "log_contains", text = text }) end
+function T.focused() return step({ op = "focused" }) end
 
 -- Expectations: pure Lua, no yield.
 

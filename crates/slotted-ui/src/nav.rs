@@ -205,6 +205,57 @@ pub fn directional_nav_actions(
     }
 }
 
+/// `SlottedUiSet::Input`, after `UiActionEmit`: `Accept` acts on the focused
+/// node, and is claimed when it did.
+///
+/// A focused slot takes a left click ([`slotted_ecs::SlotClicked`] with the
+/// modifiers held), from either device: Bevy's `Button` turns Enter and
+/// Space into `Activate` too, but nothing on a slot listens to that, so this
+/// is the one place a keyboard or a pad picks up and places. A focused
+/// `Button` is activated only for a gamepad-sourced press; the keyboard
+/// already reaches it through Bevy's own `Activate`, and forwarding both
+/// would activate twice. Only a fresh press counts.
+pub fn accept_focused(
+    mut events: MessageReader<crate::actions::UiActionEvent>,
+    focus: Option<Res<InputFocus>>,
+    slots: Query<(), With<slotted_ecs::SlotRef>>,
+    buttons: Query<Has<bevy::ui::InteractionDisabled>, With<bevy::ui_widgets::Button>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut claims: ResMut<crate::actions::UiActionClaims>,
+    mut commands: Commands,
+) {
+    let press = events
+        .read()
+        .find(|e| e.action == crate::actions::UiAction::Accept && !e.repeat)
+        .copied();
+    let Some(press) = press else {
+        return;
+    };
+    let Some(focused) = focus.as_deref().and_then(InputFocus::get) else {
+        return;
+    };
+    if slots.contains(focused) {
+        claims.claim(crate::actions::UiAction::Accept);
+        commands.trigger(slotted_ecs::SlotClicked {
+            entity: focused,
+            button: slotted_model::Button::Left,
+            modifiers: crate::widgets::modifiers_from(&keys),
+        });
+        return;
+    }
+    if press.device != crate::actions::InputDevice::Gamepad {
+        return;
+    }
+    let Ok(disabled) = buttons.get(focused) else {
+        return;
+    };
+    if disabled {
+        return;
+    }
+    claims.claim(crate::actions::UiAction::Accept);
+    commands.trigger(bevy::ui_widgets::Activate { entity: focused });
+}
+
 /// Observer on `ScreenSpawned`: gives the new screen its initial focus
 /// (menus contract 2.4).
 ///

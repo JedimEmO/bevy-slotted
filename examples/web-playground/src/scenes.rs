@@ -50,13 +50,14 @@ pub fn registries(world: &World) -> Option<Arc<FrozenRegistries>> {
 ///
 /// This is what `leave` means. It is written as "everything on screen" rather
 /// than "the entities I remember spawning" on purpose: a scene's `enter` hands
-/// entities to `spawn_screen`, to `open_menu` and to the browser's own
+/// entities to `push_screen`, to `open_menu` and to the browser's own
 /// attachment pass, and a list of what to undo would be a second copy of that
 /// knowledge that goes stale the first time one of them spawns something new.
 /// `tests/showcase.rs` asserts the postcondition directly.
 ///
 /// The screens and menus go through the library's own `close_screen` and
-/// `close_menu`, so observers watching a screen close still see it. The
+/// `close_menu`, so observers watching a screen close still see it, and the
+/// stack drops the entry of every root closed this way. The
 /// inventory entities are despawned outright: nothing observes those, and they
 /// belong to the scene rather than to the menu that borrowed them.
 pub fn teardown(world: &mut World) {
@@ -96,7 +97,7 @@ pub fn teardown(world: &mut World) {
     world.flush();
 }
 
-/// Registers `def` and hands back the shared copy `spawn_screen` wants.
+/// Registers `def` and hands back the shared copy `push_screen` wants.
 ///
 /// Registering on every `enter` rather than once at startup is deliberate: a
 /// mod reload replaces the mod-owned screens, and a scene that cached an `Arc`

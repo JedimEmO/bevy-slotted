@@ -27,6 +27,7 @@ use bevy::prelude::*;
 use crate::def::{AnchorId, ScreenDef, ScreenKind, UiNodeDef, WidgetKind};
 use crate::screen::{Injection, Injections, Screens, close_screen, spawn_screen};
 use crate::semantic::ScreenRoot;
+use crate::stack::{ScreenStack, push_screen_at};
 
 /// Who registered an entry in one of the shared UI registries.
 ///
@@ -269,10 +270,23 @@ pub fn respawn_screens(world: &mut World, kinds: &[ScreenKind]) {
     let screens = world.resource::<Screens>().clone();
     for (root, kind, menu) in roots {
         if let Some(def) = screens.get(&kind).cloned() {
+            // A stacked root goes back in at the same position, so a hot
+            // reload of an open screen does not drop it out of the stack
+            // and `Back` keeps closing it. The close is the same for both:
+            // `on_screen_closed` removes the entry.
+            let stacked = world
+                .get_resource::<ScreenStack>()
+                .and_then(|stack| stack.entries().iter().position(|entry| entry.root == root));
             let mut commands = world.commands();
             close_screen(&mut commands, root);
-            spawn_screen(&mut commands, def, menu);
             world.flush();
+            if let Some(index) = stacked {
+                push_screen_at(world, index, def, menu);
+            } else {
+                let mut commands = world.commands();
+                spawn_screen(&mut commands, def, menu);
+                world.flush();
+            }
         } else {
             tracing::warn!(
                 screen = %kind.0,

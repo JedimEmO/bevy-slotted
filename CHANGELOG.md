@@ -7,6 +7,104 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Menus M0: input model, focus ring, screen stack, layout model
+
+`docs/design/menus-proposal.md` sections 4.1 to 4.4, made binding by
+`docs/design/menus-m0-contract.md`. The inventory screens are unchanged to
+look at; what changed is how they open, how they close, and how a keyboard or
+a gamepad walks them.
+
+#### Added
+
+- **One action vocabulary.** `slotted_ui::UiAction` (`Accept`, `Back`,
+  `Secondary`, `Up`, `Down`, `Left`, `Right`, `TabPrev`, `TabNext`,
+  `PagePrev`, `PageNext`, `Menu`), emitted once per action per frame as a
+  `UiActionEvent { action, device, repeat }` from the keyboard, every
+  `Gamepad`'s buttons and its left stick, through the serialisable
+  `UiBindings` resource. Held directions repeat on virtual time after the
+  theme's `hover_delay` and then every `fast`. Keyboard actions other than
+  `Back` are not emitted while a text field has focus.
+- **`UiActionClaims`.** A consumer that acts on an action claims it in
+  `SlottedUiSet::Input` after the `UiActionEmit` set; the screen stack pops
+  only an unclaimed `Back`. The browser's recipe view and search field and the
+  HUD editor's drag cancel are claims now, not raw Escapes.
+- **`InputMode`** (`Pointer`, `Keyboard`, `Gamepad`) with `InputModeChanged`:
+  the last device the player touched. Only the focus ring branches on it.
+- **The focus ring.** One `FocusRing` entity in the new `zbands::FOCUS` band
+  that follows Bevy's `InputFocus` whenever the mode is not `Pointer`, slides
+  between targets on the theme's `fast` duration and snaps under reduced
+  motion. `Focusable` marks every interactive widget; `FocusRingState` is
+  what a test reads. Theme roles `focus.ring` and `scrim` (38 roles now) in
+  all three themes.
+- **Nav links and initial focus.** The reserved tags `nav.up`, `nav.down`,
+  `nav.left`, `nav.right` name where focus goes between containers
+  (`NavLinks` component); `ScreenDef::initial_focus` names the node a screen
+  focuses when it opens, else the first focusable in tree order.
+  `ScreenRoot::initial_focus` records the choice.
+- **`Accept` acts on the focused node.** A focused slot takes a left click
+  from Enter, Space or the pad's South; a focused button is activated from the
+  pad (the keyboard already reached it through Bevy's `Button`).
+- **The screen stack.** `ScreenStack` resource, `push_screen`,
+  `replace_screen`, `pop_screen`, `pop_to`, `clear_screens`,
+  `push_screen_at` (the hot-reload path), and the `StackChanged` message. A
+  pop closes the screen's menu the way the chest's hand-written Escape did,
+  carried stack to `Dropped`. `ScreenDef::presentation` is a `Presentation
+  { mode: page | modal | overlay, scrim, transition: fade | slide_up |
+  slide_left | none, back: pop | ignore }`; a page hides the entries below,
+  a modal draws a `Scrim` and traps focus, an overlay takes no focus and does
+  not count for `Back`. Focus is kept inside the top entry and restored on
+  pop. Push transitions run on the motion tokens with the new
+  `MotionPreset::Slide`. `hud_screen_visibility` reads the stack.
+- **The layout model.** `Layout` gains `min_width`, `max_width`,
+  `min_height`, `max_height`, `align`, `justify`, `grow`, `wrap`, `overflow`
+  (`scroll` adds a `ScrollPosition`) and `place: (anchor, offset)` for
+  absolute placement. `Length` is a bare number (pixels), `"50%"`, `"fill"`,
+  `"auto"` or `"3s"` (spacing steps). `nine_anchor_node` and
+  `nine_anchor_transform` in `def.rs` are what the HUD and `place` share.
+- **Harness.** `UiHarness::open(screen)` pushes a menu-less screen;
+  `gamepad`, `gamepad_hold`, `gamepad_release`, `stick`, `action`,
+  `set_input_mode`; readers `input_mode`, `stack`, `focus_ring`,
+  `gamepad_entity`. The harness owns one `Gamepad` entity from build.
+  `slotted.test` gains `gamepad(button)`, `action(name)` and `focused()`.
+- **Guide:** `docs/guide/input.md`; `screens.md` covers presentation, focus,
+  the layout table and the stack.
+
+#### Changed
+
+- **`UiHarness::open_screen` pushes through the stack.** `Opened.screen` is a
+  stack entry, so `Back` pops it and closes the menu in a test as in a game.
+  The conservation census is unchanged.
+- **The examples open through the stack.** The chest (windowed, showcase and
+  every playground scene), the machine and the modded example call
+  `push_screen`; the chest's own Escape handler is gone (`E` still reopens).
+  `assets/screens/demo_chest.screen.ron`, `examples/machine/screens/furnace.screen.ron`
+  and the copper chest's `data.lua` declare `presentation` and
+  `initial_focus`.
+- **Hot reload keeps a stacked screen stacked.** `respawn_screens` re-pushes
+  a respawned screen at its old stack position with the edited file's
+  presentation, instead of spawning it outside the stack.
+- **`Layout` field types.** `padding` is a `Padding` (a bare number is all
+  sides, `(top, right, bottom, left)` per side; `From<f32>` keeps struct
+  literals short); `width` and `height` are `Option<Length>` rather than
+  `Option<f32>` (`From<f32>` again); `align: Option<Align>` with `center` as a
+  deprecated alias.
+- **`ScreenDef`** gains `initial_focus` and `presentation` (both serde
+  default). **`ScreenRoot`** gains `presentation` and `initial_focus`.
+- **`NineAnchor`** lives in `slotted_ui::def`; `hud` re-exports it.
+- **Replay and the cursor write `RawGamepadEvent`.** Bevy's gamepad
+  processing ignores a hand-written `GamepadEvent`, so a recorded pad press
+  replayed to nothing; both feed the raw stream now, spawning a `Gamepad` when
+  the world has none.
+- `hud_editor.rs`'s drag cancel and the browser's recipe-view close read
+  `Back` instead of `KeyCode::Escape`; the browser's raw `close` key is
+  skipped when it is one of `Back`'s keys, so a press is not handled twice.
+
+#### Removed
+
+- **`NavKeys`.** The arrow-key resource is folded into `UiBindings`;
+  `directional_nav_keys` is `directional_nav_actions` and reads
+  `UiActionEvent`.
+
 ### Security
 
 - **A peer could drive any open menu on the server.** `MenuServer` checked that

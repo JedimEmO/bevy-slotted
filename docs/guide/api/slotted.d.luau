@@ -136,6 +136,10 @@ export type SlottedTest = {
 	step: (frames: number?) -> (),
 	--- Advance an icon button to its next state, or its previous one.
 	cycle: (loc: { [string]: any }, forward: boolean?) -> (),
+	--- Press and release one gamepad button. The harness owns one pad; the press lands on it and the UI reads it through `UiBindings` like any other.
+	gamepad: (button: string) -> (),
+	--- Perform a UI action through the first keyboard key bound to it, so a test reads as what the player meant rather than which key they pressed.
+	action: (name: string) -> (),
 	--- What is in a slot.
 	stack_at: (loc: { [string]: any }) -> { item: string, count: number }?,
 	--- The rendered text of a node, after localisation.
@@ -148,6 +152,8 @@ export type SlottedTest = {
 	is_visible: (loc: { [string]: any }) -> boolean,
 	--- Whether any console line so far contains `text`. The way to assert on what a script logged.
 	log_contains: (text: string) -> boolean,
+	--- The tags of the node that has focus, which is where the focus ring sits and what `accept` would activate.
+	focused: () -> { [string]: string }?,
 	--- Fail the test unless `cond` is truthy. Expectations are plain Lua and do not yield.
 	expect: (cond: any, msg: string?) -> (),
 	--- Fail the test unless `a == b`, reporting both values.

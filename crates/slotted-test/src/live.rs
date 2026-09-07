@@ -77,6 +77,40 @@ impl LiveDriver {
     }
 }
 
+impl LiveDriver {
+    /// `Action`: the first key bound to the named action, pressed and
+    /// released this frame.
+    fn action(&mut self, world: &mut World, action: &str) -> StepOutcome {
+        let Some(action) = ops::ui_action(action) else {
+            return self.finish(Err(format!("no UI action named {action:?}")));
+        };
+        let Some(code) = world.resource::<slotted_ui::UiBindings>().first_key(action) else {
+            return self.finish(Err(format!("UiBindings binds no key to {action:?}")));
+        };
+        send_key(world, code, logical_key(code), ButtonState::Pressed);
+        send_key(world, code, logical_key(code), ButtonState::Released);
+        self.finish(Ok(Value::Null))
+    }
+
+    /// `Gamepad`: press one frame, release the next. A press and a release
+    /// in the same frame never show up as `just_pressed`.
+    fn gamepad(&mut self, world: &mut World, button: &str) -> StepOutcome {
+        let Some(button) = ops::gamepad_button(button) else {
+            return self.finish(Err(format!("no gamepad button named {button:?}")));
+        };
+        let pressed = self.waited == 0;
+        crate::cursor::feed(
+            world,
+            &slotted_ui::RecordedInput::GamepadButton { button, pressed },
+        );
+        if pressed {
+            self.wait()
+        } else {
+            self.finish(Ok(Value::Null))
+        }
+    }
+}
+
 impl TestDriver for LiveDriver {
     fn perform(&mut self, world: &mut World, op: &TestOp) -> StepOutcome {
         if let Some(answer) = ops::query(world, op) {
@@ -126,6 +160,8 @@ impl TestDriver for LiveDriver {
                 send_key(world, code, logical_key(code), ButtonState::Released);
                 self.finish(Ok(Value::Null))
             }
+            TestOp::Action { action } => self.action(world, action),
+            TestOp::Gamepad { button } => self.gamepad(world, button),
             TestOp::TypeText { text } => {
                 for ch in text.chars() {
                     let key = Key::Character(ch.to_string().into());

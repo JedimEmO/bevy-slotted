@@ -9,9 +9,15 @@
 // Slot indices follow `MenuDef::chest(3)`: 0..27 container, 27..54 player
 // main, 54..63 hotbar. `inventory` picks which backing inventory a grid draws
 // from; `first` is the menu slot the grid starts at.
+//
+// `presentation` is the default, written out so the file shows the field: a
+// `page` on the screen stack, which `Back` pops. `initial_focus` names the
+// node a keyboard or a gamepad starts on.
 #![enable(implicit_some)]
 (
     kind: "demo:chest",
+    presentation: (mode: "page", transition: "fade", back: "pop"),
+    initial_focus: "chest_grid",
     root: (
         type: "panel",
         role: "panel",

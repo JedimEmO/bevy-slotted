@@ -62,7 +62,7 @@ fn open(world: &mut World, registries: &FrozenRegistries) {
             entities,
             Actor::SURVIVAL,
         );
-        spawn_screen(&mut commands, def, Some(menu));
+        push_screen(&mut commands, def, Some(menu));
     }
     world.insert_resource(ids);
     world.flush();

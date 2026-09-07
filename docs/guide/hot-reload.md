@@ -58,7 +58,7 @@ Errors reach you three ways:
 
 | | |
 |---|---|
-| Open screens | Yes. They are respawned from the new `ScreenDef`. |
+| Open screens | Yes. They are respawned from the new `ScreenDef`, on the same menu. A screen on the screen stack goes back in at the same stack position, with the presentation the edited file declares, so `Back` still closes it. |
 | Inventory contents | Yes, remapped by name. |
 | An item that no longer exists | The stack is dropped; there is nothing to remap it to. |
 | The carried stack | Yes. |

@@ -3,7 +3,9 @@
 A screen is data. `ScreenDef` holds a tree of `UiNodeDef`s, and `spawn_screen`
 is the one place that turns that tree into entities. The same tree comes from a
 Rust struct literal, a `.screen.ron` file or a Lua table, so a mod can build a
-screen the engine has never heard of without a rebuild.
+screen the engine has never heard of without a rebuild. A game opens one
+through the [screen stack](#the-screen-stack), which is what makes `Back`
+close it.
 
 ## The file
 
@@ -11,6 +13,8 @@ screen the engine has never heard of without a rebuild.
 #![enable(implicit_some)]
 (
     kind: "demo:chest",
+    presentation: (mode: "page"),
+    initial_focus: "chest_grid",
     root: (
         type: "panel",
         role: "panel",
@@ -19,7 +23,7 @@ screen the engine has never heard of without a rebuild.
             (type: "text", key: "demo.chest.title", style: "title"),
             (type: "anchor", id: "title_end"),
             (type: "slot_grid", inventory: 0, cols: 9, rows: 3, first: 0,
-             tags: {"region": "chest"}),
+             tags: {"region": "chest", "test_id": "chest_grid"}),
             (type: "slot_grid", inventory: 1, cols: 9, rows: 3, first: 27,
              tags: {"region": "player"}),
             (type: "custom", kind: "slotted:hotbar", params: (first: 54),
@@ -30,7 +34,7 @@ screen the engine has never heard of without a rebuild.
 )
 ```
 
-`ScreenDef` has five fields.
+`ScreenDef` has seven fields.
 
 | Field | Type | Default | |
 |---|---|---|---|
@@ -39,6 +43,44 @@ screen the engine has never heard of without a rebuild.
 | `inherits` | `"namespace:path"` | none | A base screen to start from; see [Inheritance](#inheritance). |
 | `listring` | array of inventory indices | `[]` | The order quick-move walks. Mirrors `MenuDef::listring`. |
 | `remove` | array of node ids | `[]` | Nodes to delete from the inherited tree. Only meaningful with `inherits`. |
+| `presentation` | `Presentation` | `(mode: "page")` | How the screen sits on the stack; see [Presentation](#presentation). |
+| `initial_focus` | node id | none | Where keyboard and gamepad focus starts; see [Focus](#focus-and-nav-links). |
+
+### Presentation
+
+```ron
+presentation: (mode: "modal", scrim: true, transition: "slide_up", back: "pop"),
+```
+
+| Field | Values | Default | |
+|---|---|---|---|
+| `mode` | `page`, `modal`, `overlay` | `page` | A `page` hides every stack entry below it and takes focus. A `modal` keeps the entries below visible, draws a scrim, traps focus and takes it. An `overlay` takes no focus, blocks no input and is not counted by `Back`. |
+| `scrim` | bool | `true` for `modal`, else `false` | Draw the themed `scrim` role under the screen. |
+| `transition` | `fade`, `slide_up`, `slide_left`, `none` | `fade` | The arrival motion, on the theme's motion tokens. Reduced motion collapses all of them to a fade. |
+| `back` | `pop`, `ignore` | `pop` | What an unclaimed `Back` does to this screen when it is on top. |
+
+### Focus and nav links
+
+`initial_focus` names the node (by its `test_id`) that takes focus when the
+screen opens: the node itself when it is focusable, else its first focusable
+descendant, so naming a grid focuses its first slot. Without it, the first
+focusable node in tree order takes focus. Only a `page` or a `modal` takes
+focus, and only when it is the top of the stack.
+
+Inside a container Bevy's directional navigator picks the neighbour. Between
+containers, four reserved tags say where focus goes:
+
+```ron
+(type: "slot_grid", inventory: 0, cols: 9, rows: 3, first: 0,
+ tags: {"test_id": "chest_grid", "nav.down": "player_grid"}),
+```
+
+`nav.up`, `nav.down`, `nav.left` and `nav.right` name a node id; on a
+directional action the focused node and its ancestors up to the screen root
+are searched for the first link in that direction, and focus lands on the
+named node's first focusable descendant. A link whose id resolves to nothing
+is logged once per spawn and falls through to the navigator. The whole input
+side is in [input.md](input.md).
 
 `ScreenDef::from_ron` parses through the untyped `Value` form, so `Option` fields
 accept both `Some(x)` and a bare `x`. Files conventionally start with
@@ -72,13 +114,31 @@ A container. Everything else nests inside one.
 | `layout` | `Layout` | all defaults | See below. |
 | `children` | array | `[]` | |
 
-`Layout` is `direction` (`"row"` or `"column"`, default `column`), `gap` and
-`padding` (in spacing steps, where `1.0` is `spacing.sm`), `width` and `height`
-(fixed pixels; omit to fit content), and `center` (centre children on the cross
-axis).
+`Layout` maps onto Bevy's flex `Node`:
 
-Sizes are in spacing steps rather than pixels so a theme with a different
-spacing scale rescales a screen it has never seen.
+| Field | Type | Default | Node mapping |
+|---|---|---|---|
+| `direction` | `row`, `column` | `column` | `flex_direction` |
+| `gap` | number, in steps | `0` | `row_gap`, `column_gap` |
+| `padding` | number, or `(top, right, bottom, left)`, in steps | `0` | `padding` |
+| `width`, `height` | `Length` | fit content | `width`, `height` |
+| `min_width`, `max_width`, `min_height`, `max_height` | `Length` | none | `min_*`, `max_*` |
+| `align` | `start`, `center`, `end`, `stretch` | `start` | `align_items` (the cross axis) |
+| `justify` | `start`, `center`, `end`, `space_between` | `start` | `justify_content` (the main axis) |
+| `grow` | number | `0` | `flex_grow` |
+| `wrap` | bool | `false` | `flex_wrap` |
+| `overflow` | `visible`, `scroll` | `visible` | `overflow`; `scroll` clips and adds a `ScrollPosition` |
+| `place` | `(anchor: ..., offset: (x, y))` | none | absolute placement: `top_left` ... `bottom_right` or `center`, the nine HUD anchors, offset in pixels |
+| `center` | bool | `false` | deprecated alias: `center: true` with `align` unset means `align: center` |
+
+A `Length` is a bare number for pixels, or a string: `"50%"` of the parent,
+`"fill"` (100%), `"auto"`, or `"3s"` for three spacing steps. `"12px"` is
+rejected with a message naming the accepted forms.
+
+Gaps, padding and step lengths are in spacing steps (`1.0` is `spacing.sm`)
+rather than pixels, so a theme with a different spacing scale rescales a screen
+it has never seen. `place` on a screen root's child is how a menu sits bottom
+left with a logo top right without nesting three panels.
 
 ### `slot_grid`
 
@@ -320,6 +380,61 @@ screen, never a panic.
 Injections are still matched against the kind that opened, so an injection aimed
 at `demo:chest` does not follow the tree into `copper:chest`; target
 `slotted:any` to reach every screen with the anchor.
+
+## The screen stack
+
+`ScreenStack` is the resource that knows what is open. A game pushes a screen
+onto it and pops it off; the stack spawns and closes the tree, closes the
+screen's menu on pop (the carried stack lands in `Dropped`, nothing is lost),
+keeps z order, hides what a `page` covers, draws a `modal`'s scrim, keeps focus
+inside the top entry and restores it when an entry regains the top.
+
+```rust
+use slotted::prelude::*;
+
+fn open_chest(mut commands: Commands, mut ids: ResMut<MenuIdAllocator>, screens: Res<Screens>) {
+    let def = screens.get(&ScreenKind::new("demo:chest")).cloned().unwrap();
+    let menu = open_menu(&mut commands, &mut ids, menu_def, inventories, Actor::SURVIVAL);
+    push_screen(&mut commands, def, Some(menu));
+}
+
+fn pause(mut commands: Commands, screens: Res<Screens>) {
+    let def = screens.get(&ScreenKind::new("game:pause")).cloned().unwrap();
+    // A menu-less screen: a modal over whatever is open.
+    push_screen(&mut commands, def, None);
+}
+
+fn resume(mut commands: Commands) {
+    pop_screen(&mut commands);
+}
+```
+
+| | |
+|---|---|
+| `push_screen(commands, def, menu) -> Entity` | Resolves `def` through `Screens`, spawns it, records the entry, applies its presentation. |
+| `replace_screen(commands, def, menu) -> Entity` | Pops the top non-overlay entry, then pushes. |
+| `pop_screen(commands)` | Closes the top non-overlay entry and its menu. |
+| `pop_to(commands, &kind)` | Pops until `kind` is on top, overlays included. A no-op when `kind` is not open. |
+| `clear_screens(commands)` | Pops everything. |
+| `ScreenStack::top()`, `top_any()`, `is_open(&kind)`, `kinds()`, `entries()` | What is open. `top()` skips overlays. |
+| `StackChanged { kinds }` | A message written after every change, bottom to top. |
+
+An unclaimed `Back` action (Escape, or East on a pad) pops the top entry when
+its `back` policy is `pop`. That is the only Escape handling a game needs for
+its screens; a widget that wants the press for itself claims it first
+([input.md](input.md)).
+
+`spawn_screen` and `close_screen` are still there and keep their signatures.
+They are the low-level path the stack is built on: a screen spawned directly is
+not a stack entry, `Back` leaves it alone, and the game handles its own close
+as before. Mixing the two is safe in one direction: `close_screen` on a root
+the stack holds removes its entry. The HUD's `hide_with_screen` layers hide
+while any `page` or `modal` is on the stack, and while any screen exists
+outside it.
+
+Hot reload keeps a stacked screen stacked: when a `*.screen.ron` edit or a mod
+reload respawns an open screen, the new tree goes back in at the same stack
+position with the presentation the edited file declares.
 
 ## Loading one
 
