@@ -49,7 +49,7 @@ pub use def::{
     UiNodeDef, ViewSubject, WidgetKind,
 };
 pub use fluids::{FluidDef, FluidId, Fluids};
-pub use focus_ring::{FocusRing, FocusRingState, Focusable, update_focus_ring};
+pub use focus_ring::{FocusRing, FocusRingFrame, FocusRingState, Focusable, update_focus_ring};
 pub use hud::{
     HudAnchor, HudAnchored, HudConfig, HudError, HudHotbar, HudLayerDef, HudLayerId,
     HudLayerPayload, HudLayerRoot, HudLayers, HudLayout, HudMenu, HudPlacement, HudUpdate,

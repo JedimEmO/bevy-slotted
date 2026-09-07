@@ -184,6 +184,7 @@ fn spawn_card(world: &mut World, grid: Entity, index: u16, metrics: DockMetrics)
             Hovered::default(),
             Pickable::default(),
             TabIndex(0),
+            slotted_ui::Focusable,
             Visibility::Hidden,
             ChildOf(grid),
         ))

@@ -1,5 +1,6 @@
 ---
 source: crates/slotted-test/tests/chest_screen.rs
+assertion_line: 293
 expression: h.screen_tree()
 ---
 ScreenTree(
@@ -44,6 +45,7 @@ ScreenTree(
                   },
                   widget: Some("slotted:slot"),
                   visible: true,
+                  focused: true,
                   item: Some(ItemSummary(
                     id: "minecraft:cobblestone",
                     count: 64,

@@ -44,6 +44,7 @@ impl Widget for SearchFieldWidget {
             },
             EditableText::new(""),
             TabIndex(0),
+            slotted_ui::Focusable,
             Themed(roles::SEARCH),
             SemanticRole::TextField,
             slotted_ui::SemanticLabel(label),

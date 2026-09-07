@@ -33,6 +33,8 @@
                 Stagger: (duration: 140, easing: Snap),
                 FlyToSlot: (duration: 90, easing: Snap),
                 Fade: (duration: 110, easing: Standard),
+                // A screen snaps in like everything else here.
+                Slide: (duration: 120, easing: Snap),
             },
         ),
         fonts: {
@@ -193,6 +195,10 @@
         "hud.panel": CutCorners(fill: "#1A1C22D9", border: "$edge", cut: 8.0),
         "hud.crosshair": Solid(fill: "$lime", radius: 0.0),
         "hud.edit.frame": Solid(fill: "#00000000", border: "$magenta", radius: 0.0),
+
+        // Menus M0: a magenta outline with a low glow, and a heavy scrim.
+        "focus.ring": Solid(fill: "#00000000", border: "$magenta", radius: 0.0, elevation: "low"),
+        "scrim": Solid(fill: "#000000B3"),
 
         "invisible": Solid(fill: "#00000000"),
     },

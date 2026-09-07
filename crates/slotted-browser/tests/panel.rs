@@ -422,6 +422,61 @@ fn escape_closes_the_recipe_view() {
     assert!(!h.is_visible(view), "the view hides when the page closes");
 }
 
+/// Menus contract 2.5: closing the recipe view is a `Back` claim, so the
+/// screen stack does not also pop on the same press; with nothing to close
+/// the press is left unclaimed.
+#[test]
+fn back_closes_the_recipe_view_and_is_claimed_only_then() {
+    let mut h = harness();
+    open(&mut h);
+    let card = card_for(&mut h, "minecraft:coal");
+    h.browser().open_recipes(card);
+    assert!(h.browser().open_page().is_some());
+
+    // The claim lives until the next frame's emit clears it, so press the
+    // key by hand and read straight after the press frame.
+    h.hold(KeyCode::Escape);
+    assert!(
+        h.world()
+            .resource::<slotted_ui::UiActionClaims>()
+            .is_claimed(slotted_ui::UiAction::Back),
+        "closing the view claims Back"
+    );
+    h.release(KeyCode::Escape);
+    h.settle();
+    assert!(h.browser().open_page().is_none());
+
+    h.hold(KeyCode::Escape);
+    assert!(
+        !h.world()
+            .resource::<slotted_ui::UiActionClaims>()
+            .is_claimed(slotted_ui::UiAction::Back),
+        "nothing to close: Back is the stack's"
+    );
+    h.release(KeyCode::Escape);
+}
+
+/// A rebound `close` key that is not one of `Back`'s keys still closes the
+/// view through the raw path, and Escape closes it too through `Back`.
+#[test]
+fn a_rebound_close_key_keeps_working_beside_back() {
+    let mut h = harness();
+    h.world_mut().resource_mut::<BrowserRuntime>().keys.close = KeyCode::KeyC;
+    open(&mut h);
+    let card = card_for(&mut h, "minecraft:coal");
+    h.browser().open_recipes(card);
+    assert!(h.browser().open_page().is_some());
+    h.key(KeyCode::KeyC);
+    h.settle();
+    assert!(h.browser().open_page().is_none(), "the raw key closes");
+
+    h.browser().open_recipes(card);
+    assert!(h.browser().open_page().is_some());
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert!(h.browser().open_page().is_none(), "Back closes as well");
+}
+
 #[test]
 fn the_bookmark_key_over_a_card_adds_and_removes_it() {
     let mut h = harness();

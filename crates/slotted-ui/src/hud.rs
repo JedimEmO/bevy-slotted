@@ -111,33 +111,7 @@ impl HudAnchor {
     /// the job of [`transform`](Self::transform), which shifts the wrapper by
     /// half its own size; the two are always applied together.
     pub fn node(&self, window: Vec2) -> Node {
-        let mut node = Node {
-            position_type: PositionType::Absolute,
-            ..default()
-        };
-        match self.anchor {
-            NineAnchor::TopLeft | NineAnchor::Left | NineAnchor::BottomLeft => {
-                node.left = px(self.offset.x);
-            }
-            NineAnchor::Top | NineAnchor::Center | NineAnchor::Bottom => {
-                node.left = px(window.x * 0.5 + self.offset.x);
-            }
-            NineAnchor::TopRight | NineAnchor::Right | NineAnchor::BottomRight => {
-                node.right = px(-self.offset.x);
-            }
-        }
-        match self.anchor {
-            NineAnchor::TopLeft | NineAnchor::Top | NineAnchor::TopRight => {
-                node.top = px(self.offset.y);
-            }
-            NineAnchor::Left | NineAnchor::Center | NineAnchor::Right => {
-                node.top = px(window.y * 0.5 + self.offset.y);
-            }
-            NineAnchor::BottomLeft | NineAnchor::Bottom | NineAnchor::BottomRight => {
-                node.bottom = px(-self.offset.y);
-            }
-        }
-        node
+        crate::def::nine_anchor_node(self.anchor, self.offset, Some(window))
     }
 
     /// The wrapper's `UiTransform`: the layer's [`scale`](Self::scale), plus
@@ -145,20 +119,7 @@ impl HudAnchor {
     /// A `UiTransform` translation is added after the scale, so the two do
     /// not interact.
     pub fn transform(&self) -> bevy::ui::ui_transform::UiTransform {
-        use bevy::ui::ui_transform::{UiTransform, Val2};
-        let x = match self.anchor {
-            NineAnchor::Top | NineAnchor::Center | NineAnchor::Bottom => percent(-50),
-            _ => px(0),
-        };
-        let y = match self.anchor {
-            NineAnchor::Left | NineAnchor::Center | NineAnchor::Right => percent(-50),
-            _ => px(0),
-        };
-        UiTransform {
-            translation: Val2::new(x, y),
-            scale: Vec2::splat(self.scale),
-            ..UiTransform::IDENTITY
-        }
+        crate::def::nine_anchor_transform(self.anchor, self.scale)
     }
 }
 
@@ -828,14 +789,22 @@ pub fn reanchor_hud_layers(
     }
 }
 
-/// `SlottedUiSet::Render`: hides `hide_with_screen` layers while a
-/// `ScreenRoot` exists.
+/// `SlottedUiSet::Render`: hides `hide_with_screen` layers while the stack
+/// holds a `page` or `modal`, or while a `ScreenRoot` exists that the stack
+/// does not hold (menus contract 3.4). An `overlay` on the stack leaves the
+/// HUD alone.
 pub fn hud_screen_visibility(
     layers: Res<HudLayers>,
-    screens: Query<(), With<crate::semantic::ScreenRoot>>,
+    stack: Res<crate::stack::ScreenStack>,
+    screens: Query<Entity, With<crate::semantic::ScreenRoot>>,
     mut roots: Query<(&HudLayerRoot, &mut Visibility)>,
 ) {
-    let screen_open = !screens.is_empty();
+    use crate::def::PresentationMode;
+    let screen_open = stack
+        .entries()
+        .iter()
+        .any(|e| e.presentation.mode != PresentationMode::Overlay)
+        || screens.iter().any(|root| stack.entry(root).is_none());
     for (root, mut visibility) in &mut roots {
         let Some(def) = layers.get(&root.id) else {
             continue;

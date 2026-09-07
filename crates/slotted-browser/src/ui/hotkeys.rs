@@ -5,7 +5,7 @@ use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use bevy::text::EditableText;
 use slotted_ecs::SlotRef;
-use slotted_ui::{ItemView, ScreenRoot};
+use slotted_ui::{ItemView, ScreenRoot, UiAction, UiActionClaims, UiActionEvent, UiBindings};
 
 use super::ShowsIngredient;
 use super::dock;
@@ -123,8 +123,16 @@ fn geometry_for(
     )
 }
 
-/// `BrowserSet::Input`: R, U, A, Ctrl+F, Backspace, Esc from
-/// [`KeyMappings`](crate::runtime::KeyMappings).
+/// `BrowserSet::Input`, after `UiActionEmit`: R, U, A, Ctrl+F, Backspace
+/// from [`KeyMappings`](crate::runtime::KeyMappings), and the `Back` action
+/// (menus contract 2.5).
+///
+/// `Back` blurs a focused search field, or closes an open recipe view, and
+/// is claimed either way so the stack does not pop the screen on the same
+/// press. When neither applies it is left unclaimed. The raw `close` key
+/// stays for people who rebind it; while it is one of `Back`'s own keys
+/// (Escape by default) the raw path is skipped so one press is not handled
+/// twice.
 ///
 /// Everything except the focus and blur keys is gated on
 /// `has_keyboard_focus`, so typing `r` into the search field never opens a
@@ -132,6 +140,9 @@ fn geometry_for(
 #[allow(clippy::too_many_arguments)]
 pub fn browser_hotkeys(
     keys: Res<ButtonInput<KeyCode>>,
+    mut actions: MessageReader<UiActionEvent>,
+    bindings: Res<UiBindings>,
+    mut claims: ResMut<UiActionClaims>,
     runtime: Res<BrowserRuntime>,
     hovered: Res<HoverTarget>,
     fields: Query<Entity, With<SearchField>>,
@@ -144,6 +155,14 @@ pub fn browser_hotkeys(
     let mapping = &runtime.keys;
     let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
 
+    let back_action = actions.read().any(|e| e.action == UiAction::Back);
+    let close_is_back = bindings
+        .keys
+        .get(&UiAction::Back)
+        .is_some_and(|codes| codes.contains(&mapping.close));
+    let raw_close = !close_is_back && keys.just_pressed(mapping.close);
+    let close = back_action || raw_close;
+
     // Focus and blur are the two keys that must work while the field has the
     // keyboard, so they come before the guard.
     if let Some(mut focus) = focus {
@@ -155,8 +174,11 @@ pub fn browser_hotkeys(
             focus.set(field, FocusCause::Navigated);
             return;
         }
-        if keys.just_pressed(mapping.close) && runtime.has_keyboard_focus {
+        if close && runtime.has_keyboard_focus {
             focus.clear();
+            if back_action {
+                claims.claim(UiAction::Back);
+            }
             return;
         }
     }
@@ -165,8 +187,11 @@ pub fn browser_hotkeys(
         return;
     }
 
-    if keys.just_pressed(mapping.close) {
+    if close && runtime.open.is_some() {
         nav.write(RecipeNav::Close);
+        if back_action {
+            claims.claim(UiAction::Back);
+        }
     }
     if keys.just_pressed(mapping.back) {
         nav.write(RecipeNav::Back);

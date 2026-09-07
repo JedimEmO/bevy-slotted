@@ -5,9 +5,17 @@
 
 use std::sync::Arc;
 
+use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::prelude::*;
+use bevy::ui::ui_transform::{UiTransform, Val2};
+use slotted_ecs::{CloseMenu, OpenMenu};
+use slotted_theme::{Motion, MotionPreset, Themed, TweenTarget, roles};
 
-use crate::def::{Presentation, ScreenDef, ScreenKind};
+use crate::actions::{UiAction, UiActionClaims, UiActionEvent};
+use crate::def::{BackPolicy, Presentation, PresentationMode, ScreenDef, ScreenKind, Transition};
+use crate::layers::zbands;
+use crate::screen::{ScreenClosed, Screens, SpawnScreen};
+use crate::semantic::ScreenRoot;
 
 /// One open screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +54,7 @@ impl ScreenStack {
         self.entries
             .iter()
             .rev()
-            .find(|e| e.presentation.mode != crate::def::PresentationMode::Overlay)
+            .find(|e| e.presentation.mode != PresentationMode::Overlay)
     }
 
     /// The topmost entry of any kind.
@@ -130,8 +138,36 @@ pub struct PushScreen {
 impl Command for PushScreen {
     type Out = ();
 
-    fn apply(self, _world: &mut World) {
-        // M0-IMPL: B
+    fn apply(self, world: &mut World) {
+        // Resolved once, here, so the entry exists with the final kind and
+        // presentation *before* `ScreenSpawned` fires: the nav observer that
+        // picks the initial focus asks the stack whether this screen is on
+        // top. `SpawnScreen` resolving the flattened result again is a clone.
+        let resolved = world
+            .get_resource::<Screens>()
+            .map_or_else(|| (*self.def).clone(), |s| s.resolve(&self.def));
+        let presentation = resolved.presentation;
+        world
+            .resource_mut::<ScreenStack>()
+            .entries
+            .push(StackEntry {
+                root: self.root,
+                kind: resolved.kind.clone(),
+                presentation,
+                menu: self.menu,
+                focus: None,
+            });
+        SpawnScreen {
+            root: self.root,
+            def: Arc::new(resolved),
+            menu: self.menu,
+        }
+        .apply(world);
+        world
+            .entity_mut(self.root)
+            .insert(PushTransition(presentation.transition));
+        apply_presentation(world);
+        write_stack_changed(world);
     }
 }
 
@@ -142,8 +178,17 @@ pub struct PopScreen;
 impl Command for PopScreen {
     type Out = ();
 
-    fn apply(self, _world: &mut World) {
-        // M0-IMPL: B
+    fn apply(self, world: &mut World) {
+        let top = world
+            .resource::<ScreenStack>()
+            .entries
+            .iter()
+            .rposition(|e| e.presentation.mode != PresentationMode::Overlay);
+        let Some(index) = top else {
+            return;
+        };
+        pop_entry(world, index);
+        finish_change(world);
     }
 }
 
@@ -154,8 +199,24 @@ pub struct PopTo(pub ScreenKind);
 impl Command for PopTo {
     type Out = ();
 
-    fn apply(self, _world: &mut World) {
-        // M0-IMPL: B
+    fn apply(self, world: &mut World) {
+        if !world.resource::<ScreenStack>().is_open(&self.0) {
+            return;
+        }
+        let mut popped = false;
+        loop {
+            let entries = &world.resource::<ScreenStack>().entries;
+            match entries.last() {
+                Some(top) if top.kind != self.0 => {
+                    pop_entry(world, entries.len() - 1);
+                    popped = true;
+                }
+                _ => break,
+            }
+        }
+        if popped {
+            finish_change(world);
+        }
     }
 }
 
@@ -166,52 +227,342 @@ pub struct ClearScreens;
 impl Command for ClearScreens {
     type Out = ();
 
-    fn apply(self, _world: &mut World) {
-        // M0-IMPL: B
+    fn apply(self, world: &mut World) {
+        let mut popped = false;
+        while let Some(index) = world.resource::<ScreenStack>().entries.len().checked_sub(1) {
+            pop_entry(world, index);
+            popped = true;
+        }
+        if popped {
+            finish_change(world);
+        }
+    }
+}
+
+/// A screen the stack just pushed, waiting for its arrival motion. Removed by
+/// [`start_push_transitions`] on the first frame the theme has painted it.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PushTransition(pub Transition);
+
+/// Removes entry `index`, closes its screen and its menu, and drops its
+/// scrim. Focus, z, visibility and `StackChanged` are [`finish_change`]'s.
+fn pop_entry(world: &mut World, index: usize) {
+    let entry = world.resource_mut::<ScreenStack>().entries.remove(index);
+    despawn_scrims(world, entry.root);
+    // The entry is already gone, so `on_screen_closed` finds nothing to do.
+    if world.get_entity(entry.root).is_ok() {
+        world.trigger(ScreenClosed { entity: entry.root });
+        world.despawn(entry.root);
+    }
+    if let Some(menu) = entry.menu
+        && let Some(id) = world.get::<OpenMenu>(menu).map(|open| open.id)
+    {
+        // The same close the game did by hand before the stack existed:
+        // the carried stack lands in `Dropped`, so nothing is lost.
+        CloseMenu { menu, id }.apply(world);
+    }
+}
+
+/// After one or more pops: z, visibility, focus and the message.
+fn finish_change(world: &mut World) {
+    apply_presentation(world);
+    restore_focus(world);
+    write_stack_changed(world);
+}
+
+fn despawn_scrims(world: &mut World, root: Entity) {
+    let scrims: Vec<Entity> = world
+        .query::<(Entity, &Scrim)>()
+        .iter(world)
+        .filter(|(_, scrim)| scrim.for_root == root)
+        .map(|(entity, _)| entity)
+        .collect();
+    for scrim in scrims {
+        world.despawn(scrim);
+    }
+}
+
+fn write_stack_changed(world: &mut World) {
+    let kinds = world.resource::<ScreenStack>().kinds();
+    if let Some(mut messages) = world.get_resource_mut::<Messages<StackChanged>>() {
+        messages.write(StackChanged { kinds });
+    }
+}
+
+/// Menus contract 3.2: entry `i` at `zbands::SCREEN + 2 * i`, its scrim one
+/// below, everything under the topmost `page` hidden and the rest shown.
+/// Idempotent, so it runs after every change and after a direct
+/// `close_screen` on a stacked root.
+pub fn apply_presentation(world: &mut World) {
+    let entries = world.resource::<ScreenStack>().entries.clone();
+    let top_page = entries
+        .iter()
+        .rposition(|e| e.presentation.mode == PresentationMode::Page);
+    let scrims: Vec<(Entity, Entity)> = world
+        .query::<(Entity, &Scrim)>()
+        .iter(world)
+        .map(|(entity, scrim)| (entity, scrim.for_root))
+        .collect();
+    for (i, entry) in entries.iter().enumerate() {
+        let Ok(mut root) = world.get_entity_mut(entry.root) else {
+            continue;
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        let z = zbands::SCREEN + 2 * i as i32;
+        let visibility = if top_page.is_none_or(|p| i >= p) {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        set_if_changed(&mut root, GlobalZIndex(z));
+        set_if_changed(&mut root, visibility);
+        let existing = scrims
+            .iter()
+            .find(|(_, for_root)| *for_root == entry.root)
+            .map(|(scrim, _)| *scrim);
+        match (entry.presentation.scrim(), existing) {
+            (true, Some(scrim)) => {
+                let mut scrim = world.entity_mut(scrim);
+                set_if_changed(&mut scrim, GlobalZIndex(z - 1));
+                set_if_changed(&mut scrim, visibility);
+            }
+            (true, None) => {
+                world.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        width: percent(100),
+                        height: percent(100),
+                        ..default()
+                    },
+                    GlobalZIndex(z - 1),
+                    visibility,
+                    Pickable::default(),
+                    Themed(roles::SCRIM),
+                    Scrim {
+                        for_root: entry.root,
+                    },
+                ));
+            }
+            (false, Some(scrim)) => {
+                world.despawn(scrim);
+            }
+            (false, None) => {}
+        }
+    }
+}
+
+fn set_if_changed<C: Component + PartialEq>(entity: &mut EntityWorldMut<'_>, value: C) {
+    if entity.get::<C>() != Some(&value) {
+        entity.insert(value);
+    }
+}
+
+/// Puts `InputFocus` on the top entry's recorded focus, else its root's
+/// initial focus. Clears it when the focused node died with a popped
+/// screen and nothing is left to take over.
+fn restore_focus(world: &mut World) {
+    let top = world.resource::<ScreenStack>().top().cloned();
+    let alive = |world: &World, e: Option<Entity>| e.filter(|e| world.get_entity(*e).is_ok());
+    let target = top.and_then(|top| {
+        alive(world, top.focus).or_else(|| {
+            alive(
+                world,
+                world
+                    .get::<ScreenRoot>(top.root)
+                    .and_then(|root| root.initial_focus),
+            )
+        })
+    });
+    let current = world.get_resource::<InputFocus>().and_then(InputFocus::get);
+    let current_alive = alive(world, current);
+    let Some(mut focus) = world.get_resource_mut::<InputFocus>() else {
+        return;
+    };
+    match target {
+        Some(target) if current != Some(target) => focus.set(target, FocusCause::Navigated),
+        None if current.is_some() && current_alive.is_none() => focus.clear(),
+        _ => {}
     }
 }
 
 /// Observer on `ScreenClosed`: drops the entry for a root closed through
 /// [`close_screen`](crate::close_screen) directly.
 pub fn on_screen_closed(
-    _closed: On<crate::screen::ScreenClosed>,
-    _stack: ResMut<ScreenStack>,
-    _changed: MessageWriter<StackChanged>,
-    _commands: Commands,
+    closed: On<ScreenClosed>,
+    mut stack: ResMut<ScreenStack>,
+    mut changed: MessageWriter<StackChanged>,
+    scrims: Query<(Entity, &Scrim)>,
+    mut commands: Commands,
 ) {
-    // M0-IMPL: B
+    let root = closed.entity;
+    let Some(index) = stack.entries.iter().position(|e| e.root == root) else {
+        return;
+    };
+    stack.entries.remove(index);
+    for (scrim, _) in scrims.iter().filter(|(_, s)| s.for_root == root) {
+        commands.entity(scrim).despawn();
+    }
+    changed.write(StackChanged {
+        kinds: stack.kinds(),
+    });
+    commands.queue(|world: &mut World| {
+        apply_presentation(world);
+        restore_focus(world);
+    });
 }
 
 /// `SlottedUiSet::Navigate`: pops the top entry on an unclaimed `Back`
 /// (menus contract 3.3).
 pub fn pop_on_back(
-    _events: MessageReader<crate::actions::UiActionEvent>,
-    _claims: Res<crate::actions::UiActionClaims>,
-    _stack: Res<ScreenStack>,
-    _commands: Commands,
+    mut events: MessageReader<UiActionEvent>,
+    claims: Res<UiActionClaims>,
+    stack: Res<ScreenStack>,
+    mut commands: Commands,
 ) {
-    // M0-IMPL: B
+    let back = events.read().any(|e| e.action == UiAction::Back);
+    if !back || claims.is_claimed(UiAction::Back) {
+        return;
+    }
+    let Some(top) = stack.top() else {
+        return;
+    };
+    if top.presentation.back == BackPolicy::Pop {
+        pop_screen(&mut commands);
+    }
+}
+
+/// The screen root above `entity`, or `entity` itself when it is one.
+fn screen_root_of(
+    entity: Entity,
+    parents: &Query<&ChildOf>,
+    roots: &Query<&ScreenRoot>,
+) -> Option<Entity> {
+    let mut current = entity;
+    loop {
+        if roots.contains(current) {
+            return Some(current);
+        }
+        current = parents.get(current).ok()?.parent();
+    }
 }
 
 /// `SlottedUiSet::Navigate`: keeps `InputFocus` inside the top entry
 /// (menus contract 3.2).
 pub fn enforce_focus_scope(
-    _focus: Option<ResMut<bevy::input_focus::InputFocus>>,
-    _stack: Res<ScreenStack>,
-    _parents: Query<&ChildOf>,
-    _roots: Query<&crate::semantic::ScreenRoot>,
+    focus: Option<ResMut<InputFocus>>,
+    stack: Res<ScreenStack>,
+    parents: Query<&ChildOf>,
+    roots: Query<&ScreenRoot>,
 ) {
-    // M0-IMPL: B
+    let Some(mut focus) = focus else {
+        return;
+    };
+    let Some(focused) = focus.get() else {
+        return;
+    };
+    let Some(root) = screen_root_of(focused, &parents, &roots) else {
+        return;
+    };
+    let Some(top) = stack.top() else {
+        return;
+    };
+    if root == top.root || stack.entry(root).is_none() {
+        return;
+    }
+    let target = top
+        .focus
+        .filter(|e| parents.contains(*e))
+        .or_else(|| roots.get(top.root).ok().and_then(|r| r.initial_focus));
+    match target {
+        Some(target) => focus.set(target, FocusCause::Navigated),
+        None => focus.clear(),
+    }
 }
 
 /// `SlottedUiSet::Navigate`, after [`enforce_focus_scope`]: records the
 /// focused node into its entry.
 pub fn record_stack_focus(
-    _focus: Option<Res<bevy::input_focus::InputFocus>>,
-    _stack: ResMut<ScreenStack>,
-    _parents: Query<&ChildOf>,
+    focus: Option<Res<InputFocus>>,
+    mut stack: ResMut<ScreenStack>,
+    parents: Query<&ChildOf>,
+    roots: Query<&ScreenRoot>,
 ) {
-    // M0-IMPL: B
+    let Some(focused) = focus.as_deref().and_then(InputFocus::get) else {
+        return;
+    };
+    let Some(root) = screen_root_of(focused, &parents, &roots) else {
+        return;
+    };
+    let Some(entry) = stack.entries.iter().position(|e| e.root == root) else {
+        return;
+    };
+    if stack.entries[entry].focus != Some(focused) {
+        stack.entries_mut()[entry].focus = Some(focused);
+    }
+}
+
+/// After `SlottedThemeSet::Apply`: starts the arrival motion of every screen
+/// pushed this frame (menus contract 3.2).
+///
+/// Bevy UI has no opacity group, so the fade is the root panel's own
+/// `BackgroundColor` alpha, from zero back to what the theme painted; the
+/// slide is a `Translate` on the screen root, so the whole tree moves. Both
+/// start values are written here as well, so the first drawn frame is
+/// already at the start of the motion. Under reduced motion only the fade
+/// runs, and it completes on its first tick.
+pub fn start_push_transitions(
+    motion: Res<Motion>,
+    tokens: crate::tooltip::ThemeTokens,
+    pending: Query<(Entity, &PushTransition, Option<&Children>)>,
+    mut backgrounds: Query<&mut BackgroundColor>,
+    mut commands: Commands,
+) {
+    if pending.is_empty() {
+        return;
+    }
+    let tokens = tokens.get();
+    for (root, transition, children) in &pending {
+        commands.entity(root).remove::<PushTransition>();
+        let transition = if motion.reduced {
+            Transition::Fade
+        } else {
+            transition.0
+        };
+        if transition == Transition::None {
+            continue;
+        }
+        let panel = children.and_then(|c| c.iter().find(|c| backgrounds.contains(*c)));
+        if let Some(panel) = panel
+            && let Ok(mut background) = backgrounds.get_mut(panel)
+        {
+            let to = background.0.alpha();
+            background.0.set_alpha(0.0);
+            commands.entity(panel).insert(motion.preset_tween(
+                MotionPreset::Fade,
+                TweenTarget::Alpha { from: 0.0, to },
+                &tokens,
+            ));
+        }
+        let from = match transition {
+            Transition::SlideUp => Vec2::new(0.0, tokens.spacing.xl),
+            Transition::SlideLeft => Vec2::new(tokens.spacing.xl, 0.0),
+            Transition::Fade | Transition::None => continue,
+        };
+        commands.entity(root).insert((
+            UiTransform {
+                translation: Val2::px(from.x, from.y),
+                ..UiTransform::IDENTITY
+            },
+            motion.preset_tween(
+                MotionPreset::Slide,
+                TweenTarget::Translate {
+                    from,
+                    to: Vec2::ZERO,
+                },
+                &tokens,
+            ),
+        ));
+    }
 }
 
 /// Registers the stack's resources, messages and systems.
@@ -221,8 +572,11 @@ pub fn build(app: &mut App) {
         .add_observer(on_screen_closed)
         .add_systems(
             Update,
-            (pop_on_back, enforce_focus_scope, record_stack_focus)
-                .chain()
-                .in_set(crate::plugin::SlottedUiSet::Navigate),
+            (
+                (pop_on_back, enforce_focus_scope, record_stack_focus)
+                    .chain()
+                    .in_set(crate::plugin::SlottedUiSet::Navigate),
+                start_push_transitions.after(slotted_theme::SlottedThemeSet::Apply),
+            ),
         );
 }

@@ -423,7 +423,9 @@ pub fn refresh_virtual_grids(world: &mut World) {
                 .cloned()
                 .unwrap_or_default()
                 .with("cell", &index.to_string());
-            world.entity_mut(cell).insert((VirtualCell(index), tags));
+            world
+                .entity_mut(cell)
+                .insert((VirtualCell(index), tags, crate::focus_ring::Focusable));
         }
         update_scrollbar(world, entity);
     }
@@ -508,9 +510,11 @@ fn spawn_pooled_cell(
         };
         ctx.spawn_child(&def)
     });
-    world
-        .entity_mut(cell)
-        .insert((PooledCell(slot), ChildOf(grid)));
+    world.entity_mut(cell).insert((
+        PooledCell(slot),
+        ChildOf(grid),
+        crate::focus_ring::Focusable,
+    ));
     cell
 }
 

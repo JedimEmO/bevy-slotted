@@ -460,6 +460,88 @@ pub enum NineAnchor {
     BottomRight,
 }
 
+/// The absolute `Node` that hangs a content-sized node off one of the nine
+/// points of its parent, `offset` logical pixels away from that point
+/// (menus contract 3.5). Shared by HUD layers and by [`Layout::place`].
+///
+/// A left-ish anchor sets `left`, a right-ish one `right`, and likewise
+/// `top` and `bottom`; a centred axis sets `left` (or `top`) to the parent's
+/// midpoint. With `size` known (the HUD passes the window) that midpoint is
+/// pixels with the offset folded in; without it, it is `50%` and the offset
+/// rides on the margin of that side, which Taffy adds to an absolute inset.
+/// Either way the node's edge lands on the midpoint; centring the content
+/// itself is [`nine_anchor_transform`]'s half-size shift, and the two are
+/// always applied together.
+pub fn nine_anchor_node(
+    anchor: NineAnchor,
+    offset: bevy::math::Vec2,
+    size: Option<bevy::math::Vec2>,
+) -> bevy::ui::Node {
+    use bevy::ui::{Node, PositionType, Val};
+    let mut node = Node {
+        position_type: PositionType::Absolute,
+        ..Default::default()
+    };
+    match anchor {
+        NineAnchor::TopLeft | NineAnchor::Left | NineAnchor::BottomLeft => {
+            node.left = Val::Px(offset.x);
+        }
+        NineAnchor::Top | NineAnchor::Center | NineAnchor::Bottom => {
+            if let Some(size) = size {
+                node.left = Val::Px(size.x * 0.5 + offset.x);
+            } else {
+                node.left = Val::Percent(50.0);
+                node.margin.left = Val::Px(offset.x);
+            }
+        }
+        NineAnchor::TopRight | NineAnchor::Right | NineAnchor::BottomRight => {
+            node.right = Val::Px(-offset.x);
+        }
+    }
+    match anchor {
+        NineAnchor::TopLeft | NineAnchor::Top | NineAnchor::TopRight => {
+            node.top = Val::Px(offset.y);
+        }
+        NineAnchor::Left | NineAnchor::Center | NineAnchor::Right => {
+            if let Some(size) = size {
+                node.top = Val::Px(size.y * 0.5 + offset.y);
+            } else {
+                node.top = Val::Percent(50.0);
+                node.margin.top = Val::Px(offset.y);
+            }
+        }
+        NineAnchor::BottomLeft | NineAnchor::Bottom | NineAnchor::BottomRight => {
+            node.bottom = Val::Px(-offset.y);
+        }
+    }
+    node
+}
+
+/// The `UiTransform` that goes with [`nine_anchor_node`]: `scale`, plus the
+/// half-size shift that centres a centred axis on its midpoint. A
+/// `UiTransform` translation is added after the scale, so the two do not
+/// interact.
+pub fn nine_anchor_transform(
+    anchor: NineAnchor,
+    scale: f32,
+) -> bevy::ui::ui_transform::UiTransform {
+    use bevy::ui::Val;
+    use bevy::ui::ui_transform::{UiTransform, Val2};
+    let x = match anchor {
+        NineAnchor::Top | NineAnchor::Center | NineAnchor::Bottom => Val::Percent(-50.0),
+        _ => Val::Px(0.0),
+    };
+    let y = match anchor {
+        NineAnchor::Left | NineAnchor::Center | NineAnchor::Right => Val::Percent(-50.0),
+        _ => Val::Px(0.0),
+    };
+    UiTransform {
+        translation: Val2::new(x, y),
+        scale: bevy::math::Vec2::splat(scale),
+        ..UiTransform::IDENTITY
+    }
+}
+
 /// Absolute placement of a node inside its parent (menus contract 1.4).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Place {

@@ -197,6 +197,7 @@ pub fn spawn_side_tab(
         bevy::ui_widgets::Button,
         Hovered::default(),
         TabIndex(0),
+        crate::focus_ring::Focusable,
         Pickable::default(),
         Tags::new().with("side_tab", "header"),
     ));

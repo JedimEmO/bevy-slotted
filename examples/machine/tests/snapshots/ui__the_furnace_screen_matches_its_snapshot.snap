@@ -1,5 +1,6 @@
 ---
 source: examples/machine/tests/ui.rs
+assertion_line: 94
 expression: (harness.screen_tree()).to_string()
 ---
 Screen screen=machine:furnace
@@ -10,7 +11,7 @@ Screen screen=machine:furnace
         Anchor anchor=title_end (hidden)
       Panel widget=slotted:panel
         Tank #tank "3000 / 8000 mB" tags[test_id=tank] widget=slotted:tank
-        Slot #input "minecraft:cobblestone x32" [minecraft:cobblestone x32] tags[region=machine test_id=input] widget=slotted:slot
+        Slot #input "minecraft:cobblestone x32" [minecraft:cobblestone x32] tags[region=machine test_id=input] widget=slotted:slot (focused)
         Bar #cook "0 / 200" tags[test_id=cook] widget=slotted:progress
         Slot #output "" tags[region=machine test_id=output] widget=slotted:slot
       Panel widget=slotted:panel

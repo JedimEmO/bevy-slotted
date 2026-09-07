@@ -372,9 +372,16 @@ fn chest_screen_spawns_the_contracted_tree() {
             h.world().get::<SemanticRole>(*entity),
             Some(&SemanticRole::Slot)
         );
+        // The first slot took the screen's initial focus (menus contract
+        // 2.4); every other one is an unhovered, unfocused `slot`.
+        let expected_role = if i == 0 {
+            roles::SLOT_FOCUS
+        } else {
+            roles::SLOT
+        };
         assert_eq!(
             h.world().get::<Themed>(*entity),
-            Some(&Themed(roles::SLOT)),
+            Some(&Themed(expected_role)),
             "an unhovered slot is themed `slot`"
         );
         assert!(h.world().get::<ItemView>(*entity).is_some());
@@ -477,7 +484,9 @@ fn hovering_a_slot_swaps_its_theme_role() {
 fn theme_application_paints_background_from_the_role() {
     let mut h = Harness::new();
     let _ = h.open_chest(chest_screen());
-    let (slot, _) = h.slots()[0];
+    // Not the first slot: that one holds the initial focus and paints
+    // `slot.focus`.
+    let (slot, _) = h.slots()[1];
     h.step(1);
 
     let expected = Color::Srgba(bevy::color::Srgba::hex("141A24B8").expect("hex"));

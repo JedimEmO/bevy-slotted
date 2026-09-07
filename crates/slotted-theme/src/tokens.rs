@@ -292,7 +292,10 @@ impl Durations {
     pub const fn tier_ms(&self, preset: MotionPreset) -> u32 {
         match preset {
             MotionPreset::Hover | MotionPreset::Press => self.fast,
-            MotionPreset::DropSquash | MotionPreset::Fade | MotionPreset::FlyToSlot => self.normal,
+            MotionPreset::DropSquash
+            | MotionPreset::Fade
+            | MotionPreset::FlyToSlot
+            | MotionPreset::Slide => self.normal,
             MotionPreset::Stagger => self.slow,
         }
     }

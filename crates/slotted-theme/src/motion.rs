@@ -94,6 +94,8 @@ pub enum MotionPreset {
     Stagger,
     /// Tooltip and panel fade.
     Fade,
+    /// A pushed screen sliding in from `spacing.xl` away (menus contract 3.2).
+    Slide,
 }
 
 /// How a tween's progress is shaped. Every curve starts at 0 and ends at 1;

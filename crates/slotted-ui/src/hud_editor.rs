@@ -327,9 +327,12 @@ pub fn on_hud_drag(
     layout.anchors.insert(anchored.id.clone(), *anchor);
 }
 
-/// `SlottedUiSet::Input`: `Esc` puts a layer being dragged back where it was.
+/// `SlottedUiSet::Input`, after `UiActionEmit`: `Back` puts a layer being
+/// dragged back where it was and is claimed, so the stack does not also pop
+/// a screen on the same press (menus contract 2.5).
 pub fn cancel_hud_drag(
-    keys: Res<ButtonInput<KeyCode>>,
+    mut events: MessageReader<crate::actions::UiActionEvent>,
+    mut claims: ResMut<crate::actions::UiActionClaims>,
     mut wrappers: Query<(
         Entity,
         &HudAnchored,
@@ -339,9 +342,13 @@ pub fn cancel_hud_drag(
     mut layout: ResMut<HudLayout>,
     mut commands: Commands,
 ) {
-    if !keys.just_pressed(KeyCode::Escape) {
+    let back = events
+        .read()
+        .any(|e| e.action == crate::actions::UiAction::Back);
+    if !back || wrappers.is_empty() {
         return;
     }
+    claims.claim(crate::actions::UiAction::Back);
     for (entity, anchored, mut anchor, dragging) in &mut wrappers {
         anchor.offset = dragging.start;
         layout.anchors.insert(anchored.id.clone(), *anchor);

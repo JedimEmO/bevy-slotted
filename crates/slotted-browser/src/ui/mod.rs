@@ -232,6 +232,7 @@ pub fn register(app: &mut App) {
                     search_field::diff_search_field,
                 )
                     .chain()
+                    .after(slotted_ui::actions::UiActionEmit)
                     .in_set(BrowserSet::Input),
                 (
                     card_grid::size_card_pool,

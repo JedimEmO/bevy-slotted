@@ -137,9 +137,14 @@ pub mod roles {
     pub const HUD_CROSSHAIR: Role = Role::new_static("hud.crosshair");
     /// The outline drawn around a HUD layer in edit mode.
     pub const HUD_EDIT_FRAME: Role = Role::new_static("hud.edit.frame");
+    /// The focus ring that follows `InputFocus` off the mouse (menus
+    /// contract 2.3). A border and no fill.
+    pub const FOCUS_RING: Role = Role::new_static("focus.ring");
+    /// The full-window scrim under a modal screen (menus contract 3.2).
+    pub const SCRIM: Role = Role::new_static("scrim");
 
     /// Every well-known role, for completeness checks.
-    pub const ALL: [Role; 36] = [
+    pub const ALL: [Role; 38] = [
         PANEL,
         PANEL_TITLE,
         SLOT,
@@ -176,6 +181,8 @@ pub mod roles {
         HUD_PANEL,
         HUD_CROSSHAIR,
         HUD_EDIT_FRAME,
+        FOCUS_RING,
+        SCRIM,
     ];
 }
 

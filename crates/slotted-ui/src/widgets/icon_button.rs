@@ -117,6 +117,7 @@ pub fn spawn_icon_button(ctx: &mut SpawnCtx<'_>, params: &IconButtonParams, tags
         },
         tags,
         TabIndex(0),
+        crate::focus_ring::Focusable,
         Hovered::default(),
         Pickable::default(),
         crate::widgets::tank::TooltipSource,

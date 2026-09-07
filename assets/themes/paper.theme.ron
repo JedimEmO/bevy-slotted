@@ -34,6 +34,8 @@
                 // Paper allows no springs, so the flight keeps the
                 // direction's ease-out and only loses the extra length.
                 FlyToSlot: (duration: 120, easing: Standard),
+                // A page turn: slow both ends, no spring.
+                Slide: (duration: 160, easing: EaseInOut),
             },
         ),
         fonts: {
@@ -197,6 +199,11 @@
         "hud.panel": Solid(fill: "#EDE6D6E6", border: "$ink", radius: 2.0),
         "hud.crosshair": Solid(fill: "$ink", radius: 0.0),
         "hud.edit.frame": Solid(fill: "#00000000", border: "$orange", radius: 0.0),
+
+        // Menus M0: a dashed ink rule around the focused widget, and a light
+        // wash under a modal.
+        "focus.ring": Dashed(fill: "#00000000", stroke: "$ink", width: 2.0),
+        "scrim": Solid(fill: "#00000033"),
 
         "invisible": Solid(fill: "#00000000"),
     },

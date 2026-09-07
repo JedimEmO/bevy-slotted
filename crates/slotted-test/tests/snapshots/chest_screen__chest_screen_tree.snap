@@ -1,12 +1,13 @@
 ---
 source: crates/slotted-test/tests/chest_screen.rs
+assertion_line: 292
 expression: (h.screen_tree()).to_string()
 ---
 Screen screen=demo:chest
   Panel #chest_panel tags[test_id=chest_panel] widget=slotted:panel
     Text #title "chest.title" tags[test_id=title] widget=slotted:text
     Grid tags[region=chest] widget=slotted:slot_grid
-      Slot "minecraft:cobblestone x64" [minecraft:cobblestone x64] tags[region=chest] widget=slotted:slot
+      Slot "minecraft:cobblestone x64" [minecraft:cobblestone x64] tags[region=chest] widget=slotted:slot (focused)
       Slot "minecraft:cobblestone x23" [minecraft:cobblestone x23] tags[region=chest] widget=slotted:slot
       Slot "minecraft:oak_planks x40" [minecraft:oak_planks x40] tags[region=chest] widget=slotted:slot
       Slot "" tags[region=chest] widget=slotted:slot

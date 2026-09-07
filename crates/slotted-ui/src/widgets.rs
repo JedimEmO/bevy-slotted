@@ -26,7 +26,7 @@ use slotted_theme::{Role, Themed, roles};
 
 use crate::def::{
     Align, IconDef, Justify, Layout, LayoutDirection, Length, LocKey, Tags, TextRole, UiNodeDef,
-    WidgetKind,
+    WidgetKind, nine_anchor_node, nine_anchor_transform,
 };
 use crate::input::{
     on_slot_drag_end, on_slot_drag_enter, on_slot_drag_start, on_slot_press, on_slot_release,
@@ -274,9 +274,21 @@ pub fn layout_node(layout: &Layout, spacing_sm: f32) -> Node {
         },
         ..default()
     };
-    // M0-IMPL: B — `overflow: scroll` (plus `ScrollPosition` in `spawn_panel`)
-    // and `place` through the shared nine-anchor helper.
-    let _ = (&layout.overflow, &layout.place, &mut node);
+    node.overflow = match layout.overflow {
+        crate::def::Overflow::Visible => Overflow::visible(),
+        crate::def::Overflow::Scroll => Overflow::scroll_y(),
+    };
+    if let Some(place) = layout.place {
+        // The parent's size is not known at spawn, so the centred axes use
+        // the percent form; `spawn_panel` adds the matching transform.
+        let placed = nine_anchor_node(place.anchor, place.offset, None);
+        node.position_type = placed.position_type;
+        node.left = placed.left;
+        node.right = placed.right;
+        node.top = placed.top;
+        node.bottom = placed.bottom;
+        node.margin = placed.margin;
+    }
     node
 }
 
@@ -294,6 +306,16 @@ pub fn spawn_panel(
         SemanticRole::Panel,
         WidgetNode(kinds::panel()),
     ));
+    if layout.overflow == crate::def::Overflow::Scroll {
+        ctx.world
+            .entity_mut(entity)
+            .insert(ScrollPosition::default());
+    }
+    if let Some(place) = layout.place {
+        ctx.world
+            .entity_mut(entity)
+            .insert(nine_anchor_transform(place.anchor, 1.0));
+    }
     ctx.spawn_children(entity, children);
     entity
 }
@@ -348,6 +370,7 @@ pub fn spawn_slot(ctx: &mut SpawnCtx<'_>, slot: SlotIx, tags: &Tags, tab_index: 
         bevy::ui_widgets::Button,
         Hovered::default(),
         TabIndex(tab_index),
+        crate::focus_ring::Focusable,
         AutoDirectionalNavigation::default(),
         Pickable::default(),
         WidgetNode(kinds::slot()),
@@ -439,6 +462,7 @@ pub fn spawn_button(ctx: &mut SpawnCtx<'_>, widget: &WidgetKind, label: Option<&
         bevy::ui_widgets::Button,
         Hovered::default(),
         TabIndex(0),
+        crate::focus_ring::Focusable,
         Pickable::default(),
         WidgetNode(widget.clone()),
     ));

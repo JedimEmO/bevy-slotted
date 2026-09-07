@@ -24,6 +24,9 @@
                 // outlasts the gesture. Emphasised ease-out, most of the
                 // travel in the first third.
                 FlyToSlot: (duration: 110, easing: Snap),
+                // A pushed screen settles in over the normal tier with the
+                // direction's ease-out; the fade under it shares the timing.
+                Slide: (duration: 180, easing: Standard),
             },
         ),
         // Type is Manrope for prose and Barlow Condensed for numerals and
@@ -208,6 +211,11 @@
         "hud.panel": Solid(fill: "#0B0E1480", border: "#FFFFFF14", radius: 8.0),
         "hud.crosshair": Solid(fill: "#E6EDF3CC", radius: 999.0),
         "hud.edit.frame": Solid(fill: "#00000000", border: "$warm", radius: 4.0),
+
+        // Menus M0: the focus ring is a 2 px accent outline (the ring node
+        // sets the width) and the scrim dims what sits under a modal.
+        "focus.ring": Solid(fill: "#00000000", border: "$accent", radius: 12.0),
+        "scrim": Solid(fill: "#0B0E1499"),
 
         // Anchors and layer roots are laid out but never painted.
         "invisible": Solid(fill: "#00000000"),

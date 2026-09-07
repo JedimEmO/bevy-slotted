@@ -253,35 +253,268 @@ pub struct ActionRepeat {
     pub stick_held: BTreeSet<UiAction>,
 }
 
+/// What [`track_input_mode`] remembers between frames.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq)]
+pub struct InputModeTracker {
+    /// The last `CursorMoved` position sampled, in logical window px.
+    pub last_cursor: Option<Vec2>,
+    /// Whether a stick was past the deadzone last frame, so a held stick
+    /// switches the mode once when it crosses and not every frame after.
+    pub stick_over: bool,
+}
+
+/// Distance a `CursorMoved` has to cover, in logical px, before it counts as
+/// the player reaching for the mouse (menus contract 2.2).
+pub const POINTER_MOVE_THRESHOLD: f32 = 2.0;
+
+/// Whether either stick on `gamepad` is past `deadzone`.
+fn any_stick_past(gamepad: &Gamepad, deadzone: f32) -> bool {
+    gamepad.left_stick().length() > deadzone || gamepad.right_stick().length() > deadzone
+}
+
 /// `SlottedUiSet::Input`, before [`UiActionEmit`]: sets [`InputMode`] from the
 /// last device that did anything (menus contract 2.2).
+///
+/// The pointer is read from `CursorMoved`, which the window writes, and from
+/// the mouse's `PointerInput` moves and presses, which is all a headless
+/// harness or a replay writes. When two devices act in the same frame the
+/// pad wins over the keyboard, which wins over the pointer: a player who
+/// touches a key or a button wants the ring, and a mouse that jogs at the
+/// same time does not take it away.
+#[allow(clippy::too_many_arguments)]
 pub fn track_input_mode(
-    _cursor: MessageReader<bevy::window::CursorMoved>,
-    _mouse: Res<ButtonInput<MouseButton>>,
-    _keys: Res<ButtonInput<KeyCode>>,
-    _gamepads: Query<&Gamepad>,
-    _bindings: Res<UiBindings>,
-    _mode: ResMut<InputMode>,
-    _changed: MessageWriter<InputModeChanged>,
+    mut cursor: MessageReader<bevy::window::CursorMoved>,
+    mut pointer: MessageReader<bevy::picking::pointer::PointerInput>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    bindings: Res<UiBindings>,
+    mut tracker: ResMut<InputModeTracker>,
+    mut mode: ResMut<InputMode>,
+    mut changed: MessageWriter<InputModeChanged>,
 ) {
-    // M0-IMPL: A
+    let mut wanted = None;
+
+    let mut moved = false;
+    for event in cursor.read() {
+        let far_enough = tracker
+            .last_cursor
+            .is_none_or(|last| last.distance(event.position) > POINTER_MOVE_THRESHOLD);
+        if far_enough {
+            moved = true;
+            tracker.last_cursor = Some(event.position);
+        }
+    }
+    for event in pointer.read() {
+        if event.pointer_id != bevy::picking::pointer::PointerId::Mouse {
+            continue;
+        }
+        match event.action {
+            bevy::picking::pointer::PointerAction::Move { delta }
+                if delta.length() > POINTER_MOVE_THRESHOLD =>
+            {
+                moved = true;
+            }
+            bevy::picking::pointer::PointerAction::Press(_) => moved = true,
+            _ => {}
+        }
+    }
+    if moved || mouse.get_just_pressed().next().is_some() {
+        wanted = Some(InputMode::Pointer);
+    }
+
+    if keys.get_just_pressed().next().is_some() {
+        wanted = Some(InputMode::Keyboard);
+    }
+
+    let button = gamepads
+        .iter()
+        .any(|g| g.get_just_pressed().next().is_some());
+    let stick_over = gamepads
+        .iter()
+        .any(|g| any_stick_past(g, bindings.stick_deadzone));
+    let crossed = stick_over && !tracker.stick_over;
+    if tracker.stick_over != stick_over {
+        tracker.stick_over = stick_over;
+    }
+    if button || crossed {
+        wanted = Some(InputMode::Gamepad);
+    }
+
+    if let Some(to) = wanted
+        && *mode != to
+    {
+        let from = *mode;
+        *mode = to;
+        changed.write(InputModeChanged { from, to });
+    }
+}
+
+/// What one device says about an action this frame.
+#[derive(Default, Clone, Copy)]
+struct Press {
+    just: bool,
+    held: bool,
+}
+
+/// One frame's worth of evidence for an action, from every device.
+#[derive(Default, Clone, Copy)]
+struct Evidence {
+    key: Press,
+    pad: Press,
+}
+
+impl Evidence {
+    fn just(self) -> bool {
+        self.key.just || self.pad.just
+    }
+
+    fn held(self) -> bool {
+        self.key.held || self.pad.held
+    }
+
+    /// The device to report. A fresh press names the device that made it;
+    /// a repeat names whichever is still holding.
+    fn device(self, fresh: bool) -> InputDevice {
+        let keyboard = if fresh { self.key.just } else { self.key.held };
+        if keyboard {
+            InputDevice::Keyboard
+        } else {
+            InputDevice::Gamepad
+        }
+    }
+}
+
+/// The directions the left stick counts as pressed, with hysteresis: a
+/// direction engages past `deadzone` and releases at half of it.
+fn stick_directions(
+    gamepads: &Query<&Gamepad>,
+    deadzone: f32,
+    held: &BTreeSet<UiAction>,
+) -> BTreeSet<UiAction> {
+    let mut out = BTreeSet::new();
+    let release = deadzone * 0.5;
+    for gamepad in gamepads {
+        let stick = gamepad.left_stick();
+        let axes = [
+            (UiAction::Right, stick.x),
+            (UiAction::Left, -stick.x),
+            (UiAction::Up, stick.y),
+            (UiAction::Down, -stick.y),
+        ];
+        for (action, value) in axes {
+            let threshold = if held.contains(&action) {
+                release
+            } else {
+                deadzone
+            };
+            if value > threshold {
+                out.insert(action);
+            }
+        }
+    }
+    out
 }
 
 /// [`UiActionEmit`]: turns keys, buttons and the left stick into
 /// [`UiActionEvent`]s (menus contract 2.1). Clears [`UiActionClaims`] first.
+///
+/// One event per action per frame at most. A fresh press is `repeat: false`;
+/// a held directional action fires again after `repeat_delay` and then every
+/// `repeat_every`, on virtual time. Keyboard evidence for anything but `Back`
+/// is ignored while a text field owns the keyboard.
 #[allow(clippy::too_many_arguments)]
 pub fn emit_ui_actions(
-    _keys: Res<ButtonInput<KeyCode>>,
-    _gamepads: Query<&Gamepad>,
-    _bindings: Res<UiBindings>,
-    _text_entry: Res<crate::nav::TextEntryFocused>,
-    _time: Res<Time<Virtual>>,
-    _repeat: ResMut<ActionRepeat>,
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    bindings: Res<UiBindings>,
+    text_entry: Res<crate::nav::TextEntryFocused>,
+    time: Res<Time<Virtual>>,
+    tokens: crate::tooltip::ThemeTokens,
+    mut repeat: ResMut<ActionRepeat>,
     mut claims: ResMut<UiActionClaims>,
-    _events: MessageWriter<UiActionEvent>,
+    mut events: MessageWriter<UiActionEvent>,
 ) {
     claims.clear();
-    // M0-IMPL: A
+
+    let stick = stick_directions(&gamepads, bindings.stick_deadzone, &repeat.stick_held);
+    let stick_just: BTreeSet<UiAction> = stick.difference(&repeat.stick_held).copied().collect();
+
+    let mut evidence: BTreeMap<UiAction, Evidence> = BTreeMap::new();
+    for action in UiAction::ALL {
+        let mut e = Evidence::default();
+        let keyboard_allowed = !text_entry.0 || action == UiAction::Back;
+        if keyboard_allowed && let Some(codes) = bindings.keys.get(&action) {
+            e.key.just = codes.iter().any(|k| keys.just_pressed(*k));
+            e.key.held = codes.iter().any(|k| keys.pressed(*k));
+        }
+        if let Some(buttons) = bindings.buttons.get(&action) {
+            e.pad.just = gamepads
+                .iter()
+                .any(|g| buttons.iter().any(|b| g.just_pressed(*b)));
+            e.pad.held = gamepads
+                .iter()
+                .any(|g| buttons.iter().any(|b| g.pressed(*b)));
+        }
+        if action.is_directional() {
+            e.pad.just |= stick_just.contains(&action);
+            e.pad.held |= stick.contains(&action);
+        }
+        evidence.insert(action, e);
+    }
+    repeat.stick_held = stick;
+
+    let durations = tokens.get().durations;
+    let delay = bindings
+        .repeat_delay
+        .unwrap_or_else(|| Duration::from_millis(u64::from(durations.hover_delay)))
+        .as_secs_f64();
+    let every = bindings
+        .repeat_every
+        .unwrap_or_else(|| Duration::from_millis(u64::from(durations.fast)))
+        .as_secs_f64();
+    let now = time.elapsed_secs_f64();
+
+    for (action, e) in evidence {
+        if e.just() {
+            events.write(UiActionEvent {
+                action,
+                device: e.device(true),
+                repeat: false,
+            });
+            if action.is_directional() {
+                repeat.next_fire.insert(action, now + delay);
+            }
+            continue;
+        }
+        if !action.is_directional() {
+            continue;
+        }
+        if !e.held() {
+            repeat.next_fire.remove(&action);
+            continue;
+        }
+        let Some(next) = repeat.next_fire.get(&action).copied() else {
+            // Held since before we started counting (a key held across a
+            // text-entry focus change): treat this frame as the press.
+            repeat.next_fire.insert(action, now + delay);
+            continue;
+        };
+        if now + f64::EPSILON >= next {
+            events.write(UiActionEvent {
+                action,
+                device: e.device(false),
+                repeat: true,
+            });
+            // Keep the cadence anchored to the schedule, not to the frame it
+            // was noticed on, so a slow frame does not drift the rhythm.
+            let mut following = next + every;
+            if following <= now {
+                following = now + every;
+            }
+            repeat.next_fire.insert(action, following);
+        }
+    }
 }
 
 /// Registers the resources, messages and systems of this module.
@@ -290,6 +523,7 @@ pub fn build(app: &mut App) {
         .init_resource::<InputMode>()
         .init_resource::<UiActionClaims>()
         .init_resource::<ActionRepeat>()
+        .init_resource::<InputModeTracker>()
         .add_message::<UiActionEvent>()
         .add_message::<InputModeChanged>()
         .configure_sets(

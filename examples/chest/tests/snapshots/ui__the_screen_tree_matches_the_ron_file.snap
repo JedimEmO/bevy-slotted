@@ -1,5 +1,6 @@
 ---
 source: examples/chest/tests/ui.rs
+assertion_line: 89
 expression: tree
 ---
 ScreenTree(
@@ -91,6 +92,7 @@ ScreenTree(
                           },
                           widget: Some("slotted:slot"),
                           visible: true,
+                          focused: true,
                           item: Some(ItemSummary(
                             id: "minecraft:cobblestone",
                             count: 64,

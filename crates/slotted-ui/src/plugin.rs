@@ -178,6 +178,7 @@ impl Plugin for SlottedUiPlugin {
                         crate::hud_editor::cancel_hud_drag,
                     )
                         .chain()
+                        .after(crate::actions::UiActionEmit)
                         .in_set(SlottedUiSet::Input),
                     crate::hud_editor::apply_hud_edit_mode.in_set(SlottedUiSet::Render),
                 ),
