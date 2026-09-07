@@ -33,11 +33,20 @@ const CHEST: &str = "demo:chest";
 struct Fake(Vec<(&'static str, &'static str)>);
 
 impl Localizer for Fake {
-    fn resolve(&self, key: &LocKey, _args: &slotted_ui::LocArgs) -> Option<String> {
-        self.0
-            .iter()
-            .find(|(k, _)| *k == key.0)
-            .map(|(_, text)| (*text).to_owned())
+    /// Substitutes `{ $name }` the way Fluent would, so the footer's count
+    /// argument (menus M1 contract 2.3) reaches the string.
+    fn resolve(&self, key: &LocKey, args: &slotted_ui::LocArgs) -> Option<String> {
+        let (_, text) = self.0.iter().find(|(k, _)| *k == key.0)?;
+        let mut out = (*text).to_owned();
+        for (name, value) in args {
+            let shown = match value {
+                slotted_ui::Value::Int(i) => i.to_string(),
+                slotted_ui::Value::Text(t) => t.clone(),
+                other => format!("{other:?}"),
+            };
+            out = out.replace(&format!("{{ ${name} }}"), &shown);
+        }
+        Some(out)
     }
 }
 
@@ -133,7 +142,7 @@ fn a_renamed_category_chip_shows_the_catalogues_word() {
 fn the_status_line_and_the_hotkey_hint_resolve_through_the_catalogue() {
     let mut h = harness();
     h.world_mut().insert_resource(Localization::new(Fake(vec![
-        (keys::STATUS_ITEMS, "Gegenstände"),
+        (keys::STATUS_COUNT, "{ $count } Gegenstände"),
         (
             keys::STATUS_HINTS,
             "R Rezepte / U Verwendung / A Lesezeichen",
@@ -144,8 +153,8 @@ fn the_status_line_and_the_hotkey_hint_resolve_through_the_catalogue() {
 
     let count = footer(&h).expect("the footer has a count");
     assert!(
-        count.ends_with(" Gegenstände"),
-        "the count keeps its number and takes the catalogue's noun: {count:?}"
+        count.ends_with(" Gegenstände") && count.starts_with(|c: char| c.is_ascii_digit()),
+        "the count reaches the catalogue's string as an argument: {count:?}"
     );
     let texts: Vec<String> = h
         .world()

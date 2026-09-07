@@ -6,13 +6,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bevy::input::ButtonState;
-use bevy::input::keyboard::KeyboardInput;
-use bevy::input_focus::FocusedInput;
 use bevy::picking::events::{Pointer, Scroll};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-use slotted_theme::{Themed, roles};
+use slotted_theme::{Role, Themed, roles};
 
 use crate::def::{DataSourceId, Tags, UiNodeDef};
 use crate::screen::SpawnCtx;
@@ -194,6 +191,32 @@ impl Default for VirtualGridParams {
     }
 }
 
+/// How a grid lays its cells out: the slot grid's square cells, or the
+/// list's full-width rows (menus M1 contract 4.3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GridShape {
+    /// The cell columns.
+    pub columns: RepeatedGridTrack,
+    /// Height of one row, in logical px.
+    pub row_height: f32,
+    /// Gap between rows and columns, in logical px.
+    pub gap: f32,
+    /// The root's theme role.
+    pub role: Role,
+}
+
+impl GridShape {
+    /// `cols` square cells of the theme's slot size: the Phase 6 grid.
+    pub fn slots(tokens: &slotted_theme::Tokens, cols: u16) -> Self {
+        Self {
+            columns: RepeatedGridTrack::px(cols, tokens.sizes.slot_size),
+            row_height: tokens.sizes.slot_size,
+            gap: tokens.slot_gap(),
+            role: roles::VIRTUAL_GRID,
+        }
+    }
+}
+
 /// Spawns a virtual grid root and its first window of cells. Contract 1.5.
 ///
 /// The cells themselves are spawned by [`refresh_virtual_grids`] on the next
@@ -202,25 +225,34 @@ impl Default for VirtualGridParams {
 pub fn spawn_virtual_grid(
     ctx: &mut SpawnCtx<'_>,
     params: &VirtualGridParams,
-    _tags: &Tags,
+    tags: &Tags,
 ) -> Entity {
-    let tokens = ctx.tokens();
-    let gap = tokens.slot_gap();
-    let cell = tokens.sizes.slot_size;
+    let shape = GridShape::slots(&ctx.tokens(), params.cols);
+    spawn_shaped_virtual_grid(ctx, params, tags, &shape)
+}
+
+/// [`spawn_virtual_grid`] with the cell geometry chosen by the caller. The
+/// list is this with one full-width column of compact rows.
+pub fn spawn_shaped_virtual_grid(
+    ctx: &mut SpawnCtx<'_>,
+    params: &VirtualGridParams,
+    _tags: &Tags,
+    shape: &GridShape,
+) -> Entity {
     let entity = ctx.spawn_node((
         Node {
             display: Display::Grid,
             grid_template_columns: vec![
-                RepeatedGridTrack::px(params.cols, cell),
+                shape.columns.clone(),
                 RepeatedGridTrack::px(1, SCROLLBAR_WIDTH),
             ],
-            grid_template_rows: vec![RepeatedGridTrack::px(params.rows, cell)],
-            row_gap: px(gap),
-            column_gap: px(gap),
+            grid_template_rows: vec![RepeatedGridTrack::px(params.rows, shape.row_height)],
+            row_gap: px(shape.gap),
+            column_gap: px(shape.gap),
             overflow: Overflow::clip(),
             ..default()
         },
-        Themed(roles::VIRTUAL_GRID),
+        Themed(shape.role.clone()),
         SemanticRole::Grid,
         WidgetNode(crate::widgets::kinds::virtual_grid()),
         VirtualGridState {
@@ -236,7 +268,6 @@ pub fn spawn_virtual_grid(
     spawn_scrollbar(ctx, entity, params.cols, params.rows);
     let mut e = ctx.world.entity_mut(entity);
     e.observe(on_virtual_grid_scroll);
-    e.observe(on_virtual_grid_key);
     entity
 }
 
@@ -307,26 +338,53 @@ pub fn on_virtual_grid_scroll(
     }
 }
 
-/// Observer: `PageUp` / `PageDown` on a focused cell pages the window. The
-/// event bubbles from the cell to the grid root, so the cells need no
-/// observers of their own.
-pub fn on_virtual_grid_key(
-    event: On<FocusedInput<KeyboardInput>>,
+/// `SlottedUiSet::Input`, after the focused-action dispatch: an unclaimed
+/// `PagePrev` / `PageNext` while the focus is on a grid or one of its cells
+/// pages the window and claims the action (menus M1: controls read actions,
+/// not keys). A grid inside a scroll panel defers to the panel, which claims
+/// first.
+pub fn page_virtual_grids(
+    mut events: MessageReader<crate::actions::UiActionEvent>,
+    focus: Option<Res<bevy::input_focus::InputFocus>>,
+    parents: Query<&ChildOf>,
     mut grids: Query<&mut VirtualGridState>,
+    mut claims: ResMut<crate::actions::UiActionClaims>,
 ) {
-    let input = &event.input;
-    if input.state != ButtonState::Pressed || input.repeat {
+    let Some(focused) = focus
+        .as_deref()
+        .and_then(bevy::input_focus::InputFocus::get)
+    else {
         return;
+    };
+    for event in events.read() {
+        let direction: isize = match event.action {
+            crate::actions::UiAction::PagePrev => -1,
+            crate::actions::UiAction::PageNext => 1,
+            _ => continue,
+        };
+        if event.repeat || claims.is_claimed(event.action) {
+            continue;
+        }
+        let mut current = focused;
+        let grid = loop {
+            if grids.contains(current) {
+                break Some(current);
+            }
+            match parents.get(current) {
+                Ok(child_of) => current = child_of.parent(),
+                Err(_) => break None,
+            }
+        };
+        let Some(grid) = grid else {
+            continue;
+        };
+        let Ok(mut state) = grids.get_mut(grid) else {
+            continue;
+        };
+        let page = isize::try_from(state.rows.max(1)).unwrap_or(1);
+        state.scroll_by(direction * page);
+        claims.claim(event.action);
     }
-    let Ok(mut state) = grids.get_mut(event.focused_entity) else {
-        return;
-    };
-    let page = isize::try_from(state.rows.max(1)).unwrap_or(1);
-    match input.key_code {
-        KeyCode::PageUp => state.scroll_by(-page),
-        KeyCode::PageDown => state.scroll_by(page),
-        _ => return,
-    };
 }
 
 /// `SlottedUiSet::Render`: despawns and respawns the visible cells of every
@@ -410,14 +468,19 @@ pub fn refresh_virtual_grids(world: &mut World) {
         let (screen, kind, menu) = screen_of(world, entity);
         for index in window {
             let def = source.cell(index);
+            // A list wraps each cell in a row of its own (menus M1 4.3), so
+            // the source's node keeps its role and the row carries the
+            // window's bookkeeping.
+            let row = crate::widgets::list::spawn_row(world, entity, index);
             let mut ctx = SpawnCtx {
                 world,
                 screen,
                 kind: kind.clone(),
                 menu,
-                parent: entity,
+                parent: row.unwrap_or(entity),
             };
-            let cell = ctx.spawn_child(&def);
+            let inner = ctx.spawn_child(&def);
+            let cell = row.unwrap_or(inner);
             let tags = world
                 .get::<Tags>(cell)
                 .cloned()

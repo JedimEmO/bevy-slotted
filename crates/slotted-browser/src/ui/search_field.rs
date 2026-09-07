@@ -5,13 +5,21 @@
 //! `apply_text_edits` system, so it edits headless: the harness's `type_text`
 //! reaches it through `FocusedInput<KeyboardInput>` with no window at all.
 //! There is therefore no `MinimalTextField` fallback.
+//!
+//! This is not the menus' `text_field` control (menus M1 contract 4.1): that
+//! one edits only after `Accept`, so its row can take focus without taking
+//! the keyboard, and it writes a value binding. The search field is the
+//! opposite by design: Ctrl+F focuses it and typing starts at once, and its
+//! value is the browser runtime's query. What it shares with the control is
+//! the placeholder: a [`TextPlaceholder`] child that
+//! `slotted_ui` hides while the field has text.
 
 use bevy::input_focus::tab_navigation::TabIndex;
 use bevy::prelude::*;
 use bevy::text::{EditableText, TextEdit};
 use slotted_registry::Value;
 use slotted_theme::Themed;
-use slotted_ui::{SemanticRole, SpawnCtx, UiNodeDef, Widget};
+use slotted_ui::{SemanticRole, SpawnCtx, TextPlaceholder, UiNodeDef, Widget};
 
 use super::panel::{ChromeText, chrome_in, keys};
 use super::roles;
@@ -60,7 +68,7 @@ impl Widget for SearchFieldWidget {
             Text::new(placeholder),
             Themed(super::roles::HINT),
             ChromeText::new(keys::SEARCH_PLACEHOLDER, PLACEHOLDER),
-            SearchPlaceholder,
+            TextPlaceholder,
             Pickable::IGNORE,
             ChildOf(field),
         ));
@@ -70,10 +78,6 @@ impl Widget for SearchFieldWidget {
 
 /// The English the placeholder falls back to.
 const PLACEHOLDER: &str = "Search items";
-
-/// The grey prompt shown while the field is empty.
-#[derive(Component, Debug, Default, Clone, Copy)]
-pub struct SearchPlaceholder;
 
 /// `BrowserSet::Input`: reconcile the field and the runtime in both
 /// directions. A typed character writes [`SearchChanged`]; a query set from
@@ -109,27 +113,13 @@ pub fn set_query(fields: &mut Query<(&mut SearchField, &mut EditableText)>, quer
 }
 
 /// `BrowserSet::Render`: the focused field paints itself with
-/// `browser.search.focus`, and the placeholder steps aside as soon as there is
-/// anything to read.
+/// `browser.search.focus`. The placeholder is `slotted_ui`'s business.
 pub fn search_field_state_role(
     focus: Option<Res<bevy::input_focus::InputFocus>>,
-    mut fields: Query<(Entity, &mut Themed, &EditableText, Option<&Children>), With<SearchField>>,
-    mut placeholders: Query<&mut Visibility, With<SearchPlaceholder>>,
+    mut fields: Query<(Entity, &mut Themed), With<SearchField>>,
 ) {
     let focused = focus.and_then(|f| f.get());
-    for (entity, mut themed, text, children) in &mut fields {
-        let want = if text.value().to_string().is_empty() {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        for child in children.into_iter().flatten() {
-            if let Ok(mut visibility) = placeholders.get_mut(*child)
-                && *visibility != want
-            {
-                *visibility = want;
-            }
-        }
+    for (entity, mut themed) in &mut fields {
         let want = if Some(entity) == focused {
             roles::SEARCH_FOCUS
         } else {

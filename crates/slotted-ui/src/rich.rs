@@ -4,7 +4,7 @@
 //! Tags: `[b]…[/b]`, `[i]…[/i]`, `[color=$accent]…[/color]`,
 //! `[color=#RRGGBB]…[/color]`, `[size=heading]…[/size]`, `{key:accept}`,
 //! `{icon:demo:chest}`. `{name}` is a Fluent argument and is substituted
-//! before parsing. `[[` and `{{` are literals.
+//! before parsing. `[[`, `]]`, `{{` and `}}` are literals.
 
 use bevy::prelude::*;
 use slotted_model::Namespaced;
@@ -85,25 +85,234 @@ pub enum RichError {
 }
 
 /// Parses markup into runs. Adjacent text with the same style is one run.
+///
+/// # Errors
+///
+/// A tag opened and never closed, a closing tag with no open tag, a tag or
+/// placeholder the markup does not know, or a `[color=…]` / `[size=…]`
+/// whose value is malformed. Every error carries the byte offset.
+#[allow(clippy::too_many_lines)]
 pub fn parse(markup: &str) -> Result<Vec<RichRun>, RichError> {
-    // M1-IMPL: A
-    let _ = markup;
-    Ok(vec![RichRun {
-        text: markup.to_owned(),
-        style: RunStyle::default(),
-        kind: RunKind::Text,
-    }])
+    let mut runs = Vec::new();
+    let mut text = String::new();
+    let mut style = RunStyle::default();
+    // `(tag name, offset of its `[`, the style before it)`.
+    let mut stack: Vec<(String, usize, RunStyle)> = Vec::new();
+    let bytes = markup.as_bytes();
+    let mut i = 0;
+
+    let flush = |text: &mut String, style: &RunStyle, runs: &mut Vec<RichRun>| {
+        if !text.is_empty() {
+            runs.push(RichRun {
+                text: std::mem::take(text),
+                style: style.clone(),
+                kind: RunKind::Text,
+            });
+        }
+    };
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'[' if bytes.get(i + 1) == Some(&b'[') => {
+                text.push('[');
+                i += 2;
+            }
+            b'{' if bytes.get(i + 1) == Some(&b'{') => {
+                text.push('{');
+                i += 2;
+            }
+            b']' if bytes.get(i + 1) == Some(&b']') => {
+                text.push(']');
+                i += 2;
+            }
+            b'}' if bytes.get(i + 1) == Some(&b'}') => {
+                text.push('}');
+                i += 2;
+            }
+            b'[' => {
+                let Some(len) = markup[i + 1..].find(']') else {
+                    return Err(RichError::UnknownTag {
+                        tag: markup[i..].chars().take(16).collect(),
+                        at: i,
+                    });
+                };
+                let tag = &markup[i + 1..i + 1 + len];
+                if let Some(name) = tag.strip_prefix('/') {
+                    match stack.last() {
+                        Some((open, _, _)) if open == name => {
+                            let (_, _, before) = stack.pop().expect("checked");
+                            flush(&mut text, &style, &mut runs);
+                            style = before;
+                        }
+                        _ => {
+                            return Err(RichError::Stray {
+                                tag: name.to_owned(),
+                                at: i,
+                            });
+                        }
+                    }
+                } else {
+                    let (name, value) = tag.split_once('=').unwrap_or((tag, ""));
+                    let mut next = style.clone();
+                    match (name, value) {
+                        ("b", "") => next.bold = true,
+                        ("i", "") => next.italic = true,
+                        ("color", v) if is_color(v) => next.color = Some(ThemeColor(v.to_owned())),
+                        ("size", v) if is_size(v) => {
+                            next.size = Some(if v.parse::<f32>().is_ok() {
+                                ThemeSize(v.to_owned())
+                            } else {
+                                ThemeSize::typography(v)
+                            });
+                        }
+                        _ => {
+                            return Err(RichError::UnknownTag {
+                                tag: tag.to_owned(),
+                                at: i,
+                            });
+                        }
+                    }
+                    flush(&mut text, &style, &mut runs);
+                    stack.push((name.to_owned(), i, style));
+                    style = next;
+                }
+                i += len + 2;
+            }
+            b'{' => {
+                let Some(len) = markup[i + 1..].find('}') else {
+                    return Err(RichError::UnknownPlaceholder {
+                        name: markup[i + 1..].chars().take(16).collect(),
+                        at: i,
+                    });
+                };
+                let name = &markup[i + 1..i + 1 + len];
+                let kind = if let Some(action) = name.strip_prefix("key:") {
+                    action.parse::<UiAction>().ok().map(RunKind::Key)
+                } else if let Some(item) = name.strip_prefix("icon:") {
+                    Namespaced::parse(item).ok().map(RunKind::Icon)
+                } else {
+                    None
+                };
+                let Some(kind) = kind else {
+                    return Err(RichError::UnknownPlaceholder {
+                        name: name.to_owned(),
+                        at: i,
+                    });
+                };
+                flush(&mut text, &style, &mut runs);
+                runs.push(RichRun {
+                    text: String::new(),
+                    style: style.clone(),
+                    kind,
+                });
+                i += len + 2;
+            }
+            _ => {
+                let ch = markup[i..].chars().next().expect("in bounds");
+                text.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    if let Some((tag, at, _)) = stack.pop() {
+        return Err(RichError::Unclosed { tag, at });
+    }
+    flush(&mut text, &style, &mut runs);
+    // An empty tag pair (`[b][/b]`) split the text around it into two runs
+    // of one style; fold those back so a run is always the longest it can be.
+    let mut merged: Vec<RichRun> = Vec::with_capacity(runs.len());
+    for run in runs {
+        match merged.last_mut() {
+            Some(last)
+                if last.kind == RunKind::Text
+                    && run.kind == RunKind::Text
+                    && last.style == run.style =>
+            {
+                last.text.push_str(&run.text);
+            }
+            _ => merged.push(run),
+        }
+    }
+    Ok(merged)
+}
+
+/// `$name` or `#RRGGBB` / `#RRGGBBAA`.
+fn is_color(value: &str) -> bool {
+    match value.strip_prefix('#') {
+        Some(hex) => {
+            (hex.len() == 6 || hex.len() == 8) && hex.chars().all(|c| c.is_ascii_hexdigit())
+        }
+        None => value.strip_prefix('$').is_some_and(|name| !name.is_empty()),
+    }
+}
+
+/// A typography name (`heading`) or a literal size (`18`).
+fn is_size(value: &str) -> bool {
+    !value.is_empty()
+        && (value.parse::<f32>().is_ok_and(|px| px > 0.0)
+            || value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+}
+
+/// Escapes `value` so it can sit inside markup without opening or closing
+/// anything: every bracket and brace is doubled.
+pub fn escape(value: &str) -> String {
+    value
+        .replace('[', "[[")
+        .replace(']', "]]")
+        .replace('{', "{{")
+        .replace('}', "}}")
 }
 
 /// Substitutes `{name}` arguments before parsing, escaping any `[` or `{`
-/// in a value so an argument can never open a tag.
+/// in a value so an argument can never open a tag. `{{name}}` stays a
+/// literal; a name with no argument stays as written for [`parse`] to
+/// report.
 pub fn substitute(
     markup: &str,
     args: &std::collections::BTreeMap<String, crate::values::Value>,
 ) -> String {
-    // M1-IMPL: A
-    let _ = args;
-    markup.to_owned()
+    if args.is_empty() {
+        return markup.to_owned();
+    }
+    let mut out = String::with_capacity(markup.len());
+    let mut rest = markup;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        if let Some(escaped) = after.strip_prefix('{') {
+            out.push_str("{{");
+            rest = escaped;
+            continue;
+        }
+        let Some(close) = after.find('}') else {
+            out.push('{');
+            rest = after;
+            continue;
+        };
+        let name = &after[..close];
+        if let Some(value) = args.get(name) {
+            out.push_str(&escape(&value_text(value)));
+            rest = &after[close + 1..];
+        } else {
+            out.push('{');
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A value as a Fluent-free string: `true`, `3`, `0.5`, the text.
+pub fn value_text(value: &crate::values::Value) -> String {
+    use crate::values::Value;
+    match value {
+        Value::Bool(b) => b.to_string(),
+        Value::Int(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Text(t) => t.clone(),
+    }
 }
 
 /// On a rich text node: the parsed runs, kept so a mode or binding change
@@ -111,34 +320,135 @@ pub fn substitute(
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct RichRuns(pub Vec<RichRun>);
 
-/// `SlottedUiSet::Render`: re-renders `{key:..}` runs on `InputModeChanged`
-/// or when `UiBindings` changes.
+/// On the `TextSpan` a `{key:action}` run rendered to, so a mode or binding
+/// change can rewrite its text without re-parsing the node.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RichKeySpan(pub UiAction);
+
+/// `SlottedUiSet::Render`: re-renders `{key:..}` runs when [`InputMode`]
+/// or [`UiBindings`] changes.
+///
+/// [`InputMode`]: crate::actions::InputMode
+/// [`UiBindings`]: crate::actions::UiBindings
 pub fn refresh_key_glyphs(
-    _mode: Res<crate::actions::InputMode>,
-    _bindings: Res<crate::actions::UiBindings>,
-    _changed: MessageReader<crate::actions::InputModeChanged>,
-    _nodes: Query<(Entity, &RichRuns, &Children)>,
-    _spans: Query<&mut TextSpan>,
+    mode: Res<crate::actions::InputMode>,
+    bindings: Res<crate::actions::UiBindings>,
+    mut spans: Query<(&RichKeySpan, &mut TextSpan)>,
 ) {
-    // M1-IMPL: A
+    if !mode.is_changed() && !bindings.is_changed() {
+        return;
+    }
+    for (key, mut span) in &mut spans {
+        let want = key_glyph_text(key.0, *mode, &bindings);
+        if span.0 != want {
+            span.0 = want;
+        }
+    }
 }
 
 /// The text a `{key:action}` run shows for the action's first binding on
-/// the current device: `Enter`, `Esc`, `A`, `D-pad ↑`.
+/// the current device: `Enter`, `Esc`, `A`, `D-pad ↑`. The pointer mode
+/// shows the keyboard binding, since a mouse has none; an unbound action
+/// shows its own name.
 pub fn key_glyph_text(
     action: UiAction,
     mode: crate::actions::InputMode,
     bindings: &crate::actions::UiBindings,
 ) -> String {
-    // M1-IMPL: A
-    let _ = (mode, bindings);
-    action.as_str().to_owned()
+    use crate::actions::InputMode;
+    let glyph = match mode {
+        InputMode::Gamepad => bindings.first_button(action).map(button_glyph),
+        InputMode::Keyboard | InputMode::Pointer => bindings.first_key(action).map(key_glyph),
+    };
+    glyph.unwrap_or_else(|| action.as_str().to_owned())
+}
+
+/// A keyboard key's display text.
+pub fn key_glyph(key: KeyCode) -> String {
+    use KeyCode as K;
+    let fixed = match key {
+        K::Enter | K::NumpadEnter => "Enter",
+        K::Space => "Space",
+        K::Escape => "Esc",
+        K::Tab => "Tab",
+        K::Backspace => "Backspace",
+        K::Delete => "Del",
+        K::Insert => "Ins",
+        K::Home => "Home",
+        K::End => "End",
+        K::PageUp => "PgUp",
+        K::PageDown => "PgDn",
+        K::ArrowUp => "↑",
+        K::ArrowDown => "↓",
+        K::ArrowLeft => "←",
+        K::ArrowRight => "→",
+        K::ShiftLeft | K::ShiftRight => "Shift",
+        K::ControlLeft | K::ControlRight => "Ctrl",
+        K::AltLeft | K::AltRight => "Alt",
+        K::SuperLeft | K::SuperRight => "Super",
+        K::CapsLock => "Caps",
+        K::Minus => "-",
+        K::Equal => "=",
+        K::Comma => ",",
+        K::Period => ".",
+        K::Slash => "/",
+        K::Backslash => "\\",
+        K::Semicolon => ";",
+        K::Quote => "'",
+        K::Backquote => "`",
+        K::BracketLeft => "[",
+        K::BracketRight => "]",
+        _ => "",
+    };
+    if !fixed.is_empty() {
+        return fixed.to_owned();
+    }
+    // `KeyA` → `A`, `Digit1` → `1`, `F5` → `F5`, `Numpad3` → `Num 3`.
+    let name = format!("{key:?}");
+    if let Some(rest) = name.strip_prefix("Key") {
+        return rest.to_owned();
+    }
+    if let Some(rest) = name.strip_prefix("Digit") {
+        return rest.to_owned();
+    }
+    if let Some(rest) = name.strip_prefix("Numpad") {
+        return format!("Num {rest}");
+    }
+    name
+}
+
+/// A gamepad button's display text, in the Xbox-style names most players
+/// read: `A`, `B`, `X`, `Y`, `LB`, `RT`, `D-pad ↑`.
+pub fn button_glyph(button: bevy::input::gamepad::GamepadButton) -> String {
+    use bevy::input::gamepad::GamepadButton as G;
+    match button {
+        G::South => "A".to_owned(),
+        G::East => "B".to_owned(),
+        G::West => "X".to_owned(),
+        G::North => "Y".to_owned(),
+        G::LeftTrigger => "LB".to_owned(),
+        G::RightTrigger => "RB".to_owned(),
+        G::LeftTrigger2 => "LT".to_owned(),
+        G::RightTrigger2 => "RT".to_owned(),
+        G::LeftThumb => "L3".to_owned(),
+        G::RightThumb => "R3".to_owned(),
+        G::DPadUp => "D-pad ↑".to_owned(),
+        G::DPadDown => "D-pad ↓".to_owned(),
+        G::DPadLeft => "D-pad ←".to_owned(),
+        G::DPadRight => "D-pad →".to_owned(),
+        G::Start => "Start".to_owned(),
+        G::Select => "Select".to_owned(),
+        G::Mode => "Home".to_owned(),
+        other => format!("{other:?}"),
+    }
 }
 
 /// Registers the rich text systems.
 pub fn build(app: &mut App) {
     app.add_systems(
         Update,
-        refresh_key_glyphs.in_set(crate::plugin::SlottedUiSet::Render),
+        (crate::widgets::text::render_rich_text, refresh_key_glyphs)
+            .chain()
+            .in_set(crate::plugin::SlottedUiSet::Render),
     );
 }

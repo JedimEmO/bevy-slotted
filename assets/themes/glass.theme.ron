@@ -44,7 +44,7 @@
             "display": (size: 40.0, font: "display", weight: 600),
             "title":   (size: 24.0, font: "body", weight: 600),
             "heading": (size: 18.0, font: "body", weight: 600),
-            "body":    (size: 15.0, font: "body"),
+            "body":    (size: 15.0, font: "body", line_height: 1.4),
             "label":   (size: 13.0, font: "body", weight: 500),
             "caption": (size: 12.0, font: "body"),
         },
@@ -74,7 +74,7 @@
             radius: 16.0,
             elevation: Some("high"),
         ),
-        "panel.title": Text(color: "$text", size: 15.0, font: "body"),
+        "panel.title": Text(color: "$text", size: "$title"),
 
         "slot": Solid(fill: "#141A24B8", border: "#2A34468C", radius: 8.0),
         "slot.hover": Solid(fill: "#243447E6", border: "#7FD1FFD9", radius: 8.0),
@@ -121,9 +121,9 @@
         ),
         "button.hover": Solid(fill: "#243447E6", border: "$accent", radius: 8.0),
 
-        "text": Text(color: "$text", size: 13.0, font: "body"),
-        "text.muted": Text(color: "$muted", size: 11.0, font: "body"),
-        "count": Text(color: "$text", size: 11.0, shadow: "#000000BF", font: "display"),
+        "text": Text(color: "$text", size: "$body"),
+        "text.muted": Text(color: "$muted", size: "$caption"),
+        "count": Text(color: "$text", size: "$caption", shadow: "#000000BF", font: "display"),
 
         "rail": Solid(fill: "#0B0E14A6", border: "$hairline", radius: 12.0),
         "rail.button": Solid(fill: "#1B2330E6", border: "$hairline", radius: 8.0),

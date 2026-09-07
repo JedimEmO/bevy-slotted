@@ -155,6 +155,7 @@ impl Plugin for SlottedUiPlugin {
         crate::stack::build(app);
         // Menus M1: values, rich text, the controls' systems.
         crate::values::build(app);
+        crate::widgets::controls::build(app);
         crate::rich::build(app);
         app.add_message::<crate::widgets::key_binding::BindingChanged>()
             .add_message::<crate::widgets::text_field::TextEntryRequested>()
@@ -163,11 +164,15 @@ impl Plugin for SlottedUiPlugin {
                 (
                     crate::nav::dispatch_focused_actions
                         .after(crate::actions::UiActionEmit)
+                        .after(crate::nav::track_text_entry_focus)
                         .before(directional_nav_actions)
-                        .before(crate::nav::accept_focused)
                         .in_set(SlottedUiSet::Input),
+                    // A capture swallows the press before the dispatch sees
+                    // it, so the key that ends a capture never reaches the
+                    // row as an `Accept` that would start the next one.
                     crate::widgets::key_binding::capture_key_bindings
                         .after(crate::actions::UiActionEmit)
+                        .before(crate::nav::dispatch_focused_actions)
                         .in_set(SlottedUiSet::Input),
                     (
                         crate::widgets::text::enforce_max_lines,
@@ -176,7 +181,13 @@ impl Plugin for SlottedUiPlugin {
                         .in_set(SlottedUiSet::Render),
                 ),
             );
-        app.add_observer(crate::nav::focus_on_spawn);
+        app.add_observer(crate::nav::focus_on_spawn)
+            .add_observer(crate::nav::on_slot_accept);
+        // Menus M1 package C: the text field, scroll, list and tabs.
+        crate::widgets::text_field::build(app);
+        crate::widgets::scroll::build(app);
+        crate::widgets::list::build(app);
+        crate::widgets::tabs::build(app);
         #[cfg(feature = "viewport")]
         app.add_systems(
             Update,
@@ -218,11 +229,7 @@ impl Plugin for SlottedUiPlugin {
             (
                 (
                     crate::nav::track_text_entry_focus,
-                    (
-                        directional_nav_actions,
-                        crate::nav::accept_focused,
-                        hotbar_swap_keys,
-                    )
+                    (directional_nav_actions, hotbar_swap_keys)
                         .after(crate::nav::track_text_entry_focus)
                         .after(crate::actions::UiActionEmit),
                     clear_drag_suppression,

@@ -105,6 +105,10 @@ pub fn free_space(window: Rect, bounds: Rect, exclusions: &[Rect]) -> (Rect, Rec
     (left, right)
 }
 
+/// The width difference under which the two strips count as equal and the
+/// panel docks right.
+pub const SIDE_TIE: f32 = 2.0;
+
 /// Picks a side and a grid for a strip pair; `None` when neither fits two
 /// columns.
 ///
@@ -114,7 +118,10 @@ pub fn free_space(window: Rect, bounds: Rect, exclusions: &[Rect]) -> (Rect, Rec
 /// bottom however tall the screen beside it is.
 pub fn choose(left: Rect, right: Rect, metrics: DockMetrics) -> Option<BrowserLayout> {
     let min_width = 2.0 * (metrics.slot_size + CARD_GAP) + 2.0 * PANEL_PADDING;
-    let (side, strip) = if right.width() >= left.width() {
+    // A centred screen leaves two strips that differ by the rounding of an
+    // odd content width, which changes with the theme's fonts; that is not
+    // a reason to dock left, so a strip has to win by more than a pixel.
+    let (side, strip) = if right.width() + SIDE_TIE >= left.width() {
         (Side::Right, right)
     } else {
         (Side::Left, left)
@@ -303,6 +310,20 @@ mod tests {
         let layout = choose(l, r, DockMetrics::default()).expect("fits");
         assert_eq!(layout.side, Side::Left);
         assert_eq!(layout.cols, 4);
+    }
+
+    /// A centred screen of odd width leaves strips a pixel apart; the panel
+    /// docks right regardless, so a theme's font cannot flip the side.
+    #[test]
+    fn a_one_pixel_wider_left_strip_still_docks_right() {
+        let window = Rect::new(0.0, 0.0, 1600.0, 900.0);
+        let bounds = Rect::new(499.0, 233.0, 1102.0, 668.0);
+        let (l, r) = free_space(window, bounds, &[]);
+        assert!(l.width() > r.width());
+        assert_eq!(
+            choose(l, r, DockMetrics::default()).expect("fits").side,
+            Side::Right
+        );
     }
 
     #[test]

@@ -77,7 +77,7 @@ pub use motion::{
 };
 pub use nav::{FocusMask, FocusedAction, dispatch_focused_actions};
 pub use nav::{
-    TextEntryFocused, accept_focused, directional_nav_actions, focus_on_spawn,
+    TextEntryFocused, directional_nav_actions, focus_on_spawn, on_slot_accept,
     track_text_entry_focus,
 };
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
@@ -87,6 +87,7 @@ pub use preview::{
 };
 pub use recording::{RECORDING_VERSION, RecordedButton, RecordedFrame, RecordedInput, Recording};
 pub use rich::{RichError, RichRun, RichRuns, RunKind, RunStyle, key_glyph_text};
+pub use rich::{RichKeySpan, button_glyph, key_glyph};
 pub use scale::{UiUnits, ui_scale_of};
 pub use screen::{
     Injection, Injections, MAX_INHERIT_DEPTH, ScreenClosed, ScreenLaidOut, ScreenLayout,
@@ -110,32 +111,39 @@ pub use tooltip::{
     TooltipTier, TooltipUnplaced, clear_tooltip, despawn_orphan_tooltips,
 };
 pub use values::{
-    BindingTarget, SetValue, Value, ValueBinding, ValueChanged, ValueGuard, ValueGuards,
-    ValueRefused, ValueRule, ValueRules, ValueStore,
+    BindingTarget, BoundValue, SetValue, Value, ValueBinding, ValueChanged, ValueGuard,
+    ValueGuards, ValueRefused, ValueRule, ValueRules, ValueStore, ValueWriter,
 };
+pub use widgets::ButtonState;
 pub use widgets::bar::{BarState, BarStyle, BarText};
 pub use widgets::icon_button::{IconButtonCycle, IconButtonState};
 pub use widgets::key_binding::{BindingChanged, KeyBindingState};
-pub use widgets::list::ListState;
+pub use widgets::list::{ListFocusRequest, ListRow, ListState};
 pub use widgets::radio_group::RadioState;
-pub use widgets::scroll::ScrollPanel;
-pub use widgets::select::{SelectPopup, SelectState};
+pub use widgets::scroll::{ScrollPanel, ScrollViewport};
+pub use widgets::select::{
+    CloseSelectPopup, OpenSelectPopup, SelectOptionNode, SelectPopup, SelectState,
+};
 pub use widgets::side_tab::{
     SideTabContent, SideTabHeader, SideTabPanel, SideTabState, SideTabToggle,
 };
 pub use widgets::slider::{SliderDef, SliderState};
-pub use widgets::tabs::TabsState;
+pub use widgets::tabs::{TabButton, TabPage, TabsState};
 pub use widgets::tank::{
     FillNode, FillValue, PropertyBinding, TankFluid, TankFluidSource, TooltipSource,
     UnknownFluidWarned,
 };
 pub use widgets::text::{MaxLines, spawn_rich_text, spawn_text};
-pub use widgets::text_field::{TextEntryRequested, TextFieldState};
+pub use widgets::text::{MaxLinesState, RichPart, RichText, render_rich_text};
+pub use widgets::text_field::{
+    CommittedText, TextEntryRequested, TextFieldEditable, TextFieldParts, TextFieldState,
+    TextPlaceholder,
+};
 pub use widgets::toggle::ToggleState;
 pub use widgets::viewport::{VIEWPORT_LAYER_BASE, ViewportSubject};
 pub use widgets::virtual_grid::{
-    PooledCell, VirtualCell, VirtualGridSource, VirtualGridSources, VirtualGridState,
-    refresh_virtual_grids,
+    GridShape, PooledCell, VirtualCell, VirtualGridSource, VirtualGridSources, VirtualGridState,
+    refresh_virtual_grids, spawn_shaped_virtual_grid,
 };
 pub use widgets::{RailAction, SLOT_SIZE, slot_state_roles};
 

@@ -517,50 +517,243 @@ pub fn spawn_slot_grid(
 // Button
 // ---------------------------------------------------------------------------
 
+/// A button's state, for tests and for [`button_roles`] (menus M1 contract
+/// 3.2).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ButtonState {
+    /// The look.
+    pub variant: crate::def::ButtonVariant,
+    /// Inert and drawn as such.
+    pub disabled: bool,
+    /// A pointer button is down on it; mirrors Bevy's `Pressed`.
+    pub pressed: bool,
+}
+
+impl ButtonState {
+    /// The role family the variant paints from.
+    fn base_role(self) -> &'static str {
+        match self.variant {
+            crate::def::ButtonVariant::Primary => "button.primary",
+            crate::def::ButtonVariant::Secondary => "button",
+            crate::def::ButtonVariant::Danger => "button.danger",
+        }
+    }
+}
+
 /// Spawns a themed button carrying `widget` as its behaviour kind (menus M1
 /// contract 3.2). The label is a locale key; `opts` carries icon, variant,
 /// disabled and compact.
+///
+/// Not a `bevy_ui_widgets::Button`: that widget hard-codes Enter and Space,
+/// so a rebound `Accept` would miss it and the default one would fire twice.
+/// The keyboard and the pad reach it through [`crate::nav::FocusedAction`]
+/// ([`on_button_accept`]); the pointer through its own press, release and
+/// click observers. `Activate` stays the outward event.
 pub fn spawn_button(
     ctx: &mut SpawnCtx<'_>,
     widget: Option<&WidgetKind>,
     opts: &crate::def::ButtonOpts,
 ) -> Entity {
-    // M1-IMPL: B — the full control: icon child, variant roles, `Focusable`
-    // Accept through `FocusedAction`, pressed/disabled states, no
-    // `bevy::ui_widgets::Button`.
-    let label = opts.label.as_ref().map(|k| k.0.clone());
     let widget = widget.cloned().unwrap_or_else(kinds::button);
-    let label = label.as_deref();
     let tokens = ctx.tokens();
+    let height = if opts.compact {
+        tokens.sizes.control_height_compact
+    } else {
+        tokens.sizes.control_height
+    };
+    let state = ButtonState {
+        variant: opts.variant,
+        disabled: opts.disabled,
+        pressed: false,
+    };
     let entity = ctx.spawn_node((
         Node {
+            height: Val::Px(height),
+            min_height: Val::Px(height),
             padding: UiRect::axes(Val::Px(tokens.spacing.md), Val::Px(tokens.spacing.sm)),
             border: UiRect::all(Val::Px(BORDER_WIDTH)),
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
+            column_gap: Val::Px(tokens.spacing.sm),
             border_radius: BorderRadius::all(Val::Px(tokens.radii.md)),
+            flex_shrink: 0.0,
             ..default()
         },
-        Themed(roles::BUTTON),
+        Themed(Role::new(state.base_role())),
         SemanticRole::Button,
-        SemanticLabel(label.unwrap_or(widget.0.path()).to_owned()),
-        bevy::ui_widgets::Button,
+        SemanticLabel(
+            opts.label
+                .as_ref()
+                .map_or_else(|| widget.0.path().to_owned(), |k| k.0.clone()),
+        ),
+        state,
         Hovered::default(),
         TabIndex(0),
         crate::focus_ring::Focusable,
         Pickable::default(),
-        WidgetNode(widget.clone()),
+        WidgetNode(widget),
     ));
-    if let Some(label) = label {
+    if opts.disabled {
+        ctx.world
+            .entity_mut(entity)
+            .insert(bevy::ui::InteractionDisabled);
+    }
+    if let Some(icon) = &opts.icon {
+        let size = height - 2.0 * tokens.spacing.sm;
+        let image = icon_image(ctx.world, icon);
         ctx.world.spawn((
-            Node::default(),
-            Text::new(label.to_owned()),
-            Themed(roles::TEXT),
+            Node {
+                width: Val::Px(size),
+                height: Val::Px(size),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            image,
             Pickable::IGNORE,
             ChildOf(entity),
         ));
     }
+    if let Some(label) = &opts.label {
+        controls::spawn_control_label(ctx.world, entity, label);
+    }
+    let mut e = ctx.world.entity_mut(entity);
+    e.observe(on_button_press);
+    e.observe(on_button_release);
+    e.observe(on_button_drag_end);
+    e.observe(on_button_cancel);
+    e.observe(on_button_click);
+    // `slotted:close` is a behaviour kind, like the rail's actions: a typed
+    // `button` node with that `widget` pops the stack on `Activate`.
+    if e.get::<WidgetNode>().is_some_and(|w| w.0 == kinds::close()) {
+        e.observe(controls::on_close_activate);
+    }
     entity
+}
+
+/// Observer: a primary press marks the button pressed.
+pub fn on_button_press(
+    mut press: On<Pointer<bevy::picking::events::Press>>,
+    mut buttons: Query<&mut ButtonState>,
+    mut commands: Commands,
+) {
+    if press.event().button != bevy::picking::pointer::PointerButton::Primary {
+        return;
+    }
+    let Ok(mut state) = buttons.get_mut(press.entity) else {
+        return;
+    };
+    press.propagate(false);
+    if state.disabled || state.pressed {
+        return;
+    }
+    state.pressed = true;
+    commands.entity(press.entity).insert(bevy::ui::Pressed);
+}
+
+fn unpress(entity: Entity, buttons: &mut Query<&mut ButtonState>, commands: &mut Commands) {
+    let Ok(mut state) = buttons.get_mut(entity) else {
+        return;
+    };
+    if state.pressed {
+        state.pressed = false;
+        commands.entity(entity).remove::<bevy::ui::Pressed>();
+    }
+}
+
+/// Observer: the release ends the press.
+pub fn on_button_release(
+    release: On<Pointer<bevy::picking::events::Release>>,
+    mut buttons: Query<&mut ButtonState>,
+    mut commands: Commands,
+) {
+    unpress(release.entity, &mut buttons, &mut commands);
+}
+
+/// Observer: a drag that ends elsewhere ends the press without a click.
+pub fn on_button_drag_end(
+    end: On<Pointer<bevy::picking::events::DragEnd>>,
+    mut buttons: Query<&mut ButtonState>,
+    mut commands: Commands,
+) {
+    unpress(end.entity, &mut buttons, &mut commands);
+}
+
+/// Observer: a cancelled pointer ends the press.
+pub fn on_button_cancel(
+    cancel: On<Pointer<bevy::picking::events::Cancel>>,
+    mut buttons: Query<&mut ButtonState>,
+    mut commands: Commands,
+) {
+    unpress(cancel.entity, &mut buttons, &mut commands);
+}
+
+/// Observer: a primary click activates, unless disabled.
+pub fn on_button_click(
+    mut click: On<Pointer<bevy::picking::events::Click>>,
+    buttons: Query<&ButtonState>,
+    mut commands: Commands,
+) {
+    if click.event().button != bevy::picking::pointer::PointerButton::Primary {
+        return;
+    }
+    let Ok(state) = buttons.get(click.entity) else {
+        return;
+    };
+    click.propagate(false);
+    if state.disabled {
+        return;
+    }
+    commands.trigger(bevy::ui_widgets::Activate {
+        entity: click.entity,
+    });
+}
+
+/// Observer on [`crate::nav::FocusedAction`]: a fresh `Accept` on a focused
+/// button, from any device, is an `Activate` and is claimed. This is what
+/// closes M0's "rebound Accept" follow-up: the action, not the key, decides.
+pub fn on_button_accept(
+    action: On<crate::nav::FocusedAction>,
+    buttons: Query<&ButtonState>,
+    mut claims: ResMut<crate::actions::UiActionClaims>,
+    mut commands: Commands,
+) {
+    if action.action != crate::actions::UiAction::Accept || action.repeat {
+        return;
+    }
+    let Ok(state) = buttons.get(action.entity) else {
+        return;
+    };
+    if state.disabled {
+        return;
+    }
+    claims.claim(crate::actions::UiAction::Accept);
+    commands.trigger(bevy::ui_widgets::Activate {
+        entity: action.entity,
+    });
+}
+
+/// `SlottedUiSet::Render`: swaps a button's role with its variant and state,
+/// like [`slot_state_roles`]. Disabled wins, then pressed, focus, hover.
+pub fn button_roles(
+    focus: Option<Res<bevy::input_focus::InputFocus>>,
+    mut buttons: Query<(Entity, &ButtonState, &Hovered, &mut Themed)>,
+) {
+    let focused = focus.and_then(|f| f.get());
+    for (entity, state, hovered, mut themed) in &mut buttons {
+        let role = controls::state_role_with(
+            state.base_role(),
+            controls::ControlLook {
+                hovered: hovered.get(),
+                focused: focused == Some(entity),
+                active: state.pressed,
+                disabled: state.disabled,
+            },
+            "pressed",
+        );
+        if themed.0 != role {
+            themed.0 = role;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1071,25 +1264,16 @@ impl Widget for SlotGridWidget {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ButtonWidget;
 
-/// Parameters of `slotted:button`.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ButtonParams {
-    /// Label text; the widget kind's path when absent.
-    #[serde(default)]
-    pub label: Option<String>,
-}
+/// Parameters of `slotted:button`: the typed `button` node's optional
+/// fields (menus M1 contract 3.2), so a `custom` node and a mod's
+/// `register_widget` template get the icon, variant, disabled and compact
+/// too.
+pub type ButtonParams = crate::def::ButtonOpts;
 
 impl Widget for ButtonWidget {
     fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, _children: &[UiNodeDef]) -> Entity {
-        let p: ButtonParams = params_of!(params, "slotted:button");
-        spawn_button(
-            ctx,
-            Some(&kinds::button()),
-            &crate::def::ButtonOpts {
-                label: p.label.map(LocKey),
-                ..Default::default()
-            },
-        )
+        let opts: ButtonParams = params_of!(params, "slotted:button");
+        spawn_button(ctx, Some(&kinds::button()), &opts)
     }
 }
 

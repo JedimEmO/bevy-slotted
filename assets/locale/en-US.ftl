@@ -23,8 +23,10 @@ machine-face-output = Face: output
 browser-search-placeholder = Search items
 browser-search-label = Search
 browser-status-indexing = indexing…
-browser-status-item = item
-browser-status-items = items
+browser-status-count = { $count ->
+    [one] { $count } item
+   *[other] { $count } items
+}
 browser-status-hints = R recipes / U uses / A bookmark
 browser-uses-title = Used in:
 browser-uses-empty = Used in: nothing yet

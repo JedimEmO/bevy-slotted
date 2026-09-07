@@ -29,7 +29,8 @@ pub mod blur;
 pub mod cut;
 
 pub use apply::{
-    ActiveTheme, CutPaint, GlassPaint, Paint, SlicedPaint, Themed, TiledPaint, apply_theme,
+    ActiveTheme, CutPaint, FontPaint, GlassPaint, Paint, SlicedPaint, Themed, TiledPaint,
+    apply_theme,
 };
 pub use material::{Corners, Material, ThemeColor, ThemeSize};
 pub use motion::{
@@ -40,6 +41,7 @@ pub use role::{Role, roles};
 pub use theme::{Theme, ThemeError, ThemeLoader};
 pub use tokens::{
     Blur, Durations, Elevation, FontToken, MotionSpec, MotionTokens, Radii, Sizes, Spacing, Tokens,
+    TypeStyle,
 };
 
 /// The names a widget author needs.

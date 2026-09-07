@@ -2,6 +2,7 @@
 
 use bevy::asset::{AssetEvent, AssetServer, Assets, Handle};
 use bevy::prelude::*;
+use bevy::text::LineHeight;
 use bevy::ui::prelude::{BorderRect, TextureSlicer};
 use bevy::ui::widget::NodeImageMode;
 
@@ -140,6 +141,9 @@ pub struct Paint {
     pub text_shadow: Option<Color>,
     /// `TextFont::weight`; `None` with `text` set means 400.
     pub text_weight: Option<u16>,
+    /// `LineHeight`, as a multiple of the font size, from the type style a
+    /// `$name` size names; `None` with `text` set means Bevy's default.
+    pub text_line_height: Option<f32>,
     /// The cut-corner material, when the theme asked for one and `blur` is on.
     pub cut: Option<CutPaint>,
 }
@@ -244,6 +248,7 @@ impl Paint {
                 let style = theme.type_style(size);
                 paint.text = Some((color(c), theme.size(size)));
                 paint.text_weight = weight.or_else(|| style.and_then(|s| s.weight));
+                paint.text_line_height = style.and_then(|s| s.line_height);
                 paint.text_shadow = text_shadow.as_ref().map(&color);
                 paint.font = font
                     .as_deref()
@@ -257,6 +262,54 @@ impl Paint {
             }
         }
         paint
+    }
+
+    /// The paint of `role` in `theme`, through the dotted fallback. `None`
+    /// when no ancestor of the role is defined.
+    pub fn for_role(theme: &Theme, role: &Role) -> Option<Self> {
+        theme
+            .material(role)
+            .map(|material| Self::from_material(theme, material))
+    }
+
+    /// The `TextColor` a text paint writes; `None` for a non-text material.
+    pub fn text_color(&self) -> Option<TextColor> {
+        self.text.map(|(color, _)| TextColor(color))
+    }
+
+    /// The `TextFont` a text paint writes: the theme's font (loaded through
+    /// `assets` when it is a file), the size and the weight. `None` for a
+    /// non-text material. This is what a `TextSpan` needs, because
+    /// [`apply_theme`] paints only the entity that carries the role.
+    pub fn text_font(&self, assets: Option<&AssetServer>) -> Option<TextFont> {
+        let (_, size) = self.text?;
+        Some(TextFont {
+            font: self.font_source(assets),
+            font_size: FontSize::Px(size),
+            weight: FontWeight(self.text_weight.unwrap_or(400)),
+            ..default()
+        })
+    }
+
+    /// The `LineHeight` a text paint writes.
+    pub fn line_height(&self) -> LineHeight {
+        self.text_line_height
+            .map_or_else(LineHeight::default, LineHeight::RelativeToFont)
+    }
+
+    /// The `FontSource` of the paint's font, loading a file through `assets`.
+    fn font_source(&self, assets: Option<&AssetServer>) -> FontSource {
+        match (&self.font, assets) {
+            (Some(FontPaint::Path(path)), Some(server)) => {
+                FontSource::Handle(server.load::<Font>(path))
+            }
+            (Some(FontPaint::Path(path)), None) => {
+                tracing::warn!(font = %path, "no AssetServer; theme font skipped");
+                FontSource::default()
+            }
+            (Some(FontPaint::Family(family)), _) => FontSource::Family(family.as_str().into()),
+            (None, _) => FontSource::default(),
+        }
     }
 
     /// The Phase 7 shapes: paper's tile and dashes, neon's cut corners.
@@ -593,8 +646,8 @@ fn paint_image_and_text(
             e.remove::<ImageNode>();
         }
     }
-    if let Some((color, size)) = paint.text {
-        e.insert(TextColor(color));
+    if let Some(color) = paint.text_color() {
+        e.insert(color);
         match paint.text_shadow {
             Some(color) => {
                 e.insert(TextShadow {
@@ -606,36 +659,23 @@ fn paint_image_and_text(
                 e.remove::<TextShadow>();
             }
         }
-        let font = match (&paint.font, assets) {
-            (Some(FontPaint::Path(path)), Some(server)) => {
-                FontSource::Handle(server.load::<Font>(path))
-            }
-            (Some(FontPaint::Path(path)), None) => {
-                tracing::warn!(font = %path, "no AssetServer; theme font skipped");
-                FontSource::default()
-            }
-            (Some(FontPaint::Family(family)), _) => FontSource::Family(family.as_str().into()),
-            (None, _) => FontSource::default(),
-        };
-        let weight = FontWeight(paint.text_weight.unwrap_or(400));
-        match text_font {
-            Some(mut text_font) => {
-                text_font.font_size = FontSize::Px(size);
-                if text_font.font != font {
-                    text_font.font = font;
+        // A type style's line height (menus M1 contract 2.1); Bevy's default
+        // when the material names none, so a role swap never keeps the old.
+        e.insert(paint.line_height());
+        match (paint.text_font(assets), text_font) {
+            (Some(want), Some(mut text_font)) => {
+                text_font.font_size = want.font_size;
+                if text_font.font != want.font {
+                    text_font.font = want.font;
                 }
-                if text_font.weight != weight {
-                    text_font.weight = weight;
+                if text_font.weight != want.weight {
+                    text_font.weight = want.weight;
                 }
             }
-            None => {
-                e.insert(TextFont {
-                    font,
-                    font_size: FontSize::Px(size),
-                    weight,
-                    ..default()
-                });
+            (Some(want), None) => {
+                e.insert(want);
             }
+            (None, _) => {}
         }
     }
 }
@@ -759,8 +799,30 @@ mod tests {
             &theme,
             theme.material(&roles::COUNT).expect("count is defined"),
         );
-        assert_eq!(paint.text, Some((hex("E6EDF3"), 11.0)));
+        // `count` reads `$caption` since menus M1: 12 px in glass.
+        assert_eq!(paint.text, Some((hex("E6EDF3"), 12.0)));
         assert_eq!(paint.background, None);
+    }
+
+    /// A `$name` size brings the type style's line height along; a literal
+    /// size and a style without one leave Bevy's default (menus M1 2.1).
+    #[test]
+    fn a_type_style_line_height_reaches_the_paint() {
+        let theme = theme();
+        let body = Paint::for_role(&theme, &roles::TEXT).expect("text is defined");
+        assert_eq!(body.text_line_height, Some(1.4));
+        assert_eq!(body.line_height(), LineHeight::RelativeToFont(1.4));
+        let key = Paint::for_role(&theme, &roles::TEXT_KEY).expect("text.key is defined");
+        assert_eq!(key.text_line_height, None);
+        assert_eq!(key.line_height(), LineHeight::default());
+        let font = key.text_font(None).expect("a text paint has a font");
+        assert_eq!(font.font_size, FontSize::Px(13.0));
+        assert_eq!(font.weight, FontWeight(600));
+        assert_eq!(key.text_color(), Some(TextColor(hex("7FD1FF"))));
+        assert_eq!(
+            Paint::for_role(&theme, &roles::PANEL).and_then(|p| p.text_font(None)),
+            None
+        );
     }
 
     #[test]

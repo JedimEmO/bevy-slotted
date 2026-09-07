@@ -32,10 +32,9 @@ pub mod keys {
     pub const SEARCH_LABEL: &str = "browser.search.label";
     /// The footer while the index is still building.
     pub const STATUS_INDEXING: &str = "browser.status.indexing";
-    /// The noun after a result count of one.
-    pub const STATUS_ITEM: &str = "browser.status.item";
-    /// The noun after any other result count.
-    pub const STATUS_ITEMS: &str = "browser.status.items";
+    /// The result count, with a `count` argument: `{ $count } items`, or a
+    /// Fluent plural selector (menus M1 contract 2.3).
+    pub const STATUS_COUNT: &str = "browser.status.count";
     /// The footer's hotkey hint.
     pub const STATUS_HINTS: &str = "browser.status.hints";
     /// The "used in" heading when the list has entries.

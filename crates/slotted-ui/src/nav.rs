@@ -32,17 +32,28 @@ pub struct TextEntryFocused(pub bool);
 ///
 /// A node counts as text entry if it is a [`SemanticRole::TextField`] or
 /// carries Bevy's [`EditableText`], so a game's own field is covered whether
-/// it uses this crate's vocabulary or Bevy's widget.
+/// it uses this crate's vocabulary or Bevy's widget. The one exception is
+/// the M1 `text_field` row (menus M1 contract 4.1): it carries the role but
+/// owns the keyboard only while its [`TextFieldState::editing`] is set, so a
+/// merely focused row still takes `Accept` to start editing.
+///
+/// [`TextFieldState::editing`]: crate::widgets::text_field::TextFieldState::editing
 pub fn track_text_entry_focus(
     focus: Option<Res<InputFocus>>,
-    fields: Query<(Option<&SemanticRole>, Option<&EditableText>)>,
+    fields: Query<(
+        Option<&SemanticRole>,
+        Option<&EditableText>,
+        Option<&crate::widgets::text_field::TextFieldState>,
+    )>,
     mut focused: ResMut<TextEntryFocused>,
 ) {
     let active = focus
         .and_then(|f| f.get())
         .and_then(|e| fields.get(e).ok())
-        .is_some_and(|(role, editable)| {
-            editable.is_some() || role == Some(&SemanticRole::TextField)
+        .is_some_and(|(role, editable, field)| {
+            editable.is_some()
+                || (role == Some(&SemanticRole::TextField)
+                    && field.is_none_or(|state| state.editing))
         });
     if focused.0 != active {
         focused.0 = active;
@@ -152,6 +163,7 @@ fn explicit_link(
 #[allow(clippy::too_many_arguments)]
 pub fn directional_nav_actions(
     mut events: MessageReader<crate::actions::UiActionEvent>,
+    claims: Res<crate::actions::UiActionClaims>,
     links: Query<&crate::def::NavLinks>,
     parents: Query<&ChildOf>,
     ids: Query<(Entity, &crate::semantic::TestId)>,
@@ -170,6 +182,11 @@ pub fn directional_nav_actions(
             crate::actions::UiAction::Right => CompassOctant::East,
             _ => continue,
         };
+        // A control that consumed the direction (a slider's `Left`) claimed
+        // it from its `FocusedAction` observer, which ran before this.
+        if claims.is_claimed(event.action) {
+            continue;
+        }
         let focused = nav.manual_directional_navigation.focus.get();
         let root = focused.and_then(|f| screen_root_of(f, &parents, &roots));
         if let (Some(focused), Some(root)) = (focused, root)
@@ -224,71 +241,89 @@ pub struct FocusedAction {
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FocusMask;
 
-/// `SlottedUiSet::Input`, after `UiActionEmit` and before
-/// [`directional_nav_actions`] and [`accept_focused`]: triggers one
-/// [`FocusedAction`] on the `InputFocus` entity per `UiActionEvent` this
-/// frame, when that entity is `Focusable`, not `InteractionDisabled` and not
-/// under a `FocusMask`.
-pub fn dispatch_focused_actions(
-    _events: MessageReader<crate::actions::UiActionEvent>,
-    _focus: Option<Res<InputFocus>>,
-    _focusables: Query<Has<bevy::ui::InteractionDisabled>, With<crate::focus_ring::Focusable>>,
-    _masked: Query<(), With<FocusMask>>,
-    _parents: Query<&ChildOf>,
-    _commands: Commands,
-) {
-    // M1-IMPL: B
+/// Whether `entity` or one of its ancestors carries a [`FocusMask`].
+pub fn is_masked(
+    entity: Entity,
+    masked: &Query<(), With<FocusMask>>,
+    parents: &Query<&ChildOf>,
+) -> bool {
+    let mut current = entity;
+    loop {
+        if masked.contains(current) {
+            return true;
+        }
+        match parents.get(current) {
+            Ok(child_of) => current = child_of.parent(),
+            Err(_) => return false,
+        }
+    }
 }
 
-/// `SlottedUiSet::Input`, after `UiActionEmit`: `Accept` acts on the focused
-/// node, and is claimed when it did.
+/// `SlottedUiSet::Input`, after `UiActionEmit` and before
+/// [`directional_nav_actions`]: triggers one [`FocusedAction`] on the
+/// `InputFocus` entity per `UiActionEvent` this frame, when that entity is
+/// `Focusable`, not `InteractionDisabled` and not under a `FocusMask`.
 ///
-/// A focused slot takes a left click ([`slotted_ecs::SlotClicked`] with the
-/// modifiers held), from either device: Bevy's `Button` turns Enter and
-/// Space into `Activate` too, but nothing on a slot listens to that, so this
-/// is the one place a keyboard or a pad picks up and places. A focused
-/// `Button` is activated only for a gamepad-sourced press; the keyboard
-/// already reaches it through Bevy's own `Activate`, and forwarding both
-/// would activate twice. Only a fresh press counts.
-pub fn accept_focused(
+/// An action something already claimed this frame (a key capture that
+/// swallowed the press) is not delivered: it was consumed.
+pub fn dispatch_focused_actions(
     mut events: MessageReader<crate::actions::UiActionEvent>,
     focus: Option<Res<InputFocus>>,
+    claims: Res<crate::actions::UiActionClaims>,
+    focusables: Query<Has<bevy::ui::InteractionDisabled>, With<crate::focus_ring::Focusable>>,
+    masked: Query<(), With<FocusMask>>,
+    parents: Query<&ChildOf>,
+    mut commands: Commands,
+) {
+    let Some(focused) = focus.as_deref().and_then(InputFocus::get) else {
+        events.clear();
+        return;
+    };
+    let Ok(disabled) = focusables.get(focused) else {
+        events.clear();
+        return;
+    };
+    if disabled || is_masked(focused, &masked, &parents) {
+        events.clear();
+        return;
+    }
+    for event in events.read() {
+        if claims.is_claimed(event.action) {
+            continue;
+        }
+        commands.trigger(FocusedAction {
+            entity: focused,
+            action: event.action,
+            device: event.device,
+            repeat: event.repeat,
+        });
+    }
+}
+
+/// Observer: a fresh `Accept` on a focused slot is a left click
+/// ([`slotted_ecs::SlotClicked`] with the modifiers held), from any device,
+/// and is claimed. This is the one place a keyboard or a pad picks up and
+/// places (menus M1 contract 1.2).
+pub fn on_slot_accept(
+    action: On<FocusedAction>,
     slots: Query<(), With<slotted_ecs::SlotRef>>,
-    buttons: Query<Has<bevy::ui::InteractionDisabled>, With<bevy::ui_widgets::Button>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut claims: ResMut<crate::actions::UiActionClaims>,
     mut commands: Commands,
 ) {
-    let press = events
-        .read()
-        .find(|e| e.action == crate::actions::UiAction::Accept && !e.repeat)
-        .copied();
-    let Some(press) = press else {
-        return;
-    };
-    let Some(focused) = focus.as_deref().and_then(InputFocus::get) else {
-        return;
-    };
-    if slots.contains(focused) {
-        claims.claim(crate::actions::UiAction::Accept);
-        commands.trigger(slotted_ecs::SlotClicked {
-            entity: focused,
-            button: slotted_model::Button::Left,
-            modifiers: crate::widgets::modifiers_from(&keys),
-        });
+    if action.action != crate::actions::UiAction::Accept || action.repeat {
         return;
     }
-    if press.device != crate::actions::InputDevice::Gamepad {
-        return;
-    }
-    let Ok(disabled) = buttons.get(focused) else {
-        return;
-    };
-    if disabled {
+    let focused = action.entity;
+    if !slots.contains(focused) {
         return;
     }
     claims.claim(crate::actions::UiAction::Accept);
-    commands.trigger(bevy::ui_widgets::Activate { entity: focused });
+    commands.trigger(slotted_ecs::SlotClicked {
+        entity: focused,
+        button: slotted_model::Button::Left,
+        modifiers: crate::widgets::modifiers_from(&keys),
+    });
 }
 
 /// Observer on `ScreenSpawned`: gives the new screen its initial focus

@@ -16,7 +16,10 @@ use slotted_ui::LocKey;
 const FTL: &str = "\
 browser-search-placeholder = Gegenstände suchen
 browser-status-hints = R Rezepte / U Verwendung / A Lesezeichen
-browser-status-items = Gegenstände
+browser-status-count = { $count ->
+    [one] Ein Gegenstand
+   *[other] { $count } Gegenstände
+}
 browser-uses-title = Verwendet in:
 category-demo-crafting = Werkbank
 ";
@@ -44,7 +47,6 @@ fn a_locale_file_written_at_test_time_renames_the_browsers_chrome() {
             keys::STATUS_HINTS,
             "R Rezepte / U Verwendung / A Lesezeichen",
         ),
-        (keys::STATUS_ITEMS, "Gegenstände"),
         (keys::USES_TITLE, "Verwendet in:"),
     ] {
         assert_eq!(
@@ -53,6 +55,15 @@ fn a_locale_file_written_at_test_time_renames_the_browsers_chrome() {
             "{key} is a key a `.ftl` file can define"
         );
     }
+    // The count is one key with a `count` argument, so the file owns the
+    // plural rule (menus M1 contract 2.3).
+    let count = |n: i64| {
+        let mut args = slotted_ui::LocArgs::new();
+        args.insert("count".to_owned(), slotted_ui::Value::Int(n));
+        loc.resolve_with(&LocKey(keys::STATUS_COUNT.to_owned()), &args)
+    };
+    assert_eq!(count(1).as_deref(), Some("Ein Gegenstand"));
+    assert_eq!(count(7).as_deref(), Some("7 Gegenstände"));
     // The category chip's key, invented when a recipe type declares none.
     assert_eq!(
         loc.resolve(&LocKey("category.demo.crafting".to_owned()))
@@ -80,8 +91,6 @@ fn the_base_locale_file_defines_the_browsers_english() {
         (keys::SEARCH_PLACEHOLDER, "Search items"),
         (keys::STATUS_HINTS, "R recipes / U uses / A bookmark"),
         (keys::STATUS_INDEXING, "indexing…"),
-        (keys::STATUS_ITEM, "item"),
-        (keys::STATUS_ITEMS, "items"),
         (keys::USES_TITLE, "Used in:"),
         (keys::USES_EMPTY, "Used in: nothing yet"),
     ] {
@@ -89,6 +98,15 @@ fn the_base_locale_file_defines_the_browsers_english() {
             loc.resolve(&LocKey(key.to_owned())).as_deref(),
             Some(want),
             "{key} is missing from assets/locale/en-US.ftl"
+        );
+    }
+    for (n, want) in [(1, "1 item"), (0, "0 items"), (42, "42 items")] {
+        let mut args = slotted_ui::LocArgs::new();
+        args.insert("count".to_owned(), slotted_ui::Value::Int(n));
+        assert_eq!(
+            loc.resolve_with(&LocKey(keys::STATUS_COUNT.to_owned()), &args)
+                .as_deref(),
+            Some(want)
         );
     }
 }

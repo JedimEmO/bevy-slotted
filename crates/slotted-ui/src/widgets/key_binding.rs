@@ -1,14 +1,22 @@
 //! The key binding row (menus M1 contract 3.6): shows one action's binding
 //! and captures a new one.
+//!
+//! Accept enters capture; the cell shows `…`; the next fresh key (keyboard
+//! rows) or button (gamepad rows) becomes the action's first binding in
+//! `UiBindings`. `Back` cancels. Every action the captured press produced
+//! is claimed, and the capture runs before the focused-action dispatch, so
+//! the press that ends a capture never reaches the row as a new `Accept`.
 
+use bevy::picking::hover::Hovered;
 use bevy::prelude::*;
 use slotted_theme::{Themed, roles};
 
-use crate::actions::{InputDevice, UiAction};
+use crate::actions::{InputDevice, InputMode, UiAction, UiActionClaims, UiActionEvent, UiBindings};
 use crate::def::LocKey;
-use crate::focus_ring::Focusable;
+use crate::nav::FocusedAction;
 use crate::screen::SpawnCtx;
-use crate::semantic::{SemanticLabel, SemanticRole, WidgetNode};
+use crate::semantic::SemanticRole;
+use crate::widgets::controls::{self, ControlLook};
 use crate::widgets::kinds;
 
 /// The row's state, for tests.
@@ -33,6 +41,23 @@ pub struct BindingChanged {
     pub device: InputDevice,
 }
 
+/// The row's painted children, on the row.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyBindingParts {
+    /// The value cell.
+    pub cell: Entity,
+    /// The binding text inside the cell.
+    pub text: Entity,
+}
+
+/// The mode whose glyphs a row's device shows.
+fn mode_for(device: InputDevice) -> InputMode {
+    match device {
+        InputDevice::Gamepad => InputMode::Gamepad,
+        InputDevice::Keyboard | InputDevice::Pointer => InputMode::Keyboard,
+    }
+}
+
 /// Spawns a key binding row.
 pub fn spawn_key_binding(
     ctx: &mut SpawnCtx<'_>,
@@ -41,85 +66,195 @@ pub fn spawn_key_binding(
     device: InputDevice,
     disabled: bool,
 ) -> Entity {
-    // M1-IMPL: B
+    let tokens = ctx.tokens();
     let fallback = LocKey(action.as_str().to_owned());
-    let entity = placeholder_row(
+    let entity = controls::spawn_control_row(
         ctx,
-        roles::KEY_BINDING,
         SemanticRole::KeyBinding,
         kinds::key_binding(),
         Some(label.unwrap_or(&fallback)),
-        false,
-    );
-    ctx.world.entity_mut(entity).insert(KeyBindingState {
-        action,
-        device,
-        capturing: false,
         disabled,
-    });
-    entity
-}
-
-/// `SlottedUiSet::Input`, after `UiActionEmit`: while a row is capturing,
-/// the next fresh key or button press becomes the binding.
-pub fn capture_key_bindings(
-    _rows: Query<(Entity, &mut KeyBindingState)>,
-    _keys: Res<ButtonInput<KeyCode>>,
-    _gamepads: Query<&Gamepad>,
-    _bindings: ResMut<crate::actions::UiBindings>,
-    _claims: ResMut<crate::actions::UiActionClaims>,
-    _changed: MessageWriter<BindingChanged>,
-) {
-    // M1-IMPL: B
-}
-
-/// The skeleton's placeholder: a control-height row with the label, so the
-/// tree lays out and locators find the node before the package fills it.
-#[allow(dead_code)]
-fn placeholder_row(
-    ctx: &mut SpawnCtx<'_>,
-    role: slotted_theme::Role,
-    semantic: SemanticRole,
-    kind: crate::def::WidgetKind,
-    label: Option<&LocKey>,
-    compact: bool,
-) -> Entity {
-    use bevy::input_focus::tab_navigation::TabIndex;
-    let tokens = ctx.tokens();
-    let height = if compact {
-        tokens.sizes.control_height_compact
-    } else {
-        tokens.sizes.control_height
-    };
-    let entity = ctx.spawn_node((
-        Node {
-            height: Val::Px(height),
-            min_height: Val::Px(height),
-            padding: UiRect::axes(Val::Px(tokens.spacing.md), Val::Px(tokens.spacing.xs)),
-            border: UiRect::all(Val::Px(crate::widgets::BORDER_WIDTH)),
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(tokens.spacing.sm),
-            flex_shrink: 0.0,
-            ..default()
+    );
+    controls::spawn_control_spacer(ctx.world, entity);
+    let glyph = ctx
+        .world
+        .get_resource::<UiBindings>()
+        .map(|b| crate::rich::key_glyph_text(action, mode_for(device), b))
+        .unwrap_or_default();
+    let cell_height = tokens.sizes.control_height - 2.0 * tokens.spacing.sm;
+    let cell = ctx
+        .world
+        .spawn((
+            Node {
+                height: Val::Px(cell_height),
+                min_width: Val::Px(tokens.spacing.xl * 3.0),
+                padding: UiRect::axes(Val::Px(tokens.spacing.sm), Val::ZERO),
+                border: UiRect::all(Val::Px(crate::widgets::BORDER_WIDTH)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(tokens.radii.sm)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Themed(roles::KEY_BINDING),
+            Pickable::default(),
+            ChildOf(entity),
+        ))
+        .id();
+    let text = ctx
+        .world
+        .spawn((
+            Node::default(),
+            Text::new(glyph),
+            Themed(roles::TEXT_KEY),
+            Pickable::IGNORE,
+            ChildOf(cell),
+        ))
+        .id();
+    let mut row = ctx.world.entity_mut(entity);
+    row.insert((
+        KeyBindingState {
+            action,
+            device,
+            capturing: false,
+            disabled,
         },
-        Themed(role),
-        semantic,
-        SemanticLabel(label.map(|k| k.0.clone()).unwrap_or_default()),
-        WidgetNode(kind),
-        Focusable,
-        TabIndex(0),
-        bevy::picking::hover::Hovered::default(),
-        Pickable::default(),
+        KeyBindingParts { cell, text },
     ));
-    if let Some(label) = label {
-        let parent = std::mem::replace(&mut ctx.parent, entity);
-        crate::widgets::text::spawn_text(
-            ctx,
-            label,
-            crate::def::TextRole::Label,
-            &crate::def::TextOpts::default(),
-        );
-        ctx.parent = parent;
-    }
+    row.observe(on_key_binding_action);
     entity
+}
+
+/// Observer: a fresh `Accept` enters capture and is claimed.
+pub fn on_key_binding_action(
+    action: On<FocusedAction>,
+    mut rows: Query<&mut KeyBindingState>,
+    mut claims: ResMut<UiActionClaims>,
+) {
+    if action.action != UiAction::Accept || action.repeat {
+        return;
+    }
+    let Ok(mut state) = rows.get_mut(action.entity) else {
+        return;
+    };
+    if state.disabled || state.capturing {
+        return;
+    }
+    claims.claim(UiAction::Accept);
+    state.capturing = true;
+}
+
+/// `SlottedUiSet::Input`, after `UiActionEmit` and before the focused-action
+/// dispatch: while a row is capturing, the next fresh key or button press
+/// becomes the binding, or `Back` cancels. Escape is never bound.
+#[allow(clippy::too_many_arguments)]
+pub fn capture_key_bindings(
+    mut rows: Query<(Entity, &mut KeyBindingState)>,
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    mut events: MessageReader<UiActionEvent>,
+    mut bindings: ResMut<UiBindings>,
+    mut claims: ResMut<UiActionClaims>,
+    mut changed: MessageWriter<BindingChanged>,
+) {
+    let mut capturing = rows.iter_mut().filter(|(_, s)| s.capturing);
+    let Some((entity, mut state)) = capturing.next() else {
+        events.clear();
+        return;
+    };
+    let back = events.read().any(|e| e.action == UiAction::Back);
+    if back {
+        state.capturing = false;
+        claims.claim(UiAction::Back);
+        tracing::debug!(?entity, "key capture cancelled");
+        return;
+    }
+    match state.device {
+        InputDevice::Gamepad => {
+            let Some(button) = gamepads
+                .iter()
+                .find_map(|g| g.get_just_pressed().next().copied())
+            else {
+                return;
+            };
+            for (action, buttons) in &bindings.buttons {
+                if buttons.contains(&button) {
+                    claims.claim(*action);
+                }
+            }
+            let slot = bindings.buttons.entry(state.action).or_default();
+            if slot.is_empty() {
+                slot.push(button);
+            } else {
+                slot[0] = button;
+            }
+        }
+        InputDevice::Keyboard | InputDevice::Pointer => {
+            let Some(key) = keys.get_just_pressed().next().copied() else {
+                return;
+            };
+            if key == KeyCode::Escape {
+                return;
+            }
+            for (action, codes) in &bindings.keys {
+                if codes.contains(&key) {
+                    claims.claim(*action);
+                }
+            }
+            let slot = bindings.keys.entry(state.action).or_default();
+            if slot.is_empty() {
+                slot.push(key);
+            } else {
+                slot[0] = key;
+            }
+        }
+    }
+    state.capturing = false;
+    changed.write(BindingChanged {
+        action: state.action,
+        device: state.device,
+    });
+}
+
+/// `SlottedUiSet::Render`: the cell's role and its text (`…` while
+/// capturing, else the first binding's glyph), refreshed whenever
+/// `UiBindings` changes.
+pub fn paint_key_bindings(
+    focus: Option<Res<bevy::input_focus::InputFocus>>,
+    bindings: Res<UiBindings>,
+    rows: Query<(Entity, Ref<KeyBindingState>, &KeyBindingParts, &Hovered)>,
+    mut themed: Query<&mut Themed>,
+    mut texts: Query<&mut Text>,
+) {
+    let focused = focus.and_then(|f| f.get());
+    for (entity, state, parts, hovered) in &rows {
+        let role = controls::state_role_with(
+            "key_binding",
+            ControlLook {
+                hovered: hovered.get(),
+                focused: focused == Some(entity),
+                active: state.capturing,
+                disabled: state.disabled,
+            },
+            "capturing",
+        );
+        if let Ok(mut t) = themed.get_mut(parts.cell)
+            && t.0 != role
+        {
+            t.0 = role;
+        }
+        if !(state.is_changed() || bindings.is_changed()) {
+            continue;
+        }
+        let want = if state.capturing {
+            "…".to_owned()
+        } else {
+            crate::rich::key_glyph_text(state.action, mode_for(state.device), &bindings)
+        };
+        if let Ok(mut text) = texts.get_mut(parts.text)
+            && text.0 != want
+        {
+            text.0 = want;
+        }
+    }
 }

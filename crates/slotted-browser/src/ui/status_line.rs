@@ -72,10 +72,9 @@ impl Widget for StatusLineWidget {
 /// `BrowserSet::Render`: the footer says whether the index has landed and, once
 /// it has, how many entries the query left.
 ///
-/// The count and its noun are composed here rather than interpolated into one
-/// key, because [`Localizer`](slotted_ui::Localizer) resolves a key with no
-/// arguments; a locale that needs a different word order can still say so by
-/// giving the two nouns whatever text it likes.
+/// The count is one key with a `count` argument (menus M1 contract 2.3), so
+/// a locale writes its own plural rule and word order in the `.ftl`; with no
+/// catalogue the English falls back to `item` / `items`.
 pub fn render_status(
     index: Res<IndexState>,
     runtime: Res<BrowserRuntime>,
@@ -102,12 +101,16 @@ pub fn render_status(
     *last = Some(now);
     let want = if index.ready().is_some() {
         let n = runtime.visible.len();
-        let unit = if n == 1 {
-            chrome(&loc, keys::STATUS_ITEM, "item")
-        } else {
-            chrome(&loc, keys::STATUS_ITEMS, "items")
-        };
-        format!("{n} {unit}")
+        let mut args = slotted_ui::LocArgs::new();
+        args.insert(
+            "count".to_owned(),
+            slotted_ui::Value::Int(i64::try_from(n).unwrap_or(i64::MAX)),
+        );
+        loc.resolve_with(&slotted_ui::LocKey(keys::STATUS_COUNT.to_owned()), &args)
+            .unwrap_or_else(|| {
+                let unit = if n == 1 { "item" } else { "items" };
+                format!("{n} {unit}")
+            })
     } else {
         chrome(&loc, keys::STATUS_INDEXING, "indexing…")
     };

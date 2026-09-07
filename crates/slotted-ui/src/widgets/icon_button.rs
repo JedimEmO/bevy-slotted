@@ -2,9 +2,6 @@
 //! section 1.4. Not a `bevy_ui_widgets::Button`: the state must change before
 //! `Activate` fires so `WidgetActivate.tags["state"]` is the new state.
 
-use bevy::input::ButtonState;
-use bevy::input::keyboard::KeyboardInput;
-use bevy::input_focus::FocusedInput;
 use bevy::input_focus::tab_navigation::TabIndex;
 use bevy::picking::events::{Click, Pointer};
 use bevy::picking::hover::Hovered;
@@ -161,28 +158,23 @@ pub fn on_icon_button_click(
     });
 }
 
-/// Observer: `Enter` or `Space` on the focused button cycles it. Shift goes
-/// back, the same as a shift-click.
+/// Observer: a fresh `Accept` on the focused button cycles it and is
+/// claimed (menus M1 contract 0: controls read actions, not keys). Shift
+/// goes back only for the pointer: an action carries no modifiers.
 pub fn on_icon_button_key(
-    event: On<FocusedInput<KeyboardInput>>,
+    action: On<crate::nav::FocusedAction>,
     buttons: Query<&IconButtonState>,
+    mut claims: ResMut<crate::actions::UiActionClaims>,
     mut commands: Commands,
 ) {
-    let input = &event.input;
-    if input.state != ButtonState::Pressed || input.repeat {
+    if action.action != crate::actions::UiAction::Accept || action.repeat {
         return;
     }
-    if !matches!(input.key_code, KeyCode::Enter | KeyCode::Space) {
-        return;
-    }
-    let entity = event.focused_entity;
+    let entity = action.entity;
     if buttons.get(entity).is_err() {
         return;
     }
-    // `KeyboardInput` does not carry modifiers; the harness's `key_with` and
-    // a real keyboard both leave them in `ButtonInput<KeyCode>`, which the
-    // cycle observer cannot see from here, so keyboard activation always
-    // advances. Shift-cycling is a pointer gesture.
+    claims.claim(crate::actions::UiAction::Accept);
     commands.trigger(IconButtonCycle {
         entity,
         forward: true,

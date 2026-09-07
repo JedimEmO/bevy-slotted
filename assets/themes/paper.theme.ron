@@ -48,7 +48,7 @@
             "display": (size: 36.0, font: "body", weight: 700),
             "title":   (size: 22.0, font: "body", weight: 600),
             "heading": (size: 17.0, font: "body", weight: 600),
-            "body":    (size: 14.0, font: "body"),
+            "body":    (size: 14.0, font: "body", line_height: 1.45),
             "label":   (size: 12.0, font: "mono"),
             "caption": (size: 11.0, font: "body"),
         },
@@ -82,7 +82,7 @@
             radius: 2.0,
             elevation: "mid",
         ),
-        "panel.title": Text(color: "$ink", size: 15.0, font: "body"),
+        "panel.title": Text(color: "$ink", size: "$title"),
 
         // Square slots on lighter sheet, ink rule, hard ink shadow.
         "slot": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "ink"),
@@ -119,9 +119,9 @@
         "button.primary": Solid(fill: "$orange", border: "$ink", radius: 2.0, elevation: "ink"),
         "button.hover": Solid(fill: "#FFFCF4", border: "$orange", radius: 2.0, elevation: "ink"),
 
-        "text": Text(color: "$text", size: 13.0, font: "body"),
-        "text.muted": Text(color: "$muted", size: 11.0, font: "body"),
-        "count": Text(color: "$ink", size: 11.0, font: "mono"),
+        "text": Text(color: "$text", size: "$body"),
+        "text.muted": Text(color: "$muted", size: "$caption"),
+        "count": Text(color: "$ink", size: "$caption", font: "mono"),
 
         // The action rail is a ruled margin.
         "rail": Solid(fill: "$shade", border: "$ink", radius: 2.0),

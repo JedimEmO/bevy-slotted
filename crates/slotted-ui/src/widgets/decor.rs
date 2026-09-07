@@ -6,12 +6,11 @@ use slotted_theme::{Themed, roles};
 use crate::def::{LayoutDirection, Length};
 use crate::layers::Decorative;
 use crate::screen::SpawnCtx;
-use crate::semantic::{SemanticRole, WidgetNode};
+use crate::semantic::{SemanticLabel, SemanticRole, WidgetNode};
 use crate::widgets::kinds;
 
-/// Spawns a hairline.
+/// Spawns a hairline: 1 px thick, across the cross axis of `direction`.
 pub fn spawn_separator(ctx: &mut SpawnCtx<'_>, direction: LayoutDirection) -> Entity {
-    // M1-IMPL: C
     let (width, height) = match direction {
         LayoutDirection::Row => (Val::Percent(100.0), Val::Px(1.0)),
         LayoutDirection::Column => (Val::Px(1.0), Val::Percent(100.0)),
@@ -31,15 +30,16 @@ pub fn spawn_separator(ctx: &mut SpawnCtx<'_>, direction: LayoutDirection) -> En
     ))
 }
 
-/// Spawns empty space.
+/// Spawns empty space: `flex_grow: 1` for `fill`, else the given length
+/// along the parent's main axis.
 pub fn spawn_spacer(ctx: &mut SpawnCtx<'_>, size: Length) -> Entity {
-    // M1-IMPL: C
     let spacing_sm = ctx.tokens().spacing.sm;
     let grow = matches!(size, Length::Percent(p) if (p - 100.0).abs() < f32::EPSILON);
     let val = crate::widgets::length_val(Some(size), spacing_sm);
     ctx.spawn_node((
         Node {
             flex_grow: if grow { 1.0 } else { 0.0 },
+            flex_shrink: 0.0,
             flex_basis: if grow { Val::Auto } else { val },
             ..default()
         },
@@ -50,11 +50,11 @@ pub fn spawn_spacer(ctx: &mut SpawnCtx<'_>, size: Length) -> Entity {
     ))
 }
 
-/// Spawns an image.
+/// Spawns an image from the asset server. Without one (a bare test world)
+/// the node still lays out with nothing to draw.
 pub fn spawn_image(ctx: &mut SpawnCtx<'_>, path: &str, width: Length, height: Length) -> Entity {
-    // M1-IMPL: C
     let spacing_sm = ctx.tokens().spacing.sm;
-    let _ = path;
+    let image = crate::widgets::icon_image(ctx.world, &crate::def::IconDef::Image(path.to_owned()));
     ctx.spawn_node((
         Node {
             width: crate::widgets::length_val(Some(width), spacing_sm),
@@ -62,7 +62,9 @@ pub fn spawn_image(ctx: &mut SpawnCtx<'_>, path: &str, width: Length, height: Le
             flex_shrink: 0.0,
             ..default()
         },
+        image,
         SemanticRole::Decor,
+        SemanticLabel(path.to_owned()),
         WidgetNode(kinds::image()),
         Decorative,
         Pickable::IGNORE,

@@ -111,6 +111,7 @@ pub fn update_focus_ring(
     tokens: crate::tooltip::ThemeTokens,
     units: crate::scale::UiUnits,
     focusables: Query<(&ComputedNode, &UiGlobalTransform), With<Focusable>>,
+    masks: Query<(), With<crate::nav::FocusMask>>,
     parents: Query<&ChildOf>,
     roots: Query<(), With<ScreenRoot>>,
     mut ring: Query<
@@ -133,9 +134,12 @@ pub fn update_focus_ring(
     else {
         return;
     };
+    // A focusable under a `FocusMask` (a hidden tab page, menus M1 4.4)
+    // gets no ring.
     let target = focus
         .and_then(|f| f.get())
-        .filter(|e| focusables.contains(*e));
+        .filter(|e| focusables.contains(*e))
+        .filter(|e| crate::widgets::tabs::masked_ancestor(*e, &masks, &parents).is_none());
     let visible = target.is_some() && *mode != InputMode::Pointer;
 
     let tokens = tokens.get();
