@@ -40,6 +40,12 @@ The foundation of the menus work (`docs/design/menus-m0-contract.md`,
   modal**, because two pages would hide the first; `Back` therefore pops one
   client, then the other. A side-by-side of two stacks (one per client) is
   the honest shape and is out of scope for a demo scene.
+- **Tab with no screen open logs a warning.** Bevy's tab navigator writes
+  "Tab navigation error: No tab groups found" every time Tab is pressed while
+  nothing focusable exists (seen running `examples/chest` after Escape). Tab
+  is also `UiAction::Menu`'s default key, so a pause screen will want it. Either
+  give the HUD a `TabGroup` or gate Bevy's `TabNavigationPlugin` behind an open
+  screen. M1 or M2.
 
 ## Showcase, 2026-09-06
 
