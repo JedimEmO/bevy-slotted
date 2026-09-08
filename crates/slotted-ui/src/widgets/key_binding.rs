@@ -58,6 +58,31 @@ fn mode_for(device: InputDevice) -> InputMode {
     }
 }
 
+/// The glyph set a row's cell renders in, resolved from the world at spawn
+/// (menus M2 contract 2.4); `paint_key_bindings` follows it afterwards.
+fn glyph_set(world: &mut World) -> crate::rich::GlyphSet {
+    let set = world
+        .get_resource::<crate::rich::GlyphSet>()
+        .copied()
+        .unwrap_or_default();
+    let vendor = world
+        .query::<&Gamepad>()
+        .iter(world)
+        .next()
+        .and_then(Gamepad::vendor_id);
+    for_cell(crate::rich::resolved_glyph_set_for_vendor(set, vendor))
+}
+
+/// A gamepad row's cell names the pad's button whatever the set: under
+/// `Keyboard` (a text-only UI) it uses Bevy's names rather than showing
+/// the action's keyboard key, which would be the wrong device's binding.
+fn for_cell(set: crate::rich::GlyphSet) -> crate::rich::GlyphSet {
+    match set {
+        crate::rich::GlyphSet::Keyboard => crate::rich::GlyphSet::Generic,
+        other => other,
+    }
+}
+
 /// Spawns a key binding row.
 pub fn spawn_key_binding(
     ctx: &mut SpawnCtx<'_>,
@@ -76,12 +101,11 @@ pub fn spawn_key_binding(
         disabled,
     );
     controls::spawn_control_spacer(ctx.world, entity);
+    let set = glyph_set(ctx.world);
     let glyph = ctx
         .world
         .get_resource::<UiBindings>()
-        .map(|b| {
-            crate::rich::key_glyph_text(action, mode_for(device), b, crate::rich::GlyphSet::Auto)
-        })
+        .map(|b| crate::rich::key_glyph_text(action, mode_for(device), b, set))
         .unwrap_or_default();
     let cell_height = tokens.sizes.control_height - 2.0 * tokens.spacing.sm;
     let cell = ctx
@@ -221,14 +245,25 @@ pub fn capture_key_bindings(
 /// `SlottedUiSet::Render`: the cell's role and its text (`…` while
 /// capturing, else the first binding's glyph), refreshed whenever
 /// `UiBindings` changes.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_key_bindings(
     focus: Option<Res<bevy::input_focus::InputFocus>>,
     bindings: Res<UiBindings>,
+    glyphs: Res<crate::rich::GlyphSet>,
+    gamepads: Query<&Gamepad>,
+    mut connections: MessageReader<bevy::input::gamepad::GamepadConnectionEvent>,
     rows: Query<(Entity, Ref<KeyBindingState>, &KeyBindingParts, &Hovered)>,
     mut themed: Query<&mut Themed>,
     mut texts: Query<&mut Text>,
 ) {
     let focused = focus.and_then(|f| f.get());
+    // A new pad may change what `Auto` means (menus M2 contract 2.4).
+    let glyphs_moved = glyphs.is_changed() || connections.read().count() > 0;
+    let set = for_cell(crate::rich::resolved_glyph_set(
+        *glyphs,
+        InputMode::Gamepad,
+        &gamepads,
+    ));
     for (entity, state, parts, hovered) in &rows {
         let role = controls::state_role_with(
             "key_binding",
@@ -245,18 +280,13 @@ pub fn paint_key_bindings(
         {
             t.0 = role;
         }
-        if !(state.is_changed() || bindings.is_changed()) {
+        if !(state.is_changed() || bindings.is_changed() || glyphs_moved) {
             continue;
         }
         let want = if state.capturing {
             "…".to_owned()
         } else {
-            crate::rich::key_glyph_text(
-                state.action,
-                mode_for(state.device),
-                &bindings,
-                crate::rich::GlyphSet::Auto,
-            )
+            crate::rich::key_glyph_text(state.action, mode_for(state.device), &bindings, set)
         };
         if let Ok(mut text) = texts.get_mut(parts.text)
             && text.0 != want

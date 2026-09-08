@@ -91,26 +91,61 @@ pub struct LabelRole(pub Role);
 /// Whether a control role is an accent fill that wants the inverse label.
 pub fn is_accent_fill(role: &Role) -> bool {
     let name = role.as_str();
+    // A primary or danger button keeps its accent fill through its state
+    // roles (`button.primary.focus`, `button.danger.pressed`), so the label
+    // stays inverse there too; an exact match flipped the label back to the
+    // ordinary colour the moment the button took focus, which on a menu is
+    // the first thing that happens.
     name.ends_with(".active")
         || name.ends_with(".selected")
-        || name == roles::BUTTON_PRIMARY.as_str()
-        || name == roles::BUTTON_DANGER.as_str()
+        || name.starts_with(roles::BUTTON_PRIMARY.as_str())
+        || name.starts_with(roles::BUTTON_DANGER.as_str())
+}
+
+/// The inverse role of a label's rest role: `<rest>.inverse`
+/// (`control.label.inverse`, `text.label.inverse`), so a theme keeps the
+/// label's size and font and only flips its colour. [`invert_active_labels`]
+/// uses it when the active theme defines it and `text.inverse` otherwise.
+pub fn inverse_of(rest: &Role) -> Role {
+    Role::new(format!("{}.inverse", rest.as_str()))
 }
 
 /// `SlottedUiSet::Render`, after every `paint_*`: labels under an accent
-/// fill read `text.inverse`; every other label reads its [`LabelRole`].
+/// fill read `<rest>.inverse` (`control.label.inverse`) when the theme has
+/// it, else `text.inverse`; every other label reads its [`LabelRole`].
 pub fn invert_active_labels(
-    controls: Query<(&Themed, &Children), (Changed<Themed>, Without<LabelRole>)>,
+    controls: Query<(Ref<Themed>, &Children), Without<LabelRole>>,
     mut labels: Query<(&LabelRole, &mut Themed)>,
+    active: Option<Res<slotted_theme::ActiveTheme>>,
+    themes: Option<Res<Assets<slotted_theme::Theme>>>,
 ) {
+    // A theme arriving after the controls painted may bring the dotted
+    // inverse roles with it, so every accent label is looked at again then.
+    let theme_changed = active.as_ref().is_some_and(DetectChanges::is_changed)
+        || themes.as_ref().is_some_and(DetectChanges::is_changed);
+    let theme = active
+        .as_ref()
+        .zip(themes.as_ref())
+        .and_then(|(a, t)| t.get(&a.0));
     for (themed, children) in &controls {
+        if !themed.is_changed() && !theme_changed {
+            continue;
+        }
         let inverse = is_accent_fill(&themed.0);
         for child in children.iter() {
             let Ok((rest, mut label)) = labels.get_mut(child) else {
                 continue;
             };
             let wanted = if inverse {
-                roles::TEXT_INVERSE
+                let dotted = inverse_of(&rest.0);
+                // `Theme::material` walks parents, so `control.label.inverse`
+                // would "resolve" to `control.label`; only a direct entry
+                // counts as the theme having the dotted role.
+                if theme.is_some_and(|t| t.roles.contains_key(&dotted)) {
+                    dotted
+                } else {
+                    roles::TEXT_INVERSE
+                }
             } else {
                 rest.0.clone()
             };
@@ -286,6 +321,7 @@ pub fn build(app: &mut App) {
         .add_observer(select::on_select_value)
         .add_observer(select::on_open_select_popup)
         .add_observer(select::on_close_select_popup)
+        .add_observer(select::on_press_outside_select_popup)
         .add_observer(radio_group::on_radio_value)
         .add_systems(
             Update,

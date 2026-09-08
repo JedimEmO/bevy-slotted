@@ -1,14 +1,15 @@
-//! The settings demo, headless (menus M1 contract section 5 and 6): the real
-//! `assets/screens/demo_settings.screen.ron` over the showcase's store seed,
-//! rules and guard, in all three themes. A gamepad walks every control from
+//! The settings demo, headless (menus M1 contract section 5 and 6, rebuilt on
+//! the M2 `SettingsSpec`): the screen `showcase::settings::spec` generates
+//! over the `slotted:settings` frame, with the store seed and the rules the
+//! spec derives and the showcase's guard, in all three themes. A gamepad walks every control from
 //! `initial_focus`, every control writes and reads through the store, the
 //! guard's refusal snaps a slider back, the select popup and the screen each
 //! take their own `Back`, the footer's `{key:..}` glyphs follow the input
 //! mode, and a rebound `Accept` key activates a button.
 //!
-//! The screen and the seed come from `showcase::settings`, the module the
+//! The spec and the guard come from `showcase::settings`, the module the
 //! chest example adds, so what this proves is what `cargo run -p chest` opens
-//! on `Tab`.
+//! on `Menu`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 
@@ -118,7 +119,7 @@ fn find(h: &UiHarness, id: &str) -> Entity {
 
 /// The tab button at `index` of the screen's one tabs node.
 fn tab_button(h: &mut UiHarness, index: usize) -> Entity {
-    let tabs = find(h, "tabs");
+    let tabs = find(h, "settings.tabs");
     let mut q = h.world_mut().query::<(Entity, &TabButton)>();
     q.iter(h.world())
         .find(|(_, b)| b.tabs == tabs && b.index == index)
@@ -200,7 +201,8 @@ fn the_settings_screen_opens_in_every_theme_with_focus_on_the_first_tab() {
             "{theme}: `initial_focus: tabs` lands on the first tab button"
         );
 
-        // Every control the file names is there, once.
+        // Every control the spec names is there, once; one scroll page per
+        // tab; the frame's separator, spacer and hint bar around them.
         assert_eq!(h.find_all(&by::control("tabs")).len(), 1, "{theme}");
         assert_eq!(h.find_all(&by::control("select")).len(), 2, "{theme}");
         assert_eq!(h.find_all(&by::control("slider")).len(), 4, "{theme}");
@@ -208,16 +210,28 @@ fn the_settings_screen_opens_in_every_theme_with_focus_on_the_first_tab() {
         assert_eq!(h.find_all(&by::control("radio_group")).len(), 1, "{theme}");
         assert_eq!(h.find_all(&by::control("key_binding")).len(), 4, "{theme}");
         assert_eq!(h.find_all(&by::control("text_field")).len(), 1, "{theme}");
-        assert_eq!(h.find_all(&by::control("scroll")).len(), 1, "{theme}");
-        assert_eq!(h.find_all(&by::control("rich_text")).len(), 1, "{theme}");
+        assert_eq!(h.find_all(&by::control("scroll")).len(), 3, "{theme}");
         assert_eq!(h.find_all(&by::control("separator")).len(), 4, "{theme}");
         assert_eq!(h.find_all(&by::control("spacer")).len(), 1, "{theme}");
-        assert_eq!(h.find_all(&by::control("image")).len(), 1, "{theme}");
+        assert_eq!(h.find_all(&by::test_id("footer_hint")).len(), 1, "{theme}");
+        for tab in ["display", "audio", "controls"] {
+            assert_eq!(
+                h.find_all(&by::anchor(&format!("settings.{tab}.end")))
+                    .len(),
+                1,
+                "{theme}: the {tab} page carries its end anchor"
+            );
+        }
 
         // The theme, not the file, sets a control's height.
         let theme_asset = wait_for_theme(&mut h);
         let height = theme_asset.tokens.sizes.control_height;
-        for id in ["resolution", "ui_scale", "reduced_motion", "colour_mode"] {
+        for id in [
+            "settings.resolution",
+            "settings.ui_scale",
+            "settings.reduced_motion",
+            "settings.colour_mode",
+        ] {
             let row = find(&h, id);
             let rect = h.rect_of(row);
             assert!(
@@ -274,43 +288,48 @@ fn a_gamepad_reaches_every_control_on_every_tab_from_initial_focus_and_back() {
     };
 
     // Display: down the page from the tab bar.
-    press(&mut h, GamepadButton::DPadDown, "resolution");
-    press(&mut h, GamepadButton::DPadDown, "ui_scale");
-    press(&mut h, GamepadButton::DPadDown, "reduced_motion");
-    press(&mut h, GamepadButton::DPadDown, "colour_mode");
+    press(&mut h, GamepadButton::DPadDown, "settings.resolution");
+    press(&mut h, GamepadButton::DPadDown, "settings.ui_scale");
+    press(&mut h, GamepadButton::DPadDown, "settings.reduced_motion");
+    press(&mut h, GamepadButton::DPadDown, "settings.colour_mode");
 
     // Audio: the right trigger switches tabs from inside a page and focus
     // lands on the new page's first control; the scroll panel follows the
     // ring down its twelve rows.
-    press(&mut h, GamepadButton::RightTrigger, "audio_master");
+    press(&mut h, GamepadButton::RightTrigger, "settings.audio.master");
     assert_eq!(
         h.value("settings.tab"),
         Some(Value::Text("audio".to_owned())),
         "the tab switch wrote the store"
     );
-    press(&mut h, GamepadButton::DPadDown, "audio_music");
-    press(&mut h, GamepadButton::DPadDown, "audio_effects");
-    press(&mut h, GamepadButton::DPadDown, "audio_device");
-    press(&mut h, GamepadButton::DPadDown, "audio_mute");
-    press(&mut h, GamepadButton::DPadDown, "audio_subtitles");
-    press(&mut h, GamepadButton::DPadDown, "audio_mono");
-    let viewport = h.rect_of(find(&h, "audio_scroll"));
-    let mono = h.rect_of(find(&h, "audio_mono"));
+    press(&mut h, GamepadButton::DPadDown, "settings.audio.music");
+    press(&mut h, GamepadButton::DPadDown, "settings.audio.effects");
+    press(&mut h, GamepadButton::DPadDown, "settings.audio.device");
+    press(
+        &mut h,
+        GamepadButton::DPadDown,
+        "settings.audio.mute_in_background",
+    );
+    press(&mut h, GamepadButton::DPadDown, "settings.audio.subtitles");
+    press(&mut h, GamepadButton::DPadDown, "settings.audio.mono");
+    let viewport = h.rect_of(find(&h, "settings.audio.page"));
+    let mono = h.rect_of(find(&h, "settings.audio.mono"));
     assert!(
         mono.min.y >= viewport.min.y - 0.5 && mono.max.y <= viewport.max.y + 0.5,
         "the last row scrolled into view: {mono:?} in {viewport:?}"
     );
 
     // Controls.
-    press(&mut h, GamepadButton::RightTrigger, "bind_accept");
-    press(&mut h, GamepadButton::DPadDown, "bind_back");
-    press(&mut h, GamepadButton::DPadDown, "bind_tab_prev");
-    press(&mut h, GamepadButton::DPadDown, "bind_tab_next");
-    press(&mut h, GamepadButton::DPadDown, "player_name");
+    press(&mut h, GamepadButton::RightTrigger, "bind.keyboard.accept");
+    press(&mut h, GamepadButton::DPadDown, "bind.keyboard.back");
+    press(&mut h, GamepadButton::DPadDown, "bind.keyboard.tab_prev");
+    press(&mut h, GamepadButton::DPadDown, "bind.keyboard.tab_next");
+    press(&mut h, GamepadButton::DPadDown, "settings.player_name");
 
     // The footer: Down from the full-width field lands on the nearest
-    // button, Left is the other one.
-    press(&mut h, GamepadButton::DPadDown, "done");
+    // button, Right and Left walk the two.
+    press(&mut h, GamepadButton::DPadDown, "reset");
+    press(&mut h, GamepadButton::DPadRight, "done");
     press(&mut h, GamepadButton::DPadLeft, "reset");
 
     // And back: the trigger wraps to the display tab (focus outside the
@@ -321,10 +340,10 @@ fn a_gamepad_reaches_every_control_on_every_tab_from_initial_focus_and_back() {
         Some(Value::Text("display".to_owned())),
         "the trigger wrapped to the first tab"
     );
-    press(&mut h, GamepadButton::DPadUp, "colour_mode");
-    press(&mut h, GamepadButton::DPadUp, "reduced_motion");
-    press(&mut h, GamepadButton::DPadUp, "ui_scale");
-    press(&mut h, GamepadButton::DPadUp, "resolution");
+    press(&mut h, GamepadButton::DPadUp, "settings.colour_mode");
+    press(&mut h, GamepadButton::DPadUp, "settings.reduced_motion");
+    press(&mut h, GamepadButton::DPadUp, "settings.ui_scale");
+    press(&mut h, GamepadButton::DPadUp, "settings.resolution");
     // Up from a row lands on the nearest tab button, which is the one over
     // the row's middle; Left is the first tab, where the walk began.
     h.gamepad(GamepadButton::DPadUp);
@@ -344,7 +363,7 @@ fn a_gamepad_reaches_every_control_on_every_tab_from_initial_focus_and_back() {
 #[test]
 fn a_toggle_writes_on_accept_and_paints_from_a_store_write() {
     let (mut h, _) = open_settings();
-    let row = find(&h, "reduced_motion");
+    let row = find(&h, "settings.reduced_motion");
     assert_eq!(h.value("settings.reduced_motion"), Some(Value::Bool(false)));
     h.set_focus(Some(row));
     h.action(UiAction::Accept);
@@ -360,7 +379,7 @@ fn a_toggle_writes_on_accept_and_paints_from_a_store_write() {
 #[test]
 fn a_slider_writes_on_a_drag_and_paints_from_a_store_write() {
     let (mut h, _) = open_settings();
-    let row = find(&h, "ui_scale");
+    let row = find(&h, "settings.ui_scale");
     assert_eq!(h.value("settings.ui_scale"), Some(Value::Float(1.0)));
 
     // 0.5 + 2.5 * 0.4 = 1.5, on the 0.25 grid.
@@ -383,7 +402,7 @@ fn a_slider_writes_on_a_drag_and_paints_from_a_store_write() {
 #[test]
 fn the_audio_sliders_in_the_scroll_panel_write_and_read_too() {
     let (mut h, _) = open_settings();
-    let tabs = find(&h, "tabs");
+    let tabs = find(&h, "settings.tabs");
     h.switch_tab(tabs, "audio");
     assert_eq!(
         h.value("settings.tab"),
@@ -391,17 +410,17 @@ fn the_audio_sliders_in_the_scroll_panel_write_and_read_too() {
     );
     assert_eq!(h.world().get::<TabsState>(tabs).unwrap().active, 1);
 
-    let master = find(&h, "audio_master");
+    let master = find(&h, "settings.audio.master");
     h.drag_slider(master, 0.5);
     h.settle();
     assert_eq!(h.value("settings.audio.master"), Some(Value::Float(50.0)));
 
-    let music = find(&h, "audio_music");
+    let music = find(&h, "settings.audio.music");
     h.set_value("settings.audio.music", 25.0);
     h.settle();
     assert_eq!(h.world().get::<SliderState>(music).unwrap().value, 25.0);
 
-    let effects = find(&h, "audio_effects");
+    let effects = find(&h, "settings.audio.effects");
     h.set_focus(Some(effects));
     h.action(UiAction::Left);
     h.settle();
@@ -416,7 +435,7 @@ fn the_audio_sliders_in_the_scroll_panel_write_and_read_too() {
 #[test]
 fn a_select_writes_from_its_popup_and_paints_from_a_store_write() {
     let (mut h, _) = open_settings();
-    let row = find(&h, "resolution");
+    let row = find(&h, "settings.resolution");
     assert_eq!(h.world().get::<SelectState>(row).unwrap().index, 1);
 
     h.select_option(row, "2560x1440");
@@ -444,7 +463,7 @@ fn a_select_writes_from_its_popup_and_paints_from_a_store_write() {
 #[test]
 fn a_radio_group_writes_on_the_arrows_and_paints_from_a_store_write() {
     let (mut h, _) = open_settings();
-    let row = find(&h, "colour_mode");
+    let row = find(&h, "settings.colour_mode");
     h.set_focus(Some(row));
     h.action(UiAction::Right);
     h.settle();
@@ -462,9 +481,9 @@ fn a_radio_group_writes_on_the_arrows_and_paints_from_a_store_write() {
 #[test]
 fn a_text_field_writes_on_enter_and_paints_from_a_store_write() {
     let (mut h, _) = open_settings();
-    let tabs = find(&h, "tabs");
+    let tabs = find(&h, "settings.tabs");
     h.switch_tab(tabs, "controls");
-    let field = find(&h, "player_name");
+    let field = find(&h, "settings.player_name");
     assert_eq!(
         h.world().get::<TextFieldState>(field).unwrap().text,
         "Steve",
@@ -500,7 +519,7 @@ fn a_text_field_writes_on_enter_and_paints_from_a_store_write() {
 #[test]
 fn a_key_binding_row_captures_and_the_tabs_bind_the_store() {
     let (mut h, _) = open_settings();
-    let tabs = find(&h, "tabs");
+    let tabs = find(&h, "settings.tabs");
     h.set_value("settings.tab", "controls");
     h.settle();
     assert_eq!(
@@ -508,7 +527,7 @@ fn a_key_binding_row_captures_and_the_tabs_bind_the_store() {
         2,
         "a store write switches the tab"
     );
-    let row = find(&h, "bind_tab_next");
+    let row = find(&h, "bind.keyboard.tab_next");
     h.capture_key(row, KeyCode::KeyN);
     assert!(!h.world().get::<KeyBindingState>(row).unwrap().capturing);
     assert_eq!(
@@ -547,7 +566,7 @@ fn the_reset_button_writes_every_default_back_through_the_store() {
     );
     assert_eq!(
         h.world()
-            .get::<SliderState>(find(&h, "ui_scale"))
+            .get::<SliderState>(find(&h, "settings.ui_scale"))
             .unwrap()
             .value,
         1.0
@@ -561,7 +580,7 @@ fn the_reset_button_writes_every_default_back_through_the_store() {
 #[test]
 fn the_ui_scale_guard_refuses_a_drag_past_two_and_the_slider_snaps_back() {
     let (mut h, _) = open_settings();
-    let row = find(&h, "ui_scale");
+    let row = find(&h, "settings.ui_scale");
     h.set_value("settings.ui_scale", 1.5);
     h.settle();
     seen(&mut h);
@@ -616,7 +635,7 @@ fn seen_clear(h: &mut UiHarness) {
 #[test]
 fn back_closes_the_select_popup_and_a_second_back_pops_the_screen() {
     let (mut h, _) = open_settings();
-    let row = find(&h, "resolution");
+    let row = find(&h, "settings.resolution");
     h.click(row);
     h.settle();
     assert!(popup(&mut h).is_some(), "a click opens the popup");
@@ -675,9 +694,9 @@ fn the_footer_reads_the_live_bindings_for_the_input_mode() {
     // And a rebind re-renders without a mode change.
     h.set_input_mode(InputMode::Keyboard);
     h.settle();
-    let tabs = find(&h, "tabs");
+    let tabs = find(&h, "settings.tabs");
     h.switch_tab(tabs, "controls");
-    h.capture_key(find(&h, "bind_back"), KeyCode::KeyX);
+    h.capture_key(find(&h, "bind.keyboard.back"), KeyCode::KeyX);
     h.settle();
     assert_eq!(footer_glyphs(&mut h)[0], "X");
 }
@@ -689,9 +708,9 @@ fn the_footer_reads_the_live_bindings_for_the_input_mode() {
 #[test]
 fn a_rebound_accept_key_activates_a_button() {
     let (mut h, _) = open_settings();
-    let tabs = find(&h, "tabs");
+    let tabs = find(&h, "settings.tabs");
     h.switch_tab(tabs, "controls");
-    h.capture_key(find(&h, "bind_accept"), KeyCode::KeyK);
+    h.capture_key(find(&h, "bind.keyboard.accept"), KeyCode::KeyK);
     assert_eq!(
         h.world()
             .resource::<UiBindings>()
@@ -714,6 +733,18 @@ fn a_rebound_accept_key_activates_a_button() {
         vec![ScreenKind::new(SETTINGS)],
         "a plain button does not pop"
     );
+
+    // Reset is the frame's Reset: it put the bindings back, so K is Accept
+    // no longer. Bind it again for the second half.
+    assert_eq!(
+        h.world()
+            .resource::<UiBindings>()
+            .first_key(UiAction::Accept),
+        Some(KeyCode::Enter),
+        "Reset restored the default bindings"
+    );
+    h.capture_key(find(&h, "bind.keyboard.accept"), KeyCode::KeyK);
+    seen(&mut h);
 
     // The screen's `Done` button is `slotted:close`: K pops it.
     let done = find(&h, "done");

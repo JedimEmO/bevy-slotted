@@ -354,3 +354,75 @@ fn a_property_binding_seeds_from_the_menu_and_writes_back_through_set_property()
         "nothing reached the store"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Snapshot and restore (menus M2 contract 2.3)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_snapshot_round_trips_through_ron_and_restore_is_one_silent_bump() {
+    let mut app = store_app();
+    {
+        let mut store = app.world_mut().resource_mut::<ValueStore>();
+        store.insert("audio.master", 40.0);
+        store.insert("video.vsync", true);
+        store.insert("video.quality", "high");
+        store.insert("ui.scale", 2);
+    }
+    app.update();
+    drain(&mut app);
+
+    let snapshot = app.world().resource::<ValueStore>().snapshot();
+    assert_eq!(snapshot.len(), 4);
+    assert_eq!(snapshot["audio.master"], Value::Float(40.0));
+    let text = ron::to_string(&snapshot).unwrap();
+    // Untagged values: the file is plain data a hand can edit.
+    assert!(text.contains("\"audio.master\":40.0"), "{text}");
+    assert!(text.contains("\"video.vsync\":true"), "{text}");
+    assert!(text.contains("\"ui.scale\":2"), "{text}");
+    let back: std::collections::BTreeMap<String, Value> = ron::from_str(&text).unwrap();
+    assert_eq!(back, snapshot, "every variant survives the round trip");
+
+    // A fresh store with a rule and a guard that would refuse the value:
+    // `restore` bypasses both and moves the version exactly once.
+    let mut fresh = store_app();
+    rule(
+        &mut fresh,
+        "audio.master",
+        ValueRule {
+            min: Some(0.0),
+            max: Some(10.0),
+            ..ValueRule::default()
+        },
+    );
+    fresh
+        .world_mut()
+        .resource_mut::<ValueGuards>()
+        .push(|_key: &str, _proposed: &Value, _store: &ValueStore| Err("refused".to_owned()));
+    fresh
+        .world_mut()
+        .resource_mut::<ValueStore>()
+        .insert("stale", 1);
+    let before = version(&fresh);
+    fresh.world_mut().resource_mut::<ValueStore>().restore(back);
+    fresh.update();
+
+    assert_eq!(version(&fresh), before + 1, "one bump for the whole map");
+    assert_eq!(value(&fresh, "audio.master"), Some(Value::Float(40.0)));
+    assert_eq!(value(&fresh, "video.vsync"), Some(Value::Bool(true)));
+    assert_eq!(
+        value(&fresh, "video.quality"),
+        Some(Value::Text("high".to_owned()))
+    );
+    assert_eq!(value(&fresh, "ui.scale"), Some(Value::Int(2)));
+    assert_eq!(
+        value(&fresh, "stale"),
+        Some(Value::Int(1)),
+        "restore merges, it does not clear"
+    );
+    let (changed, refused) = drain(&mut fresh);
+    assert!(
+        changed.is_empty() && refused.is_empty(),
+        "no messages: {changed:?} {refused:?}"
+    );
+}

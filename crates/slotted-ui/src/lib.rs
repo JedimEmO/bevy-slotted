@@ -91,6 +91,7 @@ pub use rich::{
     resolved_glyph_set,
 };
 pub use rich::{RichKeySpan, key_glyph};
+pub use rich::{VENDOR_PLAYSTATION, VENDOR_SWITCH, resolved_glyph_set_for_vendor};
 pub use scale::{UiUnits, ui_scale_of};
 pub use screen::{
     Injection, Injections, MAX_INHERIT_DEPTH, ScreenClosed, ScreenLaidOut, ScreenLayout,

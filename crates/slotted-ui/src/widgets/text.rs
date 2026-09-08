@@ -271,6 +271,8 @@ pub fn render_rich_text(
     registries: Option<Res<slotted_ecs::Registries>>,
     mode: Res<InputMode>,
     bindings: Res<UiBindings>,
+    glyphs: Res<rich::GlyphSet>,
+    gamepads: Query<&Gamepad>,
     mut nodes: Query<(
         Entity,
         Ref<RichText>,
@@ -287,6 +289,9 @@ pub fn render_rich_text(
     let all = loc.is_changed()
         || active.as_ref().is_some_and(Res::is_changed)
         || themes.as_ref().is_some_and(Res::is_changed);
+    // The set a `{key}` run renders in; `refresh_key_glyphs` keeps it
+    // current when the set or the pads change.
+    let glyphs = rich::resolved_glyph_set(*glyphs, *mode, &gamepads);
     for (entity, rich, children, warned, runs) in &mut nodes {
         if !all && !rich.is_changed() {
             continue;
@@ -329,9 +334,7 @@ pub fn render_rich_text(
         let span_of = |run: &RichRun| -> (TextSpan, TextFont, TextColor, RichPart) {
             let text = match &run.kind {
                 RunKind::Text => run.text.clone(),
-                RunKind::Key(action) => {
-                    rich::key_glyph_text(*action, *mode, &bindings, rich::GlyphSet::Auto)
-                }
+                RunKind::Key(action) => rich::key_glyph_text(*action, *mode, &bindings, glyphs),
                 RunKind::Icon(item) => item_name(registries.as_deref(), &loc, item),
             };
             let (font, color) = palette.styled(run);

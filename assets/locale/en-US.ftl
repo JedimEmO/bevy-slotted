@@ -40,7 +40,7 @@ slotted-rail-quick_stack = Quick stack
 slotted-rail-deposit_all = Deposit all
 slotted-rail-loot_all = Loot all
 
-# The settings demo (assets/screens/demo_settings.screen.ron). Host content
+# The settings demo (`showcase::settings::spec`, a `SettingsSpec`). Host content
 # like the furnace's, so its keys live here too. The footer is rich text
 # (docs/guide/rich-text.md): the `{key:..}` placeholders resolve to the live
 # binding for the player's input mode, and a translator may use `[b]`, `[i]`

@@ -38,10 +38,46 @@ pub fn english(key: &str) -> Option<&'static str> {
     })
 }
 
+/// `text` with every `{name}` that `args` names replaced by the value's
+/// plain text (`true`, `3`, `0.5`, the string). A `{name}` nothing names
+/// stays as written, so a `{key:accept}` in a rich string reaches the
+/// markup parser untouched.
+pub fn substitute(text: &str, args: &LocArgs) -> String {
+    let mut out = text.to_owned();
+    for (name, value) in args {
+        let placeholder = format!("{{{name}}}");
+        if out.contains(&placeholder) {
+            out = out.replace(&placeholder, &slotted_ui::rich::value_text(value));
+        }
+    }
+    out
+}
+
 impl Localizer for MenuStrings {
     fn resolve(&self, key: &LocKey, args: &LocArgs) -> Option<String> {
-        // M2-IMPL: B — substitute `{name}` arguments in the English.
-        let _ = args;
-        english(&key.0).map(str::to_owned)
+        english(&key.0).map(|text| substitute(text, args))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use slotted_ui::Value;
+
+    #[test]
+    fn arguments_are_substituted_plainly() {
+        let mut args = LocArgs::new();
+        args.insert("version".to_owned(), Value::Text("1.2.0".to_owned()));
+        assert_eq!(
+            MenuStrings.resolve(&LocKey("slotted.menu.version".to_owned()), &args),
+            Some("Version 1.2.0".to_owned())
+        );
+        args.insert("action".to_owned(), Value::Int(3));
+        assert_eq!(substitute("{action} of {none}", &args), "3 of {none}");
+        assert_eq!(
+            MenuStrings.resolve(&LocKey("game.title".to_owned()), &args),
+            None
+        );
     }
 }

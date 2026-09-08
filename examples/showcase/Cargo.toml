@@ -23,7 +23,7 @@ viewport = ["slotted/viewport"]
 # `std-fs`, `x11` or `gltf-icons`. Anything that reads a directory stays in the
 # native example.
 [dependencies]
-slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "packs", "dev", "net"] }
+slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "menu", "packs", "dev", "net"] }
 slotted-model = { workspace = true }
 slotted-registry = { workspace = true }
 bevy = { version = "0.19.1", default-features = false, features = [

@@ -178,7 +178,7 @@ fn a_test_reads_and_writes_the_value_store_and_types_into_a_field() {
             t.expect_eq(t.value("settings.tab"), "controls", "the tabs bind the store")
             t.set_value("settings.player_name", "")
             t.settle()
-            t.type_into({ test_id = "player_name" }, "Ada")
+            t.type_into({ test_id = "settings.player_name" }, "Ada")
             t.settle()
             t.expect_eq(t.value("settings.player_name"), "Ada")
             t.expect_eq(t.text_of({ test_id = "title" }), "Settings")

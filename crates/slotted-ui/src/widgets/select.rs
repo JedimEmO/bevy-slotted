@@ -8,7 +8,7 @@
 
 use bevy::input_focus::tab_navigation::TabIndex;
 use bevy::input_focus::{FocusCause, InputFocus};
-use bevy::picking::events::{Click, Pointer};
+use bevy::picking::events::{Click, Pointer, Press};
 use bevy::picking::hover::Hovered;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
@@ -406,6 +406,35 @@ pub fn on_close_select_popup(
     }
     if let Some(focus) = focus.as_deref_mut() {
         focus.set(entity, FocusCause::Navigated);
+    }
+}
+
+/// Global observer on `Pointer<Press>` (menus M2 contract 2.7): a press
+/// that lands outside every open popup closes it, so a click elsewhere on
+/// the screen does not leave the popup drawn with focus moved out of it
+/// and the next `Back` popping the screen.
+///
+/// The original target is what counts: the event propagates up the tree,
+/// so this runs once per hop, and a press inside the popup or on the
+/// select's own row (whose `Click` is the toggle) leaves the popup alone.
+pub fn on_press_outside_select_popup(
+    press: On<Pointer<Press>>,
+    popups: Query<(Entity, &SelectPopup)>,
+    parents: Query<&ChildOf>,
+    mut commands: Commands,
+) {
+    if press.entity != press.original_event_target() {
+        return;
+    }
+    let target = press.original_event_target();
+    let inside = |root: Entity| target == root || parents.iter_ancestors(target).any(|a| a == root);
+    for (popup, owner) in &popups {
+        if inside(popup) || inside(owner.select) {
+            continue;
+        }
+        commands.trigger(CloseSelectPopup {
+            entity: owner.select,
+        });
     }
 }
 

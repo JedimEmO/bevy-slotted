@@ -1,6 +1,6 @@
 ---
 source: crates/slotted-test/tests/settings.rs
-assertion_line: 254
+assertion_line: 267
 expression: h.screen_tree()
 ---
 ScreenTree(
@@ -12,16 +12,16 @@ ScreenTree(
       children: [
         TreeNode(
           role: Panel,
-          test_id: Some("settings_panel"),
+          test_id: Some("settings"),
           tags: {
-            "test_id": "settings_panel",
+            "test_id": "settings",
           },
           widget: Some("slotted:panel"),
           visible: true,
           children: [
             TreeNode(
               role: Text,
-              label: Some("demo.settings.title"),
+              label: Some("slotted.menu.settings_title"),
               test_id: Some("title"),
               tags: {
                 "test_id": "title",
@@ -30,11 +30,16 @@ ScreenTree(
               visible: true,
             ),
             TreeNode(
+              role: Anchor,
+              anchor: Some("title_end"),
+              visible: false,
+            ),
+            TreeNode(
               role: Tabs,
               label: Some(""),
-              test_id: Some("tabs"),
+              test_id: Some("settings.tabs"),
               tags: {
-                "test_id": "tabs",
+                "test_id": "settings.tabs",
               },
               widget: Some("slotted:tabs"),
               visible: true,
@@ -71,61 +76,82 @@ ScreenTree(
                   ],
                 ),
                 TreeNode(
-                  role: Panel,
-                  test_id: Some("display_page"),
+                  role: ScrollView,
+                  test_id: Some("settings.display.page"),
                   tags: {
-                    "test_id": "display_page",
+                    "test_id": "settings.display.page",
                   },
-                  widget: Some("slotted:panel"),
+                  widget: Some("slotted:scroll"),
                   visible: true,
                   children: [
                     TreeNode(
-                      role: Select,
-                      label: Some("demo.settings.display.resolution"),
-                      test_id: Some("resolution"),
-                      tags: {
-                        "test_id": "resolution",
-                      },
-                      widget: Some("slotted:select"),
+                      role: Panel,
+                      widget: Some("slotted:panel"),
                       visible: true,
+                      children: [
+                        TreeNode(
+                          role: Anchor,
+                          anchor: Some("settings.display.start"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: Select,
+                          label: Some("demo.settings.display.resolution"),
+                          test_id: Some("settings.resolution"),
+                          tags: {
+                            "test_id": "settings.resolution",
+                          },
+                          widget: Some("slotted:select"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Slider,
+                          label: Some("demo.settings.display.ui_scale"),
+                          test_id: Some("settings.ui_scale"),
+                          tags: {
+                            "test_id": "settings.ui_scale",
+                          },
+                          widget: Some("slotted:slider"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Toggle,
+                          label: Some("demo.settings.display.reduced_motion"),
+                          test_id: Some("settings.reduced_motion"),
+                          tags: {
+                            "test_id": "settings.reduced_motion",
+                          },
+                          widget: Some("slotted:toggle"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: RadioGroup,
+                          label: Some("demo.settings.display.colour_mode"),
+                          test_id: Some("settings.colour_mode"),
+                          tags: {
+                            "test_id": "settings.colour_mode",
+                          },
+                          widget: Some("slotted:radio_group"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Anchor,
+                          anchor: Some("settings.display.end"),
+                          visible: false,
+                        ),
+                      ],
                     ),
                     TreeNode(
-                      role: Slider,
-                      label: Some("demo.settings.display.ui_scale"),
-                      test_id: Some("ui_scale"),
-                      tags: {
-                        "test_id": "ui_scale",
-                      },
-                      widget: Some("slotted:slider"),
-                      visible: true,
-                    ),
-                    TreeNode(
-                      role: Toggle,
-                      label: Some("demo.settings.display.reduced_motion"),
-                      test_id: Some("reduced_motion"),
-                      tags: {
-                        "test_id": "reduced_motion",
-                      },
-                      widget: Some("slotted:toggle"),
-                      visible: true,
-                    ),
-                    TreeNode(
-                      role: RadioGroup,
-                      label: Some("demo.settings.display.colour_mode"),
-                      test_id: Some("colour_mode"),
-                      tags: {
-                        "test_id": "colour_mode",
-                      },
-                      widget: Some("slotted:radio_group"),
+                      role: Custom("scrollbar"),
                       visible: true,
                     ),
                   ],
                 ),
                 TreeNode(
                   role: ScrollView,
-                  test_id: Some("audio_scroll"),
+                  test_id: Some("settings.audio.page"),
                   tags: {
-                    "test_id": "audio_scroll",
+                    "test_id": "settings.audio.page",
                   },
                   widget: Some("slotted:scroll"),
                   visible: false,
@@ -136,21 +162,22 @@ ScreenTree(
                       visible: false,
                       children: [
                         TreeNode(
+                          role: Anchor,
+                          anchor: Some("settings.audio.start"),
+                          visible: false,
+                        ),
+                        TreeNode(
                           role: Text,
                           label: Some("demo.settings.audio.volume"),
-                          test_id: Some("audio_heading_volume"),
-                          tags: {
-                            "test_id": "audio_heading_volume",
-                          },
                           widget: Some("slotted:text"),
                           visible: false,
                         ),
                         TreeNode(
                           role: Slider,
                           label: Some("demo.settings.audio.master"),
-                          test_id: Some("audio_master"),
+                          test_id: Some("settings.audio.master"),
                           tags: {
-                            "test_id": "audio_master",
+                            "test_id": "settings.audio.master",
                           },
                           widget: Some("slotted:slider"),
                           visible: false,
@@ -158,9 +185,9 @@ ScreenTree(
                         TreeNode(
                           role: Slider,
                           label: Some("demo.settings.audio.music"),
-                          test_id: Some("audio_music"),
+                          test_id: Some("settings.audio.music"),
                           tags: {
-                            "test_id": "audio_music",
+                            "test_id": "settings.audio.music",
                           },
                           widget: Some("slotted:slider"),
                           visible: false,
@@ -168,38 +195,30 @@ ScreenTree(
                         TreeNode(
                           role: Slider,
                           label: Some("demo.settings.audio.effects"),
-                          test_id: Some("audio_effects"),
+                          test_id: Some("settings.audio.effects"),
                           tags: {
-                            "test_id": "audio_effects",
+                            "test_id": "settings.audio.effects",
                           },
                           widget: Some("slotted:slider"),
                           visible: false,
                         ),
                         TreeNode(
                           role: Decor,
-                          test_id: Some("audio_sep_1"),
-                          tags: {
-                            "test_id": "audio_sep_1",
-                          },
                           widget: Some("slotted:separator"),
                           visible: false,
                         ),
                         TreeNode(
                           role: Text,
                           label: Some("demo.settings.audio.output"),
-                          test_id: Some("audio_heading_output"),
-                          tags: {
-                            "test_id": "audio_heading_output",
-                          },
                           widget: Some("slotted:text"),
                           visible: false,
                         ),
                         TreeNode(
                           role: Select,
                           label: Some("demo.settings.audio.device"),
-                          test_id: Some("audio_device"),
+                          test_id: Some("settings.audio.device"),
                           tags: {
-                            "test_id": "audio_device",
+                            "test_id": "settings.audio.device",
                           },
                           widget: Some("slotted:select"),
                           visible: false,
@@ -207,9 +226,9 @@ ScreenTree(
                         TreeNode(
                           role: Toggle,
                           label: Some("demo.settings.audio.mute_in_background"),
-                          test_id: Some("audio_mute"),
+                          test_id: Some("settings.audio.mute_in_background"),
                           tags: {
-                            "test_id": "audio_mute",
+                            "test_id": "settings.audio.mute_in_background",
                           },
                           widget: Some("slotted:toggle"),
                           visible: false,
@@ -217,40 +236,37 @@ ScreenTree(
                         TreeNode(
                           role: Toggle,
                           label: Some("demo.settings.audio.subtitles"),
-                          test_id: Some("audio_subtitles"),
+                          test_id: Some("settings.audio.subtitles"),
                           tags: {
-                            "test_id": "audio_subtitles",
+                            "test_id": "settings.audio.subtitles",
                           },
                           widget: Some("slotted:toggle"),
                           visible: false,
                         ),
                         TreeNode(
                           role: Decor,
-                          test_id: Some("audio_sep_2"),
-                          tags: {
-                            "test_id": "audio_sep_2",
-                          },
                           widget: Some("slotted:separator"),
                           visible: false,
                         ),
                         TreeNode(
                           role: Text,
                           label: Some("demo.settings.audio.accessibility"),
-                          test_id: Some("audio_heading_accessibility"),
-                          tags: {
-                            "test_id": "audio_heading_accessibility",
-                          },
                           widget: Some("slotted:text"),
                           visible: false,
                         ),
                         TreeNode(
                           role: Toggle,
                           label: Some("demo.settings.audio.mono"),
-                          test_id: Some("audio_mono"),
+                          test_id: Some("settings.audio.mono"),
                           tags: {
-                            "test_id": "audio_mono",
+                            "test_id": "settings.audio.mono",
                           },
                           widget: Some("slotted:toggle"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: Anchor,
+                          anchor: Some("settings.audio.end"),
                           visible: false,
                         ),
                       ],
@@ -262,79 +278,106 @@ ScreenTree(
                   ],
                 ),
                 TreeNode(
-                  role: Panel,
-                  test_id: Some("controls_page"),
+                  role: ScrollView,
+                  test_id: Some("settings.controls.page"),
                   tags: {
-                    "test_id": "controls_page",
+                    "test_id": "settings.controls.page",
                   },
-                  widget: Some("slotted:panel"),
+                  widget: Some("slotted:scroll"),
                   visible: false,
                   children: [
                     TreeNode(
-                      role: KeyBinding,
-                      label: Some("demo.settings.controls.accept"),
-                      test_id: Some("bind_accept"),
-                      tags: {
-                        "test_id": "bind_accept",
-                      },
-                      widget: Some("slotted:key_binding"),
-                      visible: false,
-                    ),
-                    TreeNode(
-                      role: KeyBinding,
-                      label: Some("demo.settings.controls.back"),
-                      test_id: Some("bind_back"),
-                      tags: {
-                        "test_id": "bind_back",
-                      },
-                      widget: Some("slotted:key_binding"),
-                      visible: false,
-                    ),
-                    TreeNode(
-                      role: KeyBinding,
-                      label: Some("demo.settings.controls.tab_prev"),
-                      test_id: Some("bind_tab_prev"),
-                      tags: {
-                        "test_id": "bind_tab_prev",
-                      },
-                      widget: Some("slotted:key_binding"),
-                      visible: false,
-                    ),
-                    TreeNode(
-                      role: KeyBinding,
-                      label: Some("demo.settings.controls.tab_next"),
-                      test_id: Some("bind_tab_next"),
-                      tags: {
-                        "test_id": "bind_tab_next",
-                      },
-                      widget: Some("slotted:key_binding"),
-                      visible: false,
-                    ),
-                    TreeNode(
-                      role: Decor,
-                      test_id: Some("controls_sep"),
-                      tags: {
-                        "test_id": "controls_sep",
-                      },
-                      widget: Some("slotted:separator"),
-                      visible: false,
-                    ),
-                    TreeNode(
-                      role: TextField,
-                      label: Some("demo.settings.controls.player_name"),
-                      test_id: Some("player_name"),
-                      tags: {
-                        "test_id": "player_name",
-                      },
-                      widget: Some("slotted:text_field"),
+                      role: Panel,
+                      widget: Some("slotted:panel"),
                       visible: false,
                       children: [
                         TreeNode(
-                          role: Text,
+                          role: Anchor,
+                          anchor: Some("settings.controls.start"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: KeyBinding,
+                          label: Some("demo.settings.controls.accept"),
+                          test_id: Some("bind.keyboard.accept"),
+                          tags: {
+                            "test_id": "bind.keyboard.accept",
+                          },
+                          widget: Some("slotted:key_binding"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: KeyBinding,
+                          label: Some("demo.settings.controls.back"),
+                          test_id: Some("bind.keyboard.back"),
+                          tags: {
+                            "test_id": "bind.keyboard.back",
+                          },
+                          widget: Some("slotted:key_binding"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: KeyBinding,
+                          label: Some("demo.settings.controls.tab_prev"),
+                          test_id: Some("bind.keyboard.tab_prev"),
+                          tags: {
+                            "test_id": "bind.keyboard.tab_prev",
+                          },
+                          widget: Some("slotted:key_binding"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: KeyBinding,
+                          label: Some("demo.settings.controls.tab_next"),
+                          test_id: Some("bind.keyboard.tab_next"),
+                          tags: {
+                            "test_id": "bind.keyboard.tab_next",
+                          },
+                          widget: Some("slotted:key_binding"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: Decor,
+                          widget: Some("slotted:separator"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: TextField,
                           label: Some("demo.settings.controls.player_name"),
+                          test_id: Some("settings.player_name"),
+                          tags: {
+                            "test_id": "settings.player_name",
+                          },
+                          widget: Some("slotted:text_field"),
+                          visible: false,
+                          children: [
+                            TreeNode(
+                              role: Text,
+                              label: Some("demo.settings.controls.player_name"),
+                              visible: false,
+                            ),
+                          ],
+                        ),
+                        TreeNode(
+                          role: Text,
+                          label: Some("demo.settings.footer"),
+                          test_id: Some("footer_hint"),
+                          tags: {
+                            "test_id": "footer_hint",
+                          },
+                          widget: Some("slotted:rich_text"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: Anchor,
+                          anchor: Some("settings.controls.end"),
                           visible: false,
                         ),
                       ],
+                    ),
+                    TreeNode(
+                      role: Custom("scrollbar"),
+                      visible: false,
                     ),
                   ],
                 ),
@@ -342,10 +385,6 @@ ScreenTree(
             ),
             TreeNode(
               role: Decor,
-              test_id: Some("footer_sep"),
-              tags: {
-                "test_id": "footer_sep",
-              },
               widget: Some("slotted:separator"),
               visible: true,
             ),
@@ -359,39 +398,25 @@ ScreenTree(
               visible: true,
               children: [
                 TreeNode(
-                  role: Decor,
-                  label: Some("icons/hint_info.png"),
-                  test_id: Some("footer_icon"),
+                  role: Custom("hint_bar"),
+                  test_id: Some("hints"),
                   tags: {
-                    "test_id": "footer_icon",
+                    "test_id": "hints",
                   },
-                  widget: Some("slotted:image"),
-                  visible: true,
-                ),
-                TreeNode(
-                  role: Text,
-                  label: Some("demo.settings.footer"),
-                  test_id: Some("footer_hint"),
-                  tags: {
-                    "test_id": "footer_hint",
-                  },
-                  widget: Some("slotted:rich_text"),
+                  widget: Some("slotted:hint_bar"),
                   visible: true,
                 ),
                 TreeNode(
                   role: Decor,
-                  test_id: Some("footer_spacer"),
-                  tags: {
-                    "test_id": "footer_spacer",
-                  },
                   widget: Some("slotted:spacer"),
                   visible: false,
                 ),
                 TreeNode(
                   role: Button,
-                  label: Some("demo.settings.reset"),
+                  label: Some("slotted.menu.reset"),
                   test_id: Some("reset"),
                   tags: {
+                    "menu": "reset",
                     "test_id": "reset",
                   },
                   widget: Some("slotted:button"),
@@ -399,7 +424,7 @@ ScreenTree(
                 ),
                 TreeNode(
                   role: Button,
-                  label: Some("demo.settings.done"),
+                  label: Some("slotted.menu.done"),
                   test_id: Some("done"),
                   tags: {
                     "test_id": "done",

@@ -196,7 +196,6 @@ fn setup_screen(
         assets.load(format!("themes/{}.theme.ron", cli.theme)),
     ));
     screen_assets.load(&assets, chest::SCREEN_PATH);
-    screen_assets.load(&assets, showcase::settings::SCREEN_PATH);
 }
 
 /// Opens the chest the first frame `demo:chest` is registered, which is the

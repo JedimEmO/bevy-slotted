@@ -19,10 +19,6 @@ pub const CHEST_SCREEN_RON: &str = include_str!("../../../assets/screens/demo_ch
 /// `examples/machine/screens/furnace.screen.ron`, the machine scene.
 pub const FURNACE_SCREEN_RON: &str = include_str!("../../machine/screens/furnace.screen.ron");
 
-/// `assets/screens/demo_settings.screen.ron`, the settings demo.
-pub const SETTINGS_SCREEN_RON: &str =
-    include_str!("../../../assets/screens/demo_settings.screen.ron");
-
 /// Parses one of the constants above.
 ///
 /// # Panics
@@ -46,10 +42,6 @@ mod tests {
         assert_eq!(
             parse("furnace", FURNACE_SCREEN_RON).kind.0.to_string(),
             "machine:furnace"
-        );
-        assert_eq!(
-            parse("settings", SETTINGS_SCREEN_RON).kind.0.to_string(),
-            "demo:settings"
         );
     }
 }

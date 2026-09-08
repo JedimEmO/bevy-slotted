@@ -325,21 +325,27 @@ pub struct RichRuns(pub Vec<RichRun>);
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RichKeySpan(pub UiAction);
 
-/// `SlottedUiSet::Render`: re-renders `{key:..}` runs when [`InputMode`]
-/// or [`UiBindings`] changes.
+/// `SlottedUiSet::Render`: re-renders `{key:..}` runs when [`InputMode`],
+/// [`UiBindings`] or [`GlyphSet`] changes, or a gamepad connects (menus M2
+/// contract 2.4: `Auto` may now resolve to another vendor's set).
 ///
 /// [`InputMode`]: crate::actions::InputMode
 /// [`UiBindings`]: crate::actions::UiBindings
 pub fn refresh_key_glyphs(
     mode: Res<crate::actions::InputMode>,
     bindings: Res<crate::actions::UiBindings>,
+    set: Res<GlyphSet>,
+    gamepads: Query<&Gamepad>,
+    mut connections: MessageReader<bevy::input::gamepad::GamepadConnectionEvent>,
     mut spans: Query<(&RichKeySpan, &mut TextSpan)>,
 ) {
-    if !mode.is_changed() && !bindings.is_changed() {
+    let connected = connections.read().count() > 0;
+    if !mode.is_changed() && !bindings.is_changed() && !set.is_changed() && !connected {
         return;
     }
+    let set = resolved_glyph_set(*set, *mode, &gamepads);
     for (key, mut span) in &mut spans {
-        let want = key_glyph_text(key.0, *mode, &bindings, GlyphSet::Auto);
+        let want = key_glyph_text(key.0, *mode, &bindings, set);
         if span.0 != want {
             span.0 = want;
         }
@@ -349,7 +355,9 @@ pub fn refresh_key_glyphs(
 /// The text a `{key:action}` run shows for the action's first binding on
 /// the current device: `Enter`, `Esc`, `A`, `D-pad ↑`. The pointer mode
 /// shows the keyboard binding, since a mouse has none; an unbound action
-/// shows its own name.
+/// shows its own name. `set` names the pad's button family; `Auto` reads as
+/// Xbox here, so a caller resolves it first through [`resolved_glyph_set`].
+/// [`GlyphSet::Keyboard`] shows the keyboard binding in gamepad mode too.
 pub fn key_glyph_text(
     action: UiAction,
     mode: crate::actions::InputMode,
@@ -357,9 +365,12 @@ pub fn key_glyph_text(
     set: GlyphSet,
 ) -> String {
     use crate::actions::InputMode;
-    let glyph = match mode {
-        InputMode::Gamepad => bindings.first_button(action).map(|b| button_glyph(b, set)),
-        InputMode::Keyboard | InputMode::Pointer => bindings.first_key(action).map(key_glyph),
+    let glyph = match (mode, set) {
+        (InputMode::Gamepad, GlyphSet::Keyboard)
+        | (InputMode::Keyboard | InputMode::Pointer, _) => {
+            bindings.first_key(action).map(key_glyph)
+        }
+        (InputMode::Gamepad, set) => bindings.first_button(action).map(|b| button_glyph(b, set)),
     };
     glyph.unwrap_or_else(|| action.as_str().to_owned())
 }
@@ -383,16 +394,38 @@ pub enum GlyphSet {
     Generic,
 }
 
-/// Resolves `Auto` from the connected pads (menus M2 contract 2.4).
+/// The USB vendor id Sony's pads report.
+pub const VENDOR_PLAYSTATION: u16 = 0x054C;
+/// The USB vendor id Nintendo's pads report.
+pub const VENDOR_SWITCH: u16 = 0x057E;
+
+/// Resolves `Auto` from the connected pads (menus M2 contract 2.4): the
+/// first `Gamepad` in query order names the vendor. Every other set is
+/// returned as it is; `mode` is not consulted (a keyboard-mode hint bar
+/// still names the pad's buttons for its gamepad rows).
 pub fn resolved_glyph_set(
     set: GlyphSet,
     mode: crate::actions::InputMode,
     gamepads: &Query<&Gamepad>,
 ) -> GlyphSet {
-    // M2-IMPL: A — vendor ids: 0x054C PlayStation, 0x057E Switch.
-    let _ = (mode, gamepads);
+    let _ = mode;
     match set {
-        GlyphSet::Auto => GlyphSet::Xbox,
+        GlyphSet::Auto => {
+            resolved_glyph_set_for_vendor(set, gamepads.iter().next().and_then(Gamepad::vendor_id))
+        }
+        other => other,
+    }
+}
+
+/// [`resolved_glyph_set`] with the vendor id in hand: `0x054C` is
+/// `PlayStation`, `0x057E` is `Switch`, anything else (or no pad) is Xbox.
+pub fn resolved_glyph_set_for_vendor(set: GlyphSet, vendor: Option<u16>) -> GlyphSet {
+    match set {
+        GlyphSet::Auto => match vendor {
+            Some(VENDOR_PLAYSTATION) => GlyphSet::PlayStation,
+            Some(VENDOR_SWITCH) => GlyphSet::Switch,
+            _ => GlyphSet::Xbox,
+        },
         other => other,
     }
 }
@@ -451,32 +484,68 @@ pub fn key_glyph(key: KeyCode) -> String {
     name
 }
 
-/// A gamepad button's display text in `set` (`Auto` reads as Xbox here; the
-/// caller resolves it first through [`resolved_glyph_set`]).
+/// A gamepad button's display text in `set` (`Auto` and `Keyboard` read as
+/// Xbox here; the caller resolves `Auto` first through
+/// [`resolved_glyph_set`], and `Keyboard` is [`key_glyph_text`]'s to
+/// honour). `Generic` uses Bevy's own names, so it never claims a face
+/// button's colour or letter.
 pub fn button_glyph(button: bevy::input::gamepad::GamepadButton, set: GlyphSet) -> String {
     use bevy::input::gamepad::GamepadButton as G;
-    // M2-IMPL: A — PlayStation, Switch and Generic tables.
-    let _ = set;
-    match button {
-        G::South => "A".to_owned(),
-        G::East => "B".to_owned(),
-        G::West => "X".to_owned(),
-        G::North => "Y".to_owned(),
-        G::LeftTrigger => "LB".to_owned(),
-        G::RightTrigger => "RB".to_owned(),
-        G::LeftTrigger2 => "LT".to_owned(),
-        G::RightTrigger2 => "RT".to_owned(),
-        G::LeftThumb => "L3".to_owned(),
-        G::RightThumb => "R3".to_owned(),
-        G::DPadUp => "D-pad ↑".to_owned(),
-        G::DPadDown => "D-pad ↓".to_owned(),
-        G::DPadLeft => "D-pad ←".to_owned(),
-        G::DPadRight => "D-pad →".to_owned(),
-        G::Start => "Start".to_owned(),
-        G::Select => "Select".to_owned(),
-        G::Mode => "Home".to_owned(),
-        other => format!("{other:?}"),
-    }
+    let shared = match button {
+        G::LeftThumb => Some("L3"),
+        G::RightThumb => Some("R3"),
+        G::DPadUp => Some("D-pad ↑"),
+        G::DPadDown => Some("D-pad ↓"),
+        G::DPadLeft => Some("D-pad ←"),
+        G::DPadRight => Some("D-pad →"),
+        _ => None,
+    };
+    let named = match set {
+        GlyphSet::Generic => None,
+        GlyphSet::PlayStation => match button {
+            G::South => Some("✕"),
+            G::East => Some("○"),
+            G::West => Some("□"),
+            G::North => Some("△"),
+            G::LeftTrigger => Some("L1"),
+            G::RightTrigger => Some("R1"),
+            G::LeftTrigger2 => Some("L2"),
+            G::RightTrigger2 => Some("R2"),
+            G::Start => Some("Options"),
+            G::Select => Some("Share"),
+            G::Mode => Some("PS"),
+            _ => shared,
+        },
+        GlyphSet::Switch => match button {
+            G::South => Some("B"),
+            G::East => Some("A"),
+            G::West => Some("Y"),
+            G::North => Some("X"),
+            G::LeftTrigger => Some("L"),
+            G::RightTrigger => Some("R"),
+            G::LeftTrigger2 => Some("ZL"),
+            G::RightTrigger2 => Some("ZR"),
+            G::Start => Some("+"),
+            G::Select => Some("−"),
+            G::Mode => Some("Home"),
+            _ => shared,
+        },
+        GlyphSet::Auto | GlyphSet::Keyboard | GlyphSet::Xbox => match button {
+            G::South => Some("A"),
+            G::East => Some("B"),
+            G::West => Some("X"),
+            G::North => Some("Y"),
+            G::LeftTrigger => Some("LB"),
+            G::RightTrigger => Some("RB"),
+            G::LeftTrigger2 => Some("LT"),
+            G::RightTrigger2 => Some("RT"),
+            G::Start => Some("☰"),
+            G::Select => Some("⧉"),
+            G::Mode => Some("Home"),
+            _ => shared,
+        },
+    };
+    named.map_or_else(|| format!("{button:?}"), str::to_owned)
 }
 
 /// Registers the rich text systems.

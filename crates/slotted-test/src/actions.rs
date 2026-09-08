@@ -450,6 +450,16 @@ impl UiHarness {
             .unwrap_or_default()
     }
 
+    /// The kind of the topmost non-overlay screen on the `ScreenStack`,
+    /// `None` when nothing is open (menus M2 contract 2.8). An overlay
+    /// (a HUD layer) never counts as the top, matching
+    /// [`ScreenStack::top`].
+    pub fn stack_top(&self) -> Option<ScreenKind> {
+        self.world()
+            .get_resource::<ScreenStack>()
+            .and_then(|s| s.top().map(|e| e.kind.clone()))
+    }
+
     /// What the focus ring is doing. The default (no target, hidden) when
     /// the app spawned no ring (`SlottedUiConfig::spawn_layers` off).
     pub fn focus_ring(&mut self) -> FocusRingState {

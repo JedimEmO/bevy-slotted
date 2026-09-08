@@ -608,6 +608,75 @@ fn a_mod_locale_layers_over_the_base_and_a_missing_key_falls_back() {
     );
 }
 
+/// A library's English defaults (menus M2 contract 2.1).
+struct EnglishDefaults;
+
+impl slotted_ui::Localizer for EnglishDefaults {
+    fn resolve(&self, key: &LocKey, _args: &slotted_ui::LocArgs) -> Option<String> {
+        match key.0.as_str() {
+            "slotted.menu.resume" => Some("Resume".to_owned()),
+            // The fixture's `.ftl` defines this too; the pack must win.
+            "beta-item" => Some("Fallback gem".to_owned()),
+            _ => None,
+        }
+    }
+}
+
+#[test]
+fn a_pushed_fallback_survives_a_pack_install_and_a_reload() {
+    let root = scratch("locale-fallback");
+    copy_dir(&fixtures(), &root);
+    let mut harness = harness_at(&root);
+    // A `Localization` from before any pack loaded, with a library's
+    // defaults pushed under it.
+    harness
+        .app
+        .world_mut()
+        .get_resource_or_init::<slotted_ui::Localization>()
+        .push_fallback(EnglishDefaults);
+    harness.run_all();
+
+    let resolve = |harness: &Harness, key: &str| {
+        harness
+            .app
+            .world()
+            .resource::<slotted_ui::Localization>()
+            .resolve(&LocKey(key.to_owned()))
+    };
+    // The pack's catalogue is the primary; the fallback answers what the
+    // pack does not define and nothing the pack does.
+    assert_eq!(
+        resolve(&harness, "beta-item").as_deref(),
+        Some("Shiny gem"),
+        "the pack's layer sits over the fallback"
+    );
+    assert_eq!(
+        resolve(&harness, "slotted.menu.resume").as_deref(),
+        Some("Resume"),
+        "the fallback survives the install"
+    );
+    assert_eq!(resolve(&harness, "nobody.defines.me"), None);
+    assert_eq!(
+        harness
+            .app
+            .world()
+            .resource::<slotted_ui::Localization>()
+            .fallbacks
+            .len(),
+        1
+    );
+
+    // A reload swaps the primary again and keeps the fallback.
+    ModLoader::reload_mod(harness.app.world_mut(), &mod_id("beta")).expect("the reload succeeds");
+    assert_eq!(resolve(&harness, "beta-item").as_deref(), Some("Shiny gem"));
+    assert_eq!(
+        resolve(&harness, "slotted.menu.resume").as_deref(),
+        Some("Resume")
+    );
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
 #[test]
 fn a_script_registered_recipe_type_gets_a_browser_category() {
     let mut harness = harness();

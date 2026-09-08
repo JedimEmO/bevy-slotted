@@ -1,95 +1,209 @@
-//! The settings demo (menus M1, package D): every M1 control on one modal
-//! screen, bound to a `ValueStore` this module seeds, rules and guards.
+//! The settings demo (menus M2, package C): every M1 control on the
+//! `slotted:settings` frame, generated from a [`SettingsSpec`] rather than
+//! read from a screen file.
 //!
 //! What a game supplies for a settings screen is exactly what is here: the
-//! screen file (`assets/screens/demo_settings.screen.ron`, compiled in
-//! through [`crate::screens`]), the initial values, the ranges and option
-//! lists the store enforces, a [`ValueGuard`] for the rule a range cannot
-//! express, and an observer on the one plain button. The controls own no
-//! value: each paints what the store holds and writes a `SetValue` the store
-//! may refuse (docs/guide/values.md).
+//! spec ([`spec`]), a [`ValueGuard`] for the rule a range cannot express,
+//! and a `Settings` resource. `MenuPlugin` does the rest: it generates the
+//! `demo:settings` screen over the frame, seeds the store with the saved
+//! values over the defaults, installs the rules the rows imply, saves on
+//! every change when a `SettingsStorage` is present, and answers the
+//! frame's Reset button. The controls own no value: each paints what the
+//! store holds and writes a `SetValue` the store may refuse
+//! (docs/guide/values.md).
 //!
-//! The chest example opens it over the chest with `Menu` (Tab, or Start on
-//! a pad); a test opens it with `UiHarness::open`. It is a fixture for the
-//! harness and the showcase, not yet the M2 settings template.
+//! The chest example opens it over the chest with `Menu`; a test opens it
+//! with `UiHarness::open`.
 
 use bevy::prelude::*;
-use bevy::ui_widgets::Activate;
+use slotted::menu::{MenuPlugin, Settings, SettingsRow, SettingsSpec};
 use slotted::packs::Locales;
 use slotted::packs::locale::LocaleTable;
 use slotted::prelude::*;
 use slotted::ui::{
-    LocKey, Localization, SetValue, TestId, UiActionEvent, Value, ValueGuard, ValueGuards,
-    ValueRule, ValueRules, ValueStore,
+    InputDevice, LocKey, Localization, SelectOption, Tags, TextOpts, TextRole, ToggleStyle,
+    UiActionEvent, UiNodeDef, Value, ValueGuard, ValueGuards, ValueStore,
 };
+use std::collections::BTreeMap;
 
 /// The screen this module opens.
 pub const SETTINGS: &str = "demo:settings";
 
-/// The screen file, relative to the asset root.
-pub const SCREEN_PATH: &str = "screens/demo_settings.screen.ron";
-
-/// The most a player may scale the UI to. A slider's own `max` is 3.0, so
+/// The most a player may scale the UI to. The slider's own `max` is 3.0, so
 /// the store has something to refuse: a drag past this snaps back.
 pub const MAX_UI_SCALE: f64 = 2.0;
 
-/// The compiled-in `demo:settings` screen.
-pub fn screen() -> ScreenDef {
-    crate::screens::parse("settings", crate::screens::SETTINGS_SCREEN_RON)
+fn key(s: &str) -> LocKey {
+    LocKey(s.to_owned())
 }
 
-/// Every `settings.*` key with its default. The seed, and what `Reset`
-/// writes back.
-pub fn defaults() -> Vec<(&'static str, Value)> {
-    vec![
-        ("settings.tab", Value::Text("display".to_owned())),
-        ("settings.resolution", Value::Text("1920x1080".to_owned())),
-        ("settings.ui_scale", Value::Float(1.0)),
-        ("settings.reduced_motion", Value::Bool(false)),
-        ("settings.colour_mode", Value::Text("normal".to_owned())),
-        ("settings.audio.master", Value::Float(80.0)),
-        ("settings.audio.music", Value::Float(60.0)),
-        ("settings.audio.effects", Value::Float(100.0)),
-        ("settings.audio.device", Value::Text("auto".to_owned())),
-        ("settings.audio.mute_in_background", Value::Bool(true)),
-        ("settings.audio.subtitles", Value::Bool(false)),
-        ("settings.audio.mono", Value::Bool(false)),
-        ("settings.player_name", Value::Text("Steve".to_owned())),
-    ]
+fn option(id: &str, label: &str) -> SelectOption {
+    SelectOption {
+        id: id.to_owned(),
+        label: key(label),
+    }
 }
 
-/// The ranges and option lists the store enforces, whatever writes: a Lua
-/// `set_value`, a harness, or a control.
-pub fn rules() -> Vec<(&'static str, ValueRule)> {
-    let options = |ids: &[&str]| ValueRule {
-        options: ids.iter().map(|id| (*id).to_owned()).collect(),
-        ..ValueRule::default()
+/// The demo's settings: three tabs, every M1 control, the same `settings.*`
+/// keys the M1 fixture bound.
+pub fn spec() -> SettingsSpec {
+    controls_tab(audio_tab(display_tab(SettingsSpec::new(ScreenKind::new(
+        SETTINGS,
+    )))))
+}
+
+/// Display: one of each value control.
+fn display_tab(spec: SettingsSpec) -> SettingsSpec {
+    spec.tab("display", "demo.settings.tab.display")
+        .row(SettingsRow::Select {
+            key: "settings.resolution".to_owned(),
+            label: key("demo.settings.display.resolution"),
+            options: vec![
+                option("1280x720", "demo.settings.resolution.hd"),
+                option("1920x1080", "demo.settings.resolution.fhd"),
+                option("2560x1440", "demo.settings.resolution.qhd"),
+            ],
+            default: "1920x1080".to_owned(),
+        })
+        .row(SettingsRow::Slider {
+            key: "settings.ui_scale".to_owned(),
+            label: key("demo.settings.display.ui_scale"),
+            min: 0.5,
+            max: 3.0,
+            step: 0.25,
+            default: 1.0,
+            format: "{value:.2}×".to_owned(),
+        })
+        .row(SettingsRow::Toggle {
+            key: "settings.reduced_motion".to_owned(),
+            label: key("demo.settings.display.reduced_motion"),
+            default: false,
+            style: ToggleStyle::Switch,
+        })
+        .row(SettingsRow::Radio {
+            key: "settings.colour_mode".to_owned(),
+            label: key("demo.settings.display.colour_mode"),
+            options: vec![
+                option("normal", "demo.settings.colour.normal"),
+                option("deuteranopia", "demo.settings.colour.deuteranopia"),
+                option("high_contrast", "demo.settings.colour.high_contrast"),
+            ],
+            default: "normal".to_owned(),
+        })
+}
+
+/// Audio: twelve rows, three of them sliders.
+fn audio_tab(spec: SettingsSpec) -> SettingsSpec {
+    let volume = |k: &str, label: &str, default: f64| SettingsRow::Slider {
+        key: k.to_owned(),
+        label: key(label),
+        min: 0.0,
+        max: 100.0,
+        step: 5.0,
+        default,
+        format: "{value}%".to_owned(),
     };
-    let range = |min: f64, max: f64, step: f64| ValueRule {
-        min: Some(min),
-        max: Some(max),
-        step: Some(step),
-        options: Vec::new(),
+    let toggle = |k: &str, label: &str, default: bool, style: ToggleStyle| SettingsRow::Toggle {
+        key: k.to_owned(),
+        label: key(label),
+        default,
+        style,
     };
-    vec![
-        ("settings.tab", options(&["display", "audio", "controls"])),
-        (
-            "settings.resolution",
-            options(&["1280x720", "1920x1080", "2560x1440"]),
-        ),
-        ("settings.ui_scale", range(0.5, 3.0, 0.25)),
-        (
-            "settings.colour_mode",
-            options(&["normal", "deuteranopia", "high_contrast"]),
-        ),
-        ("settings.audio.master", range(0.0, 100.0, 5.0)),
-        ("settings.audio.music", range(0.0, 100.0, 5.0)),
-        ("settings.audio.effects", range(0.0, 100.0, 5.0)),
-        (
-            "settings.audio.device",
-            options(&["auto", "speakers", "headphones"]),
-        ),
-    ]
+    spec.tab("audio", "demo.settings.tab.audio")
+        .row(SettingsRow::Heading(key("demo.settings.audio.volume")))
+        .row(volume(
+            "settings.audio.master",
+            "demo.settings.audio.master",
+            80.0,
+        ))
+        .row(volume(
+            "settings.audio.music",
+            "demo.settings.audio.music",
+            60.0,
+        ))
+        .row(volume(
+            "settings.audio.effects",
+            "demo.settings.audio.effects",
+            100.0,
+        ))
+        .row(SettingsRow::Separator)
+        .row(SettingsRow::Heading(key("demo.settings.audio.output")))
+        .row(SettingsRow::Select {
+            key: "settings.audio.device".to_owned(),
+            label: key("demo.settings.audio.device"),
+            options: vec![
+                option("auto", "demo.settings.device.auto"),
+                option("speakers", "demo.settings.device.speakers"),
+                option("headphones", "demo.settings.device.headphones"),
+            ],
+            default: "auto".to_owned(),
+        })
+        .row(toggle(
+            "settings.audio.mute_in_background",
+            "demo.settings.audio.mute_in_background",
+            true,
+            ToggleStyle::Switch,
+        ))
+        .row(toggle(
+            "settings.audio.subtitles",
+            "demo.settings.audio.subtitles",
+            false,
+            ToggleStyle::Checkbox,
+        ))
+        .row(SettingsRow::Separator)
+        .row(SettingsRow::Heading(key(
+            "demo.settings.audio.accessibility",
+        )))
+        .row(toggle(
+            "settings.audio.mono",
+            "demo.settings.audio.mono",
+            false,
+            ToggleStyle::Checkbox,
+        ))
+}
+
+/// Controls: four keyboard bindings, a name, and a custom row: a rich-text
+/// hint whose `{key:..}` glyphs follow the live bindings.
+fn controls_tab(spec: SettingsSpec) -> SettingsSpec {
+    let binding = |action: UiAction, label: &str| SettingsRow::Binding {
+        action,
+        device: InputDevice::Keyboard,
+        label: Some(key(label)),
+    };
+    spec.tab("controls", "demo.settings.tab.controls")
+        .row(binding(UiAction::Accept, "demo.settings.controls.accept"))
+        .row(binding(UiAction::Back, "demo.settings.controls.back"))
+        .row(binding(
+            UiAction::TabPrev,
+            "demo.settings.controls.tab_prev",
+        ))
+        .row(binding(
+            UiAction::TabNext,
+            "demo.settings.controls.tab_next",
+        ))
+        .row(SettingsRow::Separator)
+        .row(SettingsRow::Text {
+            key: "settings.player_name".to_owned(),
+            label: key("demo.settings.controls.player_name"),
+            default: "Steve".to_owned(),
+            placeholder: Some(key("demo.settings.controls.player_name_hint")),
+            max_len: Some(16),
+        })
+        .row(SettingsRow::Custom(UiNodeDef::RichText {
+            key: key("demo.settings.footer"),
+            style: TextRole::Muted,
+            opts: TextOpts {
+                wrap: false,
+                ..TextOpts::default()
+            },
+            tags: Tags::new().with(Tags::TEST_ID, "footer_hint"),
+        }))
+}
+
+/// Every `settings.*` key with its default: the seed, and what `Reset`
+/// writes back. Derived from [`spec`].
+pub fn defaults() -> BTreeMap<String, Value> {
+    spec().defaults()
 }
 
 /// Refuses a UI scale above [`MAX_UI_SCALE`]. The slider's range goes to
@@ -110,48 +224,30 @@ impl ValueGuard for UiScaleGuard {
     }
 }
 
-/// Registers the screen, seeds the store, installs the rules and the guard,
-/// and gives the `Reset` button something to do.
+/// Inserts the [`Settings`] resource, the guard and the base locale, and
+/// makes sure `MenuPlugin` is there to turn the spec into a screen.
 ///
-/// The base locale is loaded too, from the compiled-in
-/// `assets/locale/en-US.ftl`, unless a `Localization` is already present:
-/// the settings labels and the footer's `{key:..}` placeholders are Fluent
-/// strings, and a game with no mods installed has nothing else that reads
-/// the file. A pack install layers the mods' catalogues over the same base.
+/// The base locale is loaded from the compiled-in `assets/locale/en-US.ftl`
+/// unless a `Localization` is already present: the settings labels and the
+/// footer's `{key:..}` placeholders are Fluent strings, and a game with no
+/// mods installed has nothing else that reads the file. A pack install
+/// layers the mods' catalogues over the same base.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SettingsDemoPlugin;
 
 impl Plugin for SettingsDemoPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (register_screen, seed_store, install_locale))
-            .add_observer(on_reset);
-    }
-}
-
-/// `Startup`: the compiled-in definition. The windowed example's
-/// `AssetServer` load replaces it a frame later with the bytes on disk, so
-/// the file stays hot-reloadable.
-pub fn register_screen(mut screens: ResMut<Screens>) {
-    if screens.get(&ScreenKind::new(SETTINGS)).is_none() {
-        screens.register(screen());
-    }
-}
-
-/// `Startup`: defaults, rules and the guard. A key the game already seeded
-/// is left alone, so a saved settings file wins over the defaults.
-pub fn seed_store(
-    mut store: ResMut<ValueStore>,
-    mut rule_table: ResMut<ValueRules>,
-    mut guards: ResMut<ValueGuards>,
-) {
-    for (key, value) in defaults() {
-        if store.get(key).is_none() {
-            store.insert(key, value);
+        if !app.is_plugin_added::<MenuPlugin>() {
+            app.add_plugins(MenuPlugin);
         }
+        app.insert_resource(Settings { spec: spec() })
+            .add_systems(Startup, (install_guard, install_locale));
     }
-    for (key, rule) in rules() {
-        rule_table.insert(key, rule);
-    }
+}
+
+/// `Startup`: the guard. The defaults and the rules come from the spec
+/// through `MenuPlugin`.
+pub fn install_guard(mut guards: ResMut<ValueGuards>) {
     guards.push(UiScaleGuard);
 }
 
@@ -177,24 +273,6 @@ pub fn install_locale(mut commands: Commands, existing: Option<Res<Localization>
     commands.insert_resource(locales);
 }
 
-/// The `Reset` button: every default written back through the store, so the
-/// rules, the guard and every bound control see it as an ordinary change.
-fn on_reset(activate: On<Activate>, ids: Query<&TestId>, mut writes: MessageWriter<SetValue>) {
-    if ids.get(activate.entity).map(|id| id.0.as_str()) != Ok("reset") {
-        return;
-    }
-    for (key, value) in defaults() {
-        if key == "settings.tab" {
-            continue;
-        }
-        writes.write(SetValue {
-            key: key.to_owned(),
-            value,
-            source: Some(activate.entity),
-        });
-    }
-}
-
 /// Pushes the settings screen as a modal over whatever is open. Nothing
 /// happens when it is already the top of the stack.
 pub fn open_settings(commands: &mut Commands) {
@@ -216,9 +294,9 @@ pub fn open_settings(commands: &mut Commands) {
     });
 }
 
-/// `SlottedUiSet::Input`: an unclaimed `Menu` action (Tab, or Start on a
-/// pad) opens the settings screen and claims the action. `Back` pops it
-/// through the stack like any other entry.
+/// `SlottedUiSet::Input`: an unclaimed `Menu` action opens the settings
+/// screen and claims the action. `Back` pops it through the stack like any
+/// other entry.
 pub fn open_settings_on_menu(
     mut actions: MessageReader<UiActionEvent>,
     mut claims: ResMut<slotted::ui::UiActionClaims>,
@@ -255,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn every_default_has_a_rule_or_is_a_free_value_and_the_guard_refuses_past_the_limit() {
+    fn the_spec_declares_the_m1_keys_and_the_guard_refuses_past_the_limit() {
         let store = ValueStore::default();
         assert!(
             UiScaleGuard
@@ -272,9 +350,28 @@ mod tests {
                 .check("settings.audio.master", &Value::Float(100.0), &store)
                 .is_ok()
         );
-        let rules = rules();
-        for (key, value) in defaults() {
-            if let Some((_, rule)) = rules.iter().find(|(k, _)| *k == key)
+        let spec = spec();
+        assert_eq!(
+            spec.keys(),
+            vec![
+                "settings.audio.device",
+                "settings.audio.effects",
+                "settings.audio.master",
+                "settings.audio.mono",
+                "settings.audio.music",
+                "settings.audio.mute_in_background",
+                "settings.audio.subtitles",
+                "settings.colour_mode",
+                "settings.player_name",
+                "settings.reduced_motion",
+                "settings.resolution",
+                "settings.ui_scale",
+            ]
+        );
+        assert_eq!(spec.tab_key(), "settings.tab");
+        let rules = spec.rules();
+        for (key, value) in spec.defaults() {
+            if let Some(rule) = rules.get(&key)
                 && !rule.options.is_empty()
             {
                 let id = value.as_str().expect("an option default is text");

@@ -238,7 +238,35 @@
         "text.icon": Text(color: "$warm", size: "$body", weight: 600),
         "text.inverse": Text(color: "$base", size: "$label", weight: 600),
         "control.label": Text(color: "$text", size: "$body"),
+        // Labels on an accent fill (`button.primary`, `tab.active`, ...):
+        // the same size and font as at rest, only the colour flips.
+        "control.label.inverse": Text(color: "$base", size: "$body", weight: 600),
+        "text.label.inverse": Text(color: "$base", size: "$label", weight: 600),
         "button.danger": Solid(fill: "#FF6B6B33", border: "$danger", radius: 8.0),
+        // Menus M2: the primary and danger buttons keep their fill through
+        // focus, hover and press (a menu's focused button is usually the
+        // primary one), and say so with the border and a shade.
+        "button.primary.hover": Gradient(
+            angle: 180.0,
+            stops: [(0.0, "#9ADDFF"), (1.0, "#6FBFEF")],
+            border: "#FFFFFF80",
+            radius: 8.0,
+        ),
+        "button.primary.focus": Gradient(
+            angle: 180.0,
+            stops: [(0.0, "#9ADDFF"), (1.0, "#6FBFEF")],
+            border: "#FFFFFFCC",
+            radius: 8.0,
+        ),
+        "button.primary.pressed": Gradient(
+            angle: 180.0,
+            stops: [(0.0, "#5AAEE0"), (1.0, "#4A94C4")],
+            border: "#FFFFFF33",
+            radius: 8.0,
+        ),
+        "button.danger.hover": Solid(fill: "#FF6B6B59", border: "$danger", radius: 8.0),
+        "button.danger.focus": Solid(fill: "#FF6B6B59", border: "#FFFFFFCC", radius: 8.0),
+        "button.danger.pressed": Solid(fill: "#FF6B6B80", border: "$danger", radius: 8.0),
         "button.focus": Solid(fill: "#243447E6", border: "$accent", radius: 8.0),
         "button.pressed": Solid(fill: "#0B0E14E6", border: "$accent", radius: 8.0),
         "button.disabled": Solid(fill: "#1B233066", border: "#2A344666", radius: 8.0),
@@ -291,7 +319,10 @@
         "toast.error": Glass(tint: "#141A24E6", border: "$danger", radius: 12.0, elevation: "mid"),
         "toast.text": Text(color: "$text", size: "$body"),
         "hint.bar": Solid(fill: "#00000000"),
-        "hint.glyph": Text(color: "$base", size: "$caption", font: "display", weight: 700),
+        // The glyph is an accent pill; its text is `hint.glyph.text`, which
+        // a theme that draws the glyph as bare text leaves undefined.
+        "hint.glyph": Solid(fill: "$accent", radius: 999.0),
+        "hint.glyph.text": Text(color: "$base", size: "$caption", font: "display", weight: 700),
         "hint.label": Text(color: "$muted", size: "$caption"),
         "menu.title": Text(color: "$text", size: "$display"),
         "menu.version": Text(color: "$muted", size: "$caption"),
