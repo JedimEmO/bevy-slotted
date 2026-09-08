@@ -9,7 +9,30 @@ and summarised below. What is left here is open.
 ## Menus M2, 2026-09-08
 
 The `slotted-menu` crate (`docs/design/menus-m2-contract.md`,
-`docs/design/menus-m2-notes-{A,B,C,D}.md`). What the four packages deferred.
+`docs/design/menus-m2-notes-{A,B,C,D}.md`). What the four packages deferred,
+plus what the M2 review left open.
+
+- **A confirm answers `false` on a hot-reload respawn of `slotted:confirm`.**
+  `respawn_screens` closes the old root (which triggers `ScreenClosed`, and
+  `on_confirm_closed` answers) and the new root has no `PendingConfirm`, so
+  the visible dialog can never answer. Carry the component across the
+  respawn, or have the respawn path skip the close observers.
+- **`resolved_glyph_set` takes an `InputMode` it ignores.** Every caller
+  threads one through, and `paint_key_bindings` invents `Gamepad` to satisfy
+  it. Drop the parameter.
+- **`screen_def_over` clones the frame root's shape** because the inheritance
+  rule gives the child root the last word on shape. A merge rule that lets a
+  shape-less child root defer to the ancestor would make the generated
+  settings screen a plain `inherits` plus the `settings.tabs` node.
+- **A toast re-parses `toast.node.ron` per toast** and `toast()` builds fresh
+  query states to find the column. Parse once into a resource; keep the
+  column entity in `ToastQueue`.
+- **`directional_nav_actions` walks every navigable node in the world** to
+  find the ones under the focused root, then fetches each again. Walk the
+  root's descendants once.
+- **The hint bar recomputes `has_tabs` on every focus move.** It now walks up
+  from each `tabs` node rather than down through the screen, which is cheap
+  while tabs are few; a cache per stack change would remove it entirely.
 
 - **`Auto` glyphs follow the first pad, not the last one used.** Two pads
   of different vendors show the first's glyphs. Recording the pad entity on
@@ -73,11 +96,11 @@ The `slotted-menu` crate (`docs/design/menus-m2-contract.md`,
 - **The pause quit in `examples/menus` goes back to the title**, the title's
   quit exits; the contract said "exits" for both. One id, two meanings by
   `MenuChoice::screen`, is the demo of that field.
-- **`LocaleTable` no longer warns on a miss**, so a key nothing defines is
-  reported only by the `LocText` that draws it. The browser's own
-  `Localization::resolve` callers (a card's title) report nothing now; a
-  once-per-key warning at the `Localization` level, after the chain, is the
-  right place and needs interior mutability there.
+- **Only a `LocText` reports a missing locale key.** `resolve_loc_text` warns
+  once per dotted key through `MissingLocKeys`; the browser's own
+  `Localization::resolve` callers (a card's title) still report nothing. A
+  warning at the `Localization` level, after the chain, would cover them and
+  needs interior mutability there.
 - **The scroll panel's bar shows with nothing to scroll** (the About page's
   short body draws a full-height thumb). M1's scroll widget; hide the bar
   when the content fits.

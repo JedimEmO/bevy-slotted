@@ -1,6 +1,6 @@
 # Menus M2 contract: the `slotted-menu` crate
 
-Status: v1.2, 2026-09-08 (v1.1: skeleton facts in 1.3; v1.2: D's main menu shape in 3.1, and 5 notes the pause quit of `examples/menus` returns to the title). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
+Status: v1.3 (post-review: one accept button; `MenuConfig` is the opt-in; `pause_on_menu` yields to any `Back` owner), 2026-09-08 (v1.1: skeleton facts in 1.3; v1.2: D's main menu shape in 3.1, and 5 notes the pause quit of `examples/menus` returns to the title). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
 section 5, and to the M0 and M1 contracts whose vocabulary this uses without restating. Four
 packages: **A** (foundation changes in `slotted-ui` and `slotted-packs`), **B** (the crate's core:
 templates, menu actions, pause, confirm, toast, page, hint bar) and **C** (settings: spec, generated
@@ -204,12 +204,11 @@ as bracketed mono text; glass and neon as an accent pill.
 
 ### 3.3 Confirm
 
-`confirm` clones the registered `slotted:confirm` def, rewrites `title`, `message` (with `args`),
-`accept`, `cancel` through `set_text`, sets the accept button's `variant` tag to `danger` when
-asked (the template's accept button reads its variant from a `variant` tag through inheritance is
-not possible, so: the template ships two accept buttons, `accept` primary and `accept_danger`
-danger, and `confirm` removes the one not wanted with `remove_node`), stores `id` in a
-`PendingConfirm` component on the root, and pushes. `accept`/`cancel` `MenuChoice`s and `Back`
+`confirm` clones the registered `slotted:confirm` def, rewrites `title` and `message` (with
+`args`) through `set_text`, the `accept` and `cancel` button labels through their `ButtonOpts`,
+sets the `accept` button's variant to `danger` when asked (v1.3: one accept button, so a game's
+own `slotted:confirm` needs only the four ids), stores `id` in a `PendingConfirm` component on
+the root, and pushes. `accept`/`cancel` `MenuChoice`s and `Back`
 resolve it: `ConfirmResult { id, accepted }` once, then pop. A confirm pushed over a confirm
 stacks.
 

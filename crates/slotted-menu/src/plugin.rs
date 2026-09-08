@@ -56,21 +56,6 @@ pub struct MenuChoice {
 /// The tag a template button carries.
 pub const MENU_TAG: &str = "menu";
 
-/// The screen root above `entity`, or `entity` itself when it is one.
-pub(crate) fn screen_root_of(
-    entity: Entity,
-    parents: &Query<&ChildOf>,
-    roots: &Query<&ScreenRoot>,
-) -> Option<Entity> {
-    let mut current = entity;
-    loop {
-        if roots.contains(current) {
-            return Some(current);
-        }
-        current = parents.get(current).ok()?.parent();
-    }
-}
-
 /// Observer on `Activate`: a node with a `menu` tag under a stack screen
 /// writes a [`MenuChoice`], after the built-in handling: `resume`, `close`
 /// and `back` pop; `settings` pushes [`MenuConfig::settings_kind`];
@@ -84,7 +69,7 @@ pub fn route_menu_actions(
     pending: Query<&crate::confirm::PendingConfirm>,
     stack: Res<ScreenStack>,
     screens: Res<Screens>,
-    config: Res<MenuConfig>,
+    config: Option<Res<MenuConfig>>,
     mut actions: MessageWriter<MenuChoice>,
     mut results: MessageWriter<crate::confirm::ConfirmResult>,
     mut commands: Commands,
@@ -98,7 +83,7 @@ pub fn route_menu_actions(
     else {
         return;
     };
-    let Some(root) = screen_root_of(entity, &parents, &roots) else {
+    let Some(root) = slotted_ui::screen_root_where(entity, &parents, |e| roots.contains(e)) else {
         return;
     };
     let Some(entry) = stack.entry(root) else {
@@ -107,14 +92,18 @@ pub fn route_menu_actions(
     let screen = entry.kind.clone();
     match id.as_str() {
         "resume" | "close" | "back" => pop_screen(&mut commands),
+        // Without a `MenuConfig` the game has not opted into the flow: the
+        // choice is still written, and the game decides what settings are.
         "settings" => {
-            if let Some(def) = screens.get(&config.settings_kind) {
-                push_screen(&mut commands, def.clone(), None);
-            } else {
-                tracing::warn!(
-                    kind = %config.settings_kind.0,
-                    "the settings menu action names a screen nobody registered"
-                );
+            if let Some(config) = config.as_deref() {
+                if let Some(def) = screens.get(&config.settings_kind) {
+                    push_screen(&mut commands, def.clone(), None);
+                } else {
+                    tracing::warn!(
+                        kind = %config.settings_kind.0,
+                        "the settings menu action names a screen nobody registered"
+                    );
+                }
             }
         }
         "accept" | "cancel" => {
@@ -135,15 +124,23 @@ pub fn route_menu_actions(
     actions.write(MenuChoice { id, screen, entity });
 }
 
-/// `SlottedUiSet::Input`, after `UiActionEmit`: a fresh, unclaimed `Menu`
-/// pushes the pause screen when no page or modal is open, and pops it when
-/// it is on top. Both claim the action.
+/// `SlottedUiSet::Navigate`, before `pop_on_back`: a fresh, unclaimed
+/// `Menu` pushes the pause screen when no page or modal is open, and pops it
+/// when it is on top. Both claim the action. Nothing happens without a
+/// [`MenuConfig`]: a game that never inserted one has not opted in.
+///
+/// Escape is both `Back` and `Menu` by default, so the rule is: when the
+/// same frame carries a `Back`, `Menu` yields whenever `Back` already has an
+/// owner. That owner is the stack (`pop_on_back`, when a page or modal is on
+/// top) or any consumer that claimed `Back` in the `Input` set (the HUD
+/// editor cancelling a drag, a select popup, a key capture). Only a pure
+/// `Menu` press, Start on a pad, reaches the pause from the pause.
 pub fn pause_on_menu(
     mut events: MessageReader<UiActionEvent>,
     mut claims: ResMut<UiActionClaims>,
     stack: Res<ScreenStack>,
     screens: Res<Screens>,
-    config: Res<MenuConfig>,
+    config: Option<Res<MenuConfig>>,
     mut commands: Commands,
 ) {
     let mut fresh = false;
@@ -152,10 +149,17 @@ pub fn pause_on_menu(
         fresh |= event.action == UiAction::Menu && !event.repeat;
         back |= event.action == UiAction::Back;
     }
+    let Some(config) = config else {
+        return;
+    };
     if !fresh || claims.is_claimed(UiAction::Menu) {
         return;
     }
-    match stack.top() {
+    let top = stack.top();
+    if back && (claims.is_claimed(UiAction::Back) || top.is_some()) {
+        return;
+    }
+    match top {
         None if config.pause_on_menu => {
             let Some(def) = screens.get(&config.pause_kind) else {
                 tracing::warn!(
@@ -166,19 +170,10 @@ pub fn pause_on_menu(
             };
             push_screen(&mut commands, def.clone(), None);
             claims.claim(UiAction::Menu);
-            // The same press is also `Back` on the keyboard; without this
-            // `pop_on_back` would pop the pause the frame it arrived.
             claims.claim(UiAction::Back);
         }
         Some(top) if top.kind == config.pause_kind => {
-            // Escape is both `Back` and `Menu` by default. When the same
-            // press also arrived as `Back` and the pause pops on `Back`,
-            // `pop_on_back` (or whoever claimed `Back` first, a select
-            // popup say) owns the pop; popping here too would take the
-            // screen under the pause with it.
-            if !(back && top.presentation.back == slotted_ui::def::BackPolicy::Pop) {
-                pop_screen(&mut commands);
-            }
+            pop_screen(&mut commands);
             claims.claim(UiAction::Menu);
         }
         _ => {}
@@ -186,24 +181,41 @@ pub fn pause_on_menu(
 }
 
 /// `PostStartup`, after the templates register: pushes the crate's fallback
-/// strings and fills the main menu's `title` and `version` nodes from
-/// [`MenuConfig`]. An empty version removes the version node.
+/// strings and, when a [`MenuConfig`] exists, fills the main menu's `title`
+/// and `version` nodes from it. Only the crate's own nodes are touched: a
+/// game that registered its own `slotted:main_menu` keeps its title (the
+/// `title` node's key is no longer `slotted.menu.title`). An empty version
+/// removes the crate's version node.
 pub fn install_strings(
     mut localization: ResMut<slotted_ui::Localization>,
     mut screens: ResMut<Screens>,
-    config: Res<MenuConfig>,
+    config: Option<Res<MenuConfig>>,
 ) {
     localization.push_fallback(crate::strings::MenuStrings);
+    let Some(config) = config else {
+        return;
+    };
     let Some(mut def) = crate::templates::cloned(&screens, &crate::kinds::main_menu()) else {
         return;
     };
-    let mut changed = def.set_text("title", config.title.clone(), LocArgs::new());
-    if config.version.is_empty() {
-        changed |= def.remove_node("version");
-    } else {
-        let mut args = LocArgs::new();
-        args.insert("version".to_owned(), Value::Text(config.version.clone()));
-        changed |= def.set_text("version", LocKey("slotted.menu.version".to_owned()), args);
+    let key_of = |def: &slotted_ui::ScreenDef, id: &str| -> Option<String> {
+        match def.root.find(id) {
+            Some(slotted_ui::UiNodeDef::Text { key, .. }) => Some(key.0.clone()),
+            _ => None,
+        }
+    };
+    let mut changed = false;
+    if key_of(&def, "title").as_deref() == Some("slotted.menu.title") {
+        changed |= def.set_text("title", config.title.clone(), LocArgs::new());
+    }
+    if key_of(&def, "version").as_deref() == Some("slotted.menu.version") {
+        if config.version.is_empty() {
+            changed |= def.remove_node("version");
+        } else {
+            let mut args = LocArgs::new();
+            args.insert("version".to_owned(), Value::Text(config.version.clone()));
+            changed |= def.set_text("version", LocKey("slotted.menu.version".to_owned()), args);
+        }
     }
     if changed {
         screens.register(def);
@@ -212,8 +224,10 @@ pub fn install_strings(
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MenuConfig>()
-            .init_resource::<crate::toast::Toasts>()
+        // No `MenuConfig` by default: pausing and settings routing are a
+        // game's opt-in, so a consumer that only wants the templates or the
+        // toasts does not grow a pause screen on Escape.
+        app.init_resource::<crate::toast::Toasts>()
             .add_message::<MenuChoice>()
             .add_message::<crate::confirm::ConfirmResult>()
             .add_message::<crate::settings::SettingsReset>()
@@ -235,8 +249,8 @@ impl Plugin for MenuPlugin {
             .add_systems(
                 Update,
                 pause_on_menu
-                    .after(slotted_ui::UiActionEmit)
-                    .in_set(slotted_ui::SlottedUiSet::Input),
+                    .before(slotted_ui::pop_on_back)
+                    .in_set(slotted_ui::SlottedUiSet::Navigate),
             );
         crate::hint_bar::build(app);
         crate::toast::build(app);

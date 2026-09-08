@@ -269,6 +269,17 @@ pub struct ValueBinding {
     pub target: BindingTarget,
 }
 
+impl ValueRule {
+    /// `value` made to fit this rule: a number is snapped to `step` above
+    /// `min` and clamped to `min..=max` (kept in its own variant); a `Text`
+    /// must be one of `options` when any are declared, else `Err` names the
+    /// options; a `Bool` passes. The store applies this to every write, and
+    /// a settings loader applies it to a saved value before seeding.
+    pub fn conform(&self, value: &Value) -> Result<Value, String> {
+        apply_rule(self, value)
+    }
+}
+
 /// The number a rule can clamp and snap, kept in the value's own variant.
 fn apply_rule(rule: &ValueRule, value: &Value) -> Result<Value, String> {
     match value {
@@ -321,7 +332,7 @@ pub fn apply_set_values(
 ) {
     for request in requests.read() {
         let constrained = match rules.get(&request.key) {
-            Some(rule) => apply_rule(rule, &request.value),
+            Some(rule) => rule.conform(&request.value),
             None => Ok(request.value.clone()),
         };
         let checked = constrained.and_then(|mut value| {

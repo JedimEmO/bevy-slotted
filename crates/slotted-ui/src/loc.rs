@@ -143,8 +143,22 @@ impl std::fmt::Debug for Localization {
     }
 }
 
+/// Keys no catalogue in the chain defined, each warned about once by
+/// [`resolve_loc_text`]. Cleared when the [`Localization`] changes, so a
+/// catalogue that arrives later gets a fresh report.
+#[derive(Resource, Debug, Default, Clone, PartialEq, Eq)]
+pub struct MissingLocKeys(pub HashSet<String>);
+
+/// Whether a key is a dotted locale id rather than a literal label. The
+/// rail's English words and a test's `"Sort"` are drawn as written on
+/// purpose and are not misses worth a warning.
+fn looks_like_key(key: &str) -> bool {
+    key.contains('.') && !key.contains(' ')
+}
+
 /// `SlottedUiSet::Render`: writes `Text` for every new [`LocText`], and for
-/// all of them when [`Localization`] is replaced.
+/// all of them when [`Localization`] is replaced. A dotted key nothing in the
+/// chain defines is warned about once, through [`MissingLocKeys`].
 ///
 /// This lives here, beside the component and the port, rather than in the
 /// crate that happens to load Fluent files. A game with its own catalogue
@@ -160,10 +174,14 @@ impl std::fmt::Debug for Localization {
 /// language's text on screen.
 pub fn resolve_loc_text(
     locales: Res<Localization>,
+    mut missing: ResMut<MissingLocKeys>,
     mut texts: Query<(Entity, &LocText, &mut Text)>,
     fresh: Query<Entity, Or<(Added<LocText>, Changed<LocText>)>>,
 ) {
     let all = locales.is_changed();
+    if all {
+        missing.0.clear();
+    }
     // Two `&mut Text` queries would conflict, so the freshly spawned (or
     // re-argued) entities arrive as a set of ids and the write goes through
     // the one query.
@@ -179,7 +197,14 @@ pub fn resolve_loc_text(
         if !all && !fresh.contains(&entity) {
             continue;
         }
-        let want = locales.text_with(&key.key, &key.args);
+        let want = locales
+            .resolve_with(&key.key, &key.args)
+            .unwrap_or_else(|| {
+                if looks_like_key(&key.key.0) && missing.0.insert(key.key.0.clone()) {
+                    tracing::warn!(key = %key.key.0, "no catalogue defines this locale key");
+                }
+                key.key.0.clone()
+            });
         if text.0 != want {
             text.0 = want;
         }

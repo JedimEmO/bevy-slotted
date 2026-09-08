@@ -73,9 +73,19 @@ pub fn screen_root_of(
     parents: &Query<&ChildOf>,
     roots: &Query<(), With<crate::semantic::ScreenRoot>>,
 ) -> Option<Entity> {
+    screen_root_where(entity, parents, |e| roots.contains(e))
+}
+
+/// [`screen_root_of`] with any root test, for a caller whose root query
+/// carries data (`Query<&ScreenRoot>`) rather than a filter.
+pub fn screen_root_where(
+    entity: Entity,
+    parents: &Query<&ChildOf>,
+    is_root: impl Fn(Entity) -> bool,
+) -> Option<Entity> {
     let mut current = entity;
     loop {
-        if roots.contains(current) {
+        if is_root(current) {
             return Some(current);
         }
         current = parents.get(current).ok()?.parent();

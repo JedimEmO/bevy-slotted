@@ -140,8 +140,9 @@ impl Localizer for LocaleTable {
     /// The port `slotted-ui` and `slotted-browser` resolve through. It does
     /// not warn on a miss: since menus M2 the table is the *primary* of a
     /// `Localization` chain whose fallbacks (a library crate's English) answer
-    /// what the catalogue lacks, so a miss here is routine. A key nothing in
-    /// the chain defines is reported once by the `LocText` that draws it.
+    /// what the catalogue lacks, so a miss here is routine. A dotted key
+    /// nothing in the chain defines is warned about once by
+    /// `slotted_ui::resolve_loc_text` through `MissingLocKeys`.
     fn resolve(&self, key: &LocKey, args: &slotted_ui::LocArgs) -> Option<String> {
         if args.is_empty() {
             return self.resolve(key, None);

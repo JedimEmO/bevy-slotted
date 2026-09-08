@@ -1,6 +1,6 @@
 // The confirm dialog (menus M2 contract 3.3). `confirm()` rewrites `title`,
-// `message`, `accept`/`accept_danger` and `cancel`, and removes whichever
-// accept button the spec did not ask for.
+// `message`, `accept` and `cancel`, and turns `accept` into a danger button
+// when the spec asks for one.
 #![enable(implicit_some)]
 (
     kind: "slotted:confirm",
@@ -26,8 +26,6 @@
                  tags: {"test_id": "cancel", "menu": "cancel"}),
                 (type: "button", label: "slotted.menu.ok", variant: "primary",
                  tags: {"test_id": "accept", "menu": "accept"}),
-                (type: "button", label: "slotted.menu.ok", variant: "danger",
-                 tags: {"test_id": "accept_danger", "menu": "accept"}),
              ]),
         ],
     ),

@@ -1526,6 +1526,14 @@ impl UiNodeDef {
         }
     }
 
+    /// The node with id `id` (see [`id`](Self::id)), itself or a descendant.
+    pub fn find(&self, id: &str) -> Option<&UiNodeDef> {
+        if self.id() == Some(id) {
+            return Some(self);
+        }
+        self.children().iter().find_map(|child| child.find(id))
+    }
+
     /// The node with id `id` (see [`id`](Self::id)), itself or a descendant,
     /// for rewriting a cloned template (menus M2 contract 2.2).
     pub fn find_mut(&mut self, id: &str) -> Option<&mut UiNodeDef> {

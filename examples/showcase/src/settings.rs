@@ -24,7 +24,6 @@ use slotted::ui::{
     InputDevice, LocKey, Localization, SelectOption, Tags, TextOpts, TextRole, ToggleStyle,
     UiNodeDef, Value, ValueGuard, ValueGuards, ValueStore,
 };
-use std::collections::BTreeMap;
 
 /// The screen this module opens.
 pub const SETTINGS: &str = "demo:settings";
@@ -198,12 +197,6 @@ fn controls_tab(spec: SettingsSpec) -> SettingsSpec {
             },
             tags: Tags::new().with(Tags::TEST_ID, "footer_hint"),
         }))
-}
-
-/// Every `settings.*` key with its default: the seed, and what `Reset`
-/// writes back. Derived from [`spec`].
-pub fn defaults() -> BTreeMap<String, Value> {
-    spec().defaults()
 }
 
 /// Refuses a UI scale above [`MAX_UI_SCALE`]. The slider's range goes to

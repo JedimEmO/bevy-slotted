@@ -7,6 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use bevy::asset::AssetPlugin;
@@ -19,8 +20,8 @@ use slotted_menu::{
 use slotted_test::prelude::*;
 use slotted_ui::{
     AnchorId, Injection, Injections, InputDevice, KeyBindingState, LocKey, Owner, SelectOption,
-    SliderState, ToggleStyle, UiAction, UiBindings, UiNodeDef, Value, ValueGuard, ValueGuards,
-    ValueRule, ValueStore,
+    SetValue, SliderState, ToggleStyle, UiAction, UiBindings, UiNodeDef, Value, ValueGuard,
+    ValueGuards, ValueRule, ValueStore,
 };
 
 const KIND: &str = "test:settings";
@@ -701,5 +702,160 @@ fn a_mod_style_injection_lands_at_the_end_of_a_tab() {
     assert!(
         h.world().get::<slotted_ui::ToggleState>(row).unwrap().on,
         "and bound to the store like a spec row"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Review fixes (M2): saved values conform, the game's bindings, debounce
+// ---------------------------------------------------------------------------
+
+/// A store that counts its saves.
+#[derive(Clone, Default)]
+struct CountingStore {
+    inner: MemorySettings,
+    saves: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl CountingStore {
+    fn saves(&self) -> usize {
+        self.saves.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl slotted_menu::SettingsStore for CountingStore {
+    fn load(&self) -> Option<SavedSettings> {
+        self.inner.load()
+    }
+
+    fn save(&self, settings: &SavedSettings) {
+        self.saves.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.save(settings);
+    }
+}
+
+fn harness_with(store: CountingStore, extra: fn(&mut App)) -> UiHarness {
+    UiHarness::builder()
+        .plugins((
+            SlottedPlugins::headless().set(AssetPlugin {
+                file_path: assets_dir(),
+                ..default()
+            }),
+            MenuIfMissing,
+            move |app: &mut App| {
+                app.insert_resource(Settings { spec: spec() })
+                    .insert_resource(SettingsStorage::new(store.clone()));
+                extra(app);
+            },
+        ))
+        .resolution(1280.0, 720.0)
+        .theme("glass")
+        .build()
+}
+
+#[test]
+fn a_saved_value_the_rule_refuses_loads_as_the_default_and_a_number_is_clamped() {
+    let store = MemorySettings::with(SavedSettings {
+        values: [
+            ("t.quality".to_owned(), Value::Text("ultra".to_owned())),
+            ("t.volume".to_owned(), Value::Float(300.0)),
+            ("t.fullscreen".to_owned(), Value::Text("loud".to_owned())),
+        ]
+        .into_iter()
+        .collect(),
+        bindings: None,
+    });
+    let h = harness(Some(store), |_| {});
+    assert_eq!(
+        h.value("t.quality"),
+        Some(Value::Text("high".to_owned())),
+        "an option that no longer exists falls back to the default"
+    );
+    assert_eq!(
+        h.value("t.volume"),
+        Some(Value::Float(100.0)),
+        "a number past the range is clamped by the rule"
+    );
+    assert_eq!(
+        h.value("t.fullscreen"),
+        Some(Value::Bool(false)),
+        "a value of the wrong kind falls back to the default"
+    );
+}
+
+#[test]
+fn reset_restores_the_bindings_the_game_started_with() {
+    let store = MemorySettings::with(SavedSettings {
+        values: BTreeMap::new(),
+        bindings: Some({
+            let mut b = UiBindings::default();
+            b.keys.insert(UiAction::Accept, vec![KeyCode::KeyK]);
+            b
+        }),
+    });
+    let mut h = harness(Some(store), |app| {
+        let mut bindings = UiBindings::default();
+        bindings.keys.insert(UiAction::Accept, vec![KeyCode::KeyM]);
+        app.insert_resource(bindings);
+    });
+    assert_eq!(
+        h.world()
+            .resource::<UiBindings>()
+            .first_key(UiAction::Accept),
+        Some(KeyCode::KeyK),
+        "the file's bindings win on load"
+    );
+    open(&mut h);
+    h.click(find(&h, "reset"));
+    h.settle();
+    assert_eq!(
+        h.world()
+            .resource::<UiBindings>()
+            .first_key(UiAction::Accept),
+        Some(KeyCode::KeyM),
+        "Reset returns to the game's table, not the crate's"
+    );
+}
+
+#[test]
+fn saves_are_debounced_until_the_changes_stop_and_flushed_on_exit() {
+    let store = CountingStore::default();
+    let mut h = harness_with(store.clone(), |_| {});
+    open(&mut h);
+    assert_eq!(store.saves(), 0);
+    // Three writes on consecutive frames, the way a slider drag writes.
+    for volume in [10.0, 20.0, 30.0] {
+        h.world_mut().write_message(SetValue {
+            key: "t.volume".to_owned(),
+            value: Value::Float(volume),
+            source: None,
+        });
+        h.step(1);
+    }
+    assert_eq!(
+        store.saves(),
+        0,
+        "nothing saves while the changes keep coming"
+    );
+    h.step(1);
+    assert_eq!(store.saves(), 1, "one save the frame after the last change");
+    assert_eq!(
+        store.inner.get().unwrap().values.get("t.volume"),
+        Some(&Value::Float(30.0))
+    );
+    h.step(3);
+    assert_eq!(store.saves(), 1, "and no more");
+
+    // A pending change is flushed by AppExit in the same frame.
+    h.world_mut().write_message(SetValue {
+        key: "t.volume".to_owned(),
+        value: Value::Float(40.0),
+        source: None,
+    });
+    h.world_mut().write_message(AppExit::Success);
+    h.step(1);
+    assert_eq!(store.saves(), 2);
+    assert_eq!(
+        store.inner.get().unwrap().values.get("t.volume"),
+        Some(&Value::Float(40.0))
     );
 }

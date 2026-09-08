@@ -486,17 +486,15 @@ fn quit_on_the_pause_confirms_with_a_danger_button_and_then_exits() {
         vec!["quit"]
     );
     let dialog = harness.find(&by::screen(confirm.clone()));
-    assert!(
+    let accept = harness.find(&by::test_id("accept").within(dialog));
+    assert_eq!(
         harness
-            .try_find(&by::test_id("accept_danger").within(dialog))
-            .is_some(),
+            .world()
+            .get::<slotted::ui::ButtonState>(accept)
+            .expect("the accept button")
+            .variant,
+        slotted::ui::ButtonVariant::Danger,
         "the accept button is the danger one"
-    );
-    assert!(
-        harness
-            .try_find(&by::test_id("accept").within(dialog))
-            .is_none(),
-        "the primary accept was removed"
     );
     assert_eq!(
         harness

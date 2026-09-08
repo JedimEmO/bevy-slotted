@@ -187,9 +187,13 @@ fn the_whole_flow_runs_by_gamepad() {
         h.focused(),
         Some(h.find(&by::test_id("cancel").within(dialog)))
     );
-    assert!(
-        h.try_find(&by::test_id("accept_danger").within(dialog))
-            .is_some()
+    let accept = h.find(&by::test_id("accept").within(dialog));
+    assert_eq!(
+        h.world()
+            .get::<slotted::ui::ButtonState>(accept)
+            .expect("the accept button")
+            .variant,
+        slotted::ui::ButtonVariant::Danger
     );
 
     // Cancel first, by Back: the pause is still there.
@@ -201,7 +205,7 @@ fn the_whole_flow_runs_by_gamepad() {
     pad(&mut h, GamepadButton::DPadRight);
     assert_eq!(
         h.focused(),
-        Some(h.find(&by::test_id("accept_danger").within(dialog)))
+        Some(h.find(&by::test_id("accept").within(dialog)))
     );
     pad(&mut h, GamepadButton::South);
     assert_eq!(

@@ -69,9 +69,9 @@ demo-settings-footer = Press {"{key:back}"} to close, {"{key:tab_next}"} for the
 
 | Mode | `{key:accept}` | `{key:back}` | `{key:up}` |
 |---|---|---|---|
-| `Keyboard` | `Enter` | `Esc` | `↑` |
-| `Gamepad` | `A` | `B` | `D-pad ↑` |
-| `Pointer` | `Enter` | `Esc` | `↑` |
+| `Keyboard` | `Enter` | `Esc` | `Up` |
+| `Gamepad` | `A` | `B` | `D-pad Up` |
+| `Pointer` | `Enter` | `Esc` | `Up` |
 
 Pointer mode shows the keyboard binding, because a mouse has none and a footer
 that says "Press  to go back" helps nobody. Gamepad buttons use Xbox-style

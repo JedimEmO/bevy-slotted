@@ -81,10 +81,10 @@ ScreenTree(
                 TreeNode(
                   role: Button,
                   label: Some("demo.menus.leave.accept"),
-                  test_id: Some("accept_danger"),
+                  test_id: Some("accept"),
                   tags: {
                     "menu": "accept",
-                    "test_id": "accept_danger",
+                    "test_id": "accept",
                   },
                   widget: Some("slotted:button"),
                   visible: true,

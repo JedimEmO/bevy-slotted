@@ -70,6 +70,9 @@ pub struct HintRendered {
     pub bracketed: bool,
     /// Whether the bar was shown.
     pub visible: bool,
+    /// Whether a render has applied `Visibility` yet. A bar spawned in
+    /// pointer mode starts hidden only once this is true.
+    pub applied: bool,
 }
 
 /// On the text node inside a glyph pill.
@@ -126,29 +129,17 @@ pub fn verb_for(role: &SemanticRole) -> Vec<HintEntry> {
 
 /// Whether `entity` is `ancestor` or sits under it.
 fn is_under(entity: Entity, ancestor: Entity, parents: &Query<&ChildOf>) -> bool {
-    let mut current = entity;
-    loop {
-        if current == ancestor {
-            return true;
-        }
-        match parents.get(current) {
-            Ok(child_of) => current = child_of.parent(),
-            Err(_) => return false,
-        }
-    }
+    entity == ancestor || parents.iter_ancestors(entity).any(|a| a == ancestor)
 }
 
+/// Whether a `tabs` node sits under `entity`. The tabs are few, so this
+/// walks up from each of them rather than down through the whole screen.
 fn has_tabs(
     entity: Entity,
-    tabs: &Query<(), With<TabsState>>,
-    children: &Query<&Children>,
+    tabs: &Query<Entity, With<TabsState>>,
+    parents: &Query<&ChildOf>,
 ) -> bool {
-    if tabs.contains(entity) {
-        return true;
-    }
-    children
-        .get(entity)
-        .is_ok_and(|kids| kids.iter().any(|k| has_tabs(k, tabs, children)))
+    tabs.iter().any(|tab| is_under(tab, entity, parents))
 }
 
 /// The entries for a bar under `root` (or none) while `focused` has focus.
@@ -159,8 +150,7 @@ fn entries_for(
     roots: &Query<&ScreenRoot>,
     nodes: &Query<(&SemanticRole, Option<&Tags>)>,
     parents: &Query<&ChildOf>,
-    children: &Query<&Children>,
-    tabs: &Query<(), With<TabsState>>,
+    tabs: &Query<Entity, With<TabsState>>,
 ) -> Vec<HintEntry> {
     let mut out = Vec::new();
     if let Some(focused) = focused
@@ -189,7 +179,7 @@ fn entries_for(
             };
             out.push(HintEntry::new(UiAction::Back, key));
         }
-        if has_tabs(root, tabs, children) {
+        if has_tabs(root, tabs, parents) {
             out.push(HintEntry::new(UiAction::TabPrev, "slotted.menu.prev_tab"));
             out.push(HintEntry::new(UiAction::TabNext, "slotted.menu.next_tab"));
         }
@@ -221,8 +211,7 @@ pub fn update_hint_bars(
     roots: Query<&ScreenRoot>,
     nodes: Query<(&SemanticRole, Option<&Tags>)>,
     parents: Query<&ChildOf>,
-    children: Query<&Children>,
-    tabs: Query<(), With<TabsState>>,
+    tabs: Query<Entity, With<TabsState>>,
     mut commands: Commands,
 ) {
     let theme_changed = active.as_ref().is_some_and(DetectChanges::is_changed)
@@ -248,8 +237,8 @@ pub fn update_hint_bars(
         .is_some_and(|m| matches!(m, Material::Text { .. }));
     let tokens = tokens.get();
     for (bar, _, mut entries, mut rendered, tags) in &mut bars {
-        let root = crate::plugin::screen_root_of(bar, &parents, &roots);
-        let wanted = entries_for(root, focused, &roots, &nodes, &parents, &children, &tabs);
+        let root = slotted_ui::screen_root_where(bar, &parents, |e| roots.contains(e));
+        let wanted = entries_for(root, focused, &roots, &nodes, &parents, &tabs);
         let always = tags.and_then(|t| t.get(ALWAYS_TAG)) == Some("true");
         let visible = *mode != InputMode::Pointer || always;
         let glyph_texts: Vec<String> = wanted
@@ -260,11 +249,12 @@ pub fn update_hint_bars(
             glyphs: glyph_texts,
             bracketed,
             visible,
+            applied: true,
         };
         if entries.0 == wanted && *rendered == next {
             continue;
         }
-        if rendered.visible != visible {
+        if !rendered.applied || rendered.visible != visible {
             commands.entity(bar).insert(if visible {
                 Visibility::Inherited
             } else {
@@ -291,7 +281,7 @@ pub fn update_hint_bars(
 }
 
 /// Spawns the bar's children: consecutive entries with the same label share
-/// one group (`[←][→] Adjust`), each group a row of glyph pills and a label.
+/// one group (`[Left][Right] Adjust`), each group a row of glyph pills and a label.
 fn spawn_groups(
     commands: &mut Commands,
     bar: Entity,

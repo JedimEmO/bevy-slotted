@@ -84,14 +84,8 @@ impl UiHarness {
             .unwrap_or_else(|| panic!("the top screen is not a confirm dialog waiting for {id}"))
             .0
             .clone();
-        // The primary accept and the danger accept share the `menu: accept`
-        // tag; whichever survived the rewrite is the one to press.
         let button = self
             .try_find(&by::test_id(id).within(root))
-            .or_else(|| {
-                (id == "accept")
-                    .then(|| self.try_find(&by::test_id("accept_danger").within(root)))?
-            })
             .unwrap_or_else(|| panic!("the confirm dialog {pending:?} has no {id} button"));
         self.activate(button);
         self.step(1);

@@ -708,6 +708,7 @@ fn loc_text_resolves_after_the_locale_loads_and_leaves_unknown_keys_verbatim() {
     harness.run_all();
     harness
         .app
+        .init_resource::<slotted_ui::MissingLocKeys>()
         .add_systems(Update, slotted_packs::resolve_loc_text);
 
     let known = harness

@@ -112,6 +112,7 @@ impl Plugin for SlottedUiPlugin {
             .add_observer(crate::widgets::icon_button::on_icon_button_property)
             .init_resource::<Screens>()
             .init_resource::<crate::loc::Localization>()
+            .init_resource::<crate::loc::MissingLocKeys>()
             .init_resource::<Injections>()
             .init_resource::<TextEntryFocused>()
             .init_resource::<DragPaint>()

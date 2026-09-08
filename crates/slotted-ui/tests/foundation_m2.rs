@@ -269,17 +269,17 @@ fn every_set_names_the_face_buttons_and_auto_follows_the_vendor() {
     };
     assert_eq!(
         row(GlyphSet::Xbox),
-        ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "☰", "⧉"]
+        ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "Start", "View"]
     );
     assert_eq!(
         row(GlyphSet::PlayStation),
         [
-            "✕", "○", "□", "△", "L1", "R1", "L2", "R2", "Options", "Share"
+            "Cross", "Circle", "Square", "Triangle", "L1", "R1", "L2", "R2", "Options", "Share"
         ]
     );
     assert_eq!(
         row(GlyphSet::Switch),
-        ["B", "A", "Y", "X", "L", "R", "ZL", "ZR", "+", "−"]
+        ["B", "A", "Y", "X", "L", "R", "ZL", "ZR", "+", "-"]
     );
     assert_eq!(
         row(GlyphSet::Generic),
@@ -299,7 +299,7 @@ fn every_set_names_the_face_buttons_and_auto_follows_the_vendor() {
     // Sticks and the d-pad read the same everywhere but Generic.
     for set in [GlyphSet::Xbox, GlyphSet::PlayStation, GlyphSet::Switch] {
         assert_eq!(button_glyph(G::LeftThumb, set), "L3");
-        assert_eq!(button_glyph(G::DPadUp, set), "D-pad ↑");
+        assert_eq!(button_glyph(G::DPadUp, set), "D-pad Up");
     }
     assert_eq!(button_glyph(G::DPadUp, GlyphSet::Generic), "DPadUp");
 
@@ -332,7 +332,7 @@ fn every_set_names_the_face_buttons_and_auto_follows_the_vendor() {
     let bindings = UiBindings::default();
     let accept = |set| key_glyph_text(UiAction::Accept, InputMode::Gamepad, &bindings, set);
     assert_eq!(accept(GlyphSet::Xbox), "A");
-    assert_eq!(accept(GlyphSet::PlayStation), "✕");
+    assert_eq!(accept(GlyphSet::PlayStation), "Cross");
     assert_eq!(accept(GlyphSet::Switch), "B");
     assert_eq!(accept(GlyphSet::Generic), "South");
     assert_eq!(accept(GlyphSet::Keyboard), "Enter");
@@ -430,8 +430,8 @@ fn a_key_run_and_a_binding_cell_follow_the_glyph_set_and_the_connected_pad() {
     // An explicit set re-renders without a mode or binding change.
     h.world_mut().insert_resource(GlyphSet::PlayStation);
     h.settle();
-    assert_eq!(key_span(&h), "✕");
-    assert_eq!(cell_text(&h), "✕");
+    assert_eq!(key_span(&h), "Cross");
+    assert_eq!(cell_text(&h), "Cross");
     h.world_mut().insert_resource(GlyphSet::Switch);
     h.settle();
     assert_eq!(key_span(&h), "B");
@@ -455,8 +455,8 @@ fn a_key_run_and_a_binding_cell_follow_the_glyph_set_and_the_connected_pad() {
     h.settle();
     assert_eq!(key_span(&h), "A");
     connect(&mut h, Some(0x054C));
-    assert_eq!(key_span(&h), "✕");
-    assert_eq!(cell_text(&h), "✕");
+    assert_eq!(key_span(&h), "Cross");
+    assert_eq!(cell_text(&h), "Cross");
     connect(&mut h, Some(0x057E));
     assert_eq!(key_span(&h), "B");
     assert_eq!(cell_text(&h), "B");

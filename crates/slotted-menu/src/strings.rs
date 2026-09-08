@@ -11,6 +11,7 @@ pub struct MenuStrings;
 /// The English for `key`, if it is one of ours.
 pub fn english(key: &str) -> Option<&'static str> {
     Some(match key {
+        "slotted.menu.title" => "Main menu",
         "slotted.menu.play" => "Play",
         "slotted.menu.settings" | "slotted.menu.settings_title" => "Settings",
         "slotted.menu.quit" => "Quit",

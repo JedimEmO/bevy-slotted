@@ -162,8 +162,8 @@ set)`. `GlyphSet` is a resource that says whose buttons a pad's glyphs are:
 
 | `GlyphSet` | `Accept`, `Back`, `Secondary`, north | Bumpers, triggers | `Menu` |
 |---|---|---|---|
-| `Xbox` | `A B X Y` | `LB RB LT RT` | `☰` |
-| `PlayStation` | `✕ ○ □ △` | `L1 R1 L2 R2` | `Options` |
+| `Xbox` | `A B X Y` | `LB RB LT RT` | `Start` |
+| `PlayStation` | `Cross Circle Square Triangle` | `L1 R1 L2 R2` | `Options` |
 | `Switch` | `B A Y X` | `L R ZL ZR` | `+` |
 | `Generic` | Bevy's names: `South`, `East`, `DPadUp` | `LeftTrigger` | `Start` |
 | `Keyboard` | the keyboard binding, even in gamepad mode | | |
@@ -173,7 +173,7 @@ The default is `Auto`, which reads the first connected pad's vendor id:
 Xbox. `resolved_glyph_set(set, mode, &gamepads)` is the resolution, and
 `resolved_glyph_set_for_vendor` the seam under it. Every glyph re-renders when
 `GlyphSet`, `InputMode` or `UiBindings` change or a pad connects, so plugging
-a DualShock in flips `A` to `✕` on the spot. `Keyboard` is for a text-only
+a DualShock in flips `A` to `Cross` on the spot. `Keyboard` is for a text-only
 UI that names keys whatever the player holds; a gamepad `key_binding` row
 under it shows `Generic`, because a row that exists to rebind the pad has to
 name a pad button.

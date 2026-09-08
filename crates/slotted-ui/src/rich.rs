@@ -353,7 +353,7 @@ pub fn refresh_key_glyphs(
 }
 
 /// The text a `{key:action}` run shows for the action's first binding on
-/// the current device: `Enter`, `Esc`, `A`, `D-pad ↑`. The pointer mode
+/// the current device: `Enter`, `Esc`, `A`, `D-pad Up`. The pointer mode
 /// shows the keyboard binding, since a mouse has none; an unbound action
 /// shows its own name. `set` names the pad's button family; `Auto` reads as
 /// Xbox here, so a caller resolves it first through [`resolved_glyph_set`].
@@ -386,7 +386,7 @@ pub enum GlyphSet {
     Keyboard,
     /// `A B X Y LB RB LT RT`.
     Xbox,
-    /// `✕ ○ □ △ L1 R1 L2 R2`.
+    /// `Cross Circle Square Triangle L1 R1 L2 R2`.
     PlayStation,
     /// `B A Y X L R ZL ZR`.
     Switch,
@@ -445,10 +445,10 @@ pub fn key_glyph(key: KeyCode) -> String {
         K::End => "End",
         K::PageUp => "PgUp",
         K::PageDown => "PgDn",
-        K::ArrowUp => "↑",
-        K::ArrowDown => "↓",
-        K::ArrowLeft => "←",
-        K::ArrowRight => "→",
+        K::ArrowUp => "Up",
+        K::ArrowDown => "Down",
+        K::ArrowLeft => "Left",
+        K::ArrowRight => "Right",
         K::ShiftLeft | K::ShiftRight => "Shift",
         K::ControlLeft | K::ControlRight => "Ctrl",
         K::AltLeft | K::AltRight => "Alt",
@@ -494,19 +494,22 @@ pub fn button_glyph(button: bevy::input::gamepad::GamepadButton, set: GlyphSet) 
     let shared = match button {
         G::LeftThumb => Some("L3"),
         G::RightThumb => Some("R3"),
-        G::DPadUp => Some("D-pad ↑"),
-        G::DPadDown => Some("D-pad ↓"),
-        G::DPadLeft => Some("D-pad ←"),
-        G::DPadRight => Some("D-pad →"),
+        // ASCII words throughout: the shipped display fonts (Barlow
+        // Condensed, Rajdhani) carry no arrows or shape glyphs, and a hint
+        // pill that draws a missing-glyph box is worse than a word.
+        G::DPadUp => Some("D-pad Up"),
+        G::DPadDown => Some("D-pad Down"),
+        G::DPadLeft => Some("D-pad Left"),
+        G::DPadRight => Some("D-pad Right"),
         _ => None,
     };
     let named = match set {
         GlyphSet::Generic => None,
         GlyphSet::PlayStation => match button {
-            G::South => Some("✕"),
-            G::East => Some("○"),
-            G::West => Some("□"),
-            G::North => Some("△"),
+            G::South => Some("Cross"),
+            G::East => Some("Circle"),
+            G::West => Some("Square"),
+            G::North => Some("Triangle"),
             G::LeftTrigger => Some("L1"),
             G::RightTrigger => Some("R1"),
             G::LeftTrigger2 => Some("L2"),
@@ -526,7 +529,7 @@ pub fn button_glyph(button: bevy::input::gamepad::GamepadButton, set: GlyphSet) 
             G::LeftTrigger2 => Some("ZL"),
             G::RightTrigger2 => Some("ZR"),
             G::Start => Some("+"),
-            G::Select => Some("−"),
+            G::Select => Some("-"),
             G::Mode => Some("Home"),
             _ => shared,
         },
@@ -539,9 +542,9 @@ pub fn button_glyph(button: bevy::input::gamepad::GamepadButton, set: GlyphSet) 
             G::RightTrigger => Some("RB"),
             G::LeftTrigger2 => Some("LT"),
             G::RightTrigger2 => Some("RT"),
-            G::Start => Some("☰"),
-            G::Select => Some("⧉"),
-            G::Mode => Some("Home"),
+            G::Start => Some("Start"),
+            G::Select => Some("View"),
+            G::Mode => Some("Guide"),
             _ => shared,
         },
     };

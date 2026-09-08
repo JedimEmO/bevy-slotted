@@ -84,18 +84,19 @@ pub struct ConfirmResult {
 
 /// Rewrites a clone of the registered `slotted:confirm` template for
 /// `spec`: the title, the message with its arguments, the button labels,
-/// and whichever accept button the spec did not ask for is removed.
+/// and the accept button's variant (`danger` when asked). A game's own
+/// `slotted:confirm` needs only the `title`, `message`, `accept` and
+/// `cancel` ids for all of this to reach it.
 pub fn rewritten(mut def: ScreenDef, spec: &ConfirmSpec) -> ScreenDef {
     def.set_text("title", spec.title.clone(), LocArgs::new());
     def.set_text("message", spec.message.clone(), spec.args.clone());
     set_button_label(&mut def, "cancel", &spec.cancel);
-    let (keep, drop) = if spec.danger {
-        ("accept_danger", "accept")
-    } else {
-        ("accept", "accept_danger")
-    };
-    set_button_label(&mut def, keep, &spec.accept);
-    def.remove_node(drop);
+    set_button_label(&mut def, "accept", &spec.accept);
+    if spec.danger
+        && let Some(UiNodeDef::Button { opts, .. }) = def.root.find_mut("accept")
+    {
+        opts.variant = slotted_ui::ButtonVariant::Danger;
+    }
     def
 }
 

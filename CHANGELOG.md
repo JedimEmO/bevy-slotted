@@ -23,7 +23,10 @@ game code; it speaks through `MenuChoice` and `ConfirmResult`.
   `SlottedUiPlugin`, whose widget registry it adds `slotted:hint_bar` to),
   the prelude line. Out of the `server` graph.
 - **`MenuConfig`** (`pause_kind`, `settings_kind`, `pause_on_menu`, `title`,
-  `version`), **`MenuChoice { id, screen, entity }`** (one per activated
+  `version`), the game's opt-in: the plugin inserts none, and without one
+  nothing pauses on `Menu` and the `settings` choice pushes nothing (the
+  templates still register and every `MenuChoice` is still written).
+  **`MenuChoice { id, screen, entity }`** (one per activated
   `menu`-tagged button; `resume`, `close`, `back`, `settings`, `accept`,
   `cancel` and `reset` are handled first and still delivered), `kinds::{
   main_menu, pause, settings, confirm, page, all}`, `MENU_TAG`.
@@ -32,17 +35,19 @@ game code; it speaks through `MenuChoice` and `ConfirmResult`.
   (a panel at the left; ids `title`, `version`, `buttons`, `play`,
   `settings`, `quit`, `hints`; anchors `title_end`, `buttons_end` inside the
   button column, `footer`), `slotted:pause`, `slotted:settings` (the frame
-  a spec's screen inherits), `slotted:confirm` (`accept` and
-  `accept_danger`, one removed per dialog) and `slotted:page`, plus the
-  `toast.node.ron` snippet. `templates::{all, register_templates, cloned}`.
+  a spec's screen inherits), `slotted:confirm` (one `accept` button whose
+  variant `confirm()` sets) and `slotted:page`, plus the `toast.node.ron`
+  snippet. `templates::{all, register_templates, cloned}`.
 - **English fallbacks** for every `slotted.menu.*` key (`strings::MenuStrings`,
   `english`, `substitute`), pushed as a `Localization` fallback by
   `install_strings`, which also writes `MenuConfig::title` and `version`
   into the main menu.
-- **`pause_on_menu`**: a fresh unclaimed `Menu` with no page or modal open
-  pushes `pause_kind`; with it on top, pops it. Claims `Back` on the push and
-  leaves the pop to `pop_on_back` when the same press was also `Back`, so the
-  shared Escape does one thing.
+- **`pause_on_menu`** (`SlottedUiSet::Navigate`, before `pop_on_back`): a
+  fresh unclaimed `Menu` with no page or modal open pushes `pause_kind`; with
+  it on top, pops it. When the same press also arrived as `Back`, `Menu`
+  yields to whoever owns `Back`: the stack when a screen is open, or any
+  `Input`-set consumer that claimed it (the HUD editor's drag cancel, a key
+  capture), so the shared Escape does one thing.
 - **Confirm**: `confirm(commands, ConfirmSpec)` with `ConfirmSpec::{new,
   danger, title, buttons, arg}`, `PendingConfirm` on the root,
   `ConfirmResult { id, accepted }` exactly once per dialog (button or `Back`),
@@ -62,15 +67,20 @@ game code; it speaks through `MenuChoice` and `ConfirmResult`.
   are a pill or bracketed text depending on the kind of the theme's
   `hint.glyph` material.
 - **Settings**: `SettingsSpec::{new, tab, row, tab_key, screen_def,
-  screen_def_over, defaults, rules, rows, tab_by_id, keys}`, `TABS_ID`,
+  screen_def_over, defaults, rules, rows, keys}`, `TABS_ID`,
   `SettingsTab::{start_anchor, end_anchor, page}`, `SettingsRow::{Heading,
   Separator, Toggle, Slider, Select, Radio, Text, Binding, Custom}` with
   `key`, `default_value`, `rule`, `test_id`, `node`; `Settings { spec }`,
   `SettingsApplied`, `apply_settings` (`PostStartup`, or the frame a
-  `Settings` appears), `save_settings` (`Last`: a declared `ValueChanged`,
-  any `BindingChanged`, `AppExit`), `SettingsReset` with
-  `reset_on_menu_choice` and `reset_settings` (defaults through `SetValue`,
-  bindings to default), `resolve_binding_conflicts` (the other action loses
+  `Settings` appears; rules first, then every saved value made to fit its
+  rule through `ValueRule::conform`, a value that cannot fit or is of the
+  wrong kind falling back to the default with one warning; the bindings the
+  app started with kept as `DefaultBindings`), `save_settings` (`Last`,
+  debounced through `SettingsDirty`: a declared `ValueChanged` or a
+  `BindingChanged` marks it, the save lands on the first frame with no new
+  change, `AppExit` flushes), `SettingsReset` with `reset_on_menu_choice`
+  and `reset_settings` (defaults through `SetValue`, bindings back to
+  `DefaultBindings`), `resolve_binding_conflicts` (the other action loses
   the key; a `slotted.menu.binding_moved` toast). Generated ids:
   `settings.tabs`, `settings.<tab>.page`, `settings.<key>`,
   `bind.<device>.<action>`; anchors `settings.<tab>.start` and `.end`.
@@ -86,9 +96,13 @@ game code; it speaks through `MenuChoice` and `ConfirmResult`.
   `PlayStation`, `Switch`, `Generic`; resource, default `Auto`),
   `button_glyph(button, set)`, `resolved_glyph_set(set, mode, &gamepads)`,
   `resolved_glyph_set_for_vendor`, `VENDOR_PLAYSTATION`, `VENDOR_SWITCH`;
-  `key_glyph_text` takes the set. `zbands::TOAST` (950). A select popup
-  closes on a pointer press outside it (`on_press_outside_select_popup`).
-  `controls::inverse_of`.
+  `key_glyph_text` takes the set. Every glyph is ASCII words (`Cross`,
+  `Start`, `D-pad Up`, `Up`), because the shipped display fonts carry no
+  arrows or shape characters. `UiNodeDef::find`, `ValueRule::conform`,
+  `MissingLocKeys` (a dotted key nothing in the chain defines is warned
+  about once by `resolve_loc_text`), `screen_root_where`, `pop_on_back`
+  exported. `zbands::TOAST` (950). A select popup closes on a pointer press
+  outside it (`on_press_outside_select_popup`). `controls::inverse_of`.
 - **Eleven roles** (`roles::ALL` is 101): `toast`, `toast.info`,
   `toast.success`, `toast.warning`, `toast.error`, `toast.text`, `hint.bar`,
   `hint.glyph`, `hint.label`, `menu.title`, `menu.version`; the three themes

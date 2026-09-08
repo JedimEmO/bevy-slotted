@@ -129,7 +129,7 @@ ScreenTree(
                 "test_id": "hints",
               },
               widget: Some("slotted:hint_bar"),
-              visible: true,
+              visible: false,
             ),
             TreeNode(
               role: Anchor,

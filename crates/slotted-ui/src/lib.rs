@@ -70,15 +70,17 @@ pub use layers::{
     CarriedItem, CarriedLayer, Decorative, ExclusionZone, Exclusions, TooltipLayer,
     update_carried_layer, zbands,
 };
-pub use loc::{LocArgs, Localization, Localizer, NoLocalization, no_args, resolve_loc_text};
+pub use loc::{
+    LocArgs, Localization, Localizer, MissingLocKeys, NoLocalization, no_args, resolve_loc_text,
+};
 pub use motion::{
     FlyingItem, GestureTarget, HOVER_SCALE, MotionTarget, PRESS_SCALE, REST_SCALE, SQUASH_SCALE,
     SlotPressed, despawn_finished_flights, drop_squash, fly_to_slot, slot_motion,
 };
 pub use nav::{FocusMask, FocusedAction, dispatch_focused_actions};
 pub use nav::{
-    TextEntryFocused, directional_nav_actions, focus_on_spawn, on_slot_accept,
-    track_text_entry_focus,
+    TextEntryFocused, directional_nav_actions, focus_on_spawn, on_slot_accept, screen_root_of,
+    screen_root_where, track_text_entry_focus,
 };
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use preview::{
@@ -108,7 +110,7 @@ pub use semantic::{
 };
 pub use stack::{
     ClearScreens, PopScreen, PopTo, PushScreen, ScreenStack, Scrim, StackChanged, StackEntry,
-    clear_screens, pop_screen, pop_to, push_screen, push_screen_at, replace_screen,
+    clear_screens, pop_on_back, pop_screen, pop_to, push_screen, push_screen_at, replace_screen,
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,

@@ -64,9 +64,21 @@ toast on top; its `tests/flow.rs` walks the whole thing by gamepad headless.
 | `title` | `slotted.menu.title` | The main menu's title key. |
 | `version` | empty | The main menu's version line, as the `{version}` argument of `slotted.menu.version`. Empty removes the node rather than drawing `Version `. |
 
+`MenuConfig` is the opt-in. The plugin inserts none: without one the templates
+still register, every `MenuChoice` is still written and `resume` still pops,
+but `Menu` pauses nothing and the `settings` button pushes nothing, so a game
+that only wants the templates or the toasts grows no pause screen on Escape.
 Insert it before the first frame: `install_strings` reads `title` and
 `version` in `PostStartup` and writes them into the registered main menu with
-`ScreenDef::set_text`. The `kinds` module names the five template kinds
+`ScreenDef::set_text`, touching only the crate's own nodes (a `title` whose
+key is still `slotted.menu.title`), so a game's own `slotted:main_menu` keeps
+its title.
+
+Escape is both `Back` and `Menu`. When a press arrives as both, `Menu` yields
+to whoever owns `Back`: the stack when a screen is open, or any consumer that
+claimed it in the `Input` set (the HUD editor cancelling a drag, a key
+capture). Only a pure `Menu` press, Start on a pad, pops the pause from the
+pause. The `kinds` module names the five template kinds
 (`kinds::pause()` and so on); it is not in the prelude because `slotted_ui`
 has a `kinds` of its own.
 
@@ -83,7 +95,7 @@ headless in the three themes with a gamepad walk reaching every button; that is
 | `slotted:main_menu` | page, fade, `back: ignore`; a panel placed at the left | `title`, `version`, `buttons`, `play`, `settings`, `quit`, `hints` | `title_end`, `buttons_end` (inside the button column, so an injected button lines up with the three above it), `footer` |
 | `slotted:pause` | modal, scrim, slide up | `title`, `resume`, `settings`, `quit`, `hints` | `title_end`, `buttons_end` |
 | `slotted:settings` | modal, scrim, fade | `title`, `settings.tabs` (empty; the generated screen replaces it), `reset`, `done`, `hints` | `title_end` |
-| `slotted:confirm` | modal, scrim, fade | `title`, `message`, `cancel`, `accept`, `accept_danger`, `hints` | `message_end` |
+| `slotted:confirm` | modal, scrim, fade | `title`, `message`, `cancel`, `accept`, `hints` | `message_end` |
 | `slotted:page` | page, slide left | `title`, `scroll`, `body`, `done`, `hints` | `title_end`, `body_end` |
 
 Every button carries a `menu` tag (`tags: {"menu": "play"}`) and the crate
@@ -180,8 +192,8 @@ confirm(&mut commands, ConfirmSpec::new("delete", "game.delete.message")
 
 `confirm` clones the registered `slotted:confirm`, rewrites `title`,
 `message` (with the arguments; the message is rich text, so `[b]{world}[/b]`
-works) and the two button labels, removes whichever accept button the spec did
-not ask for (`accept` is primary, `accept_danger` is danger), pushes it, and
+works) and the two button labels, turns `accept` into a danger button when
+asked, pushes it, and
 marks the root with `PendingConfirm(id)`. The answer is one `ConfirmResult {
 id, accepted }`, written exactly once: by the accept button, by the cancel
 button, or by `Back` closing the dialog. A confirm pushed over a confirm
@@ -236,7 +248,7 @@ changes:
 
 Accept is always first. The glyph text is `key_glyph_text` for the player's
 input mode and the resolved `GlyphSet` ([input.md](input.md#glyph-sets)), so a
-PlayStation pad reads `✕` where an Xbox pad reads `A`. The bar hides in
+PlayStation pad reads `Cross` where an Xbox pad reads `A`. The bar hides in
 pointer mode unless it carries `tags: {"hint.always": "true"}`.
 
 How the glyph is drawn is the theme's call, through the kind of its
@@ -250,7 +262,7 @@ which is glass and neon. `HintEntries` on the bar root is what a test reads
 A settings screen is data: tabs of rows, each row a control bound to a store
 key with a default. The crate generates the screen over the
 `slotted:settings` frame, derives the store's defaults and rules from the rows,
-seeds the store, saves on every change and answers Reset. What you write is
+seeds the store, saves when the changes stop and answers Reset. What you write is
 the spec; what you do not write is a screen file, a rule table or a save
 system.
 
@@ -332,16 +344,25 @@ What the crate makes of it:
   ids. A toggle and a text field imply no rule.
 - **Applying.** `apply_settings` runs in `PostStartup` after the templates,
   or the frame a `Settings` resource appears later: it registers the screen
-  (unless the kind is registered), loads the store if there is one, seeds every
-  declared key with the saved value over whatever the game already put in
-  the store over the default (through `ValueStore::restore`, so no rule,
-  guard or `ValueChanged` fires for the seed), installs the rules, and
-  restores saved `UiBindings`. Saved keys the spec no longer declares are
-  dropped. The tab key is seeded and ruled but never saved or reset: which tab
+  (unless the kind is registered), loads the store if there is one, installs
+  the rules, then seeds every declared key with the saved value over whatever
+  the game already put in the store over the default. A saved value is first
+  made to fit its rule (`ValueRule::conform`: a number past a tightened range
+  is clamped, an option that no longer exists or a value of the wrong kind
+  falls back to the default with one warning), so a file from an older build
+  or a hand edit never puts into the store what no control could have
+  written. The seed goes through `ValueStore::restore`, so no guard or
+  `ValueChanged` fires for it. Saved keys the spec no longer declares are
+  dropped. The `UiBindings` the app started with are kept as
+  `DefaultBindings` before a saved table replaces them. The tab key is seeded and ruled but never saved or reset: which tab
   you were on is UI state, not a setting.
 - **Reset.** The frame's Reset button writes every default back through
-  `SetValue`, so your guards still apply, and resets `UiBindings`; a game can
-  send `SettingsReset` itself.
+  `SetValue`, so your guards still apply, and returns `UiBindings` to
+  `DefaultBindings`, the table the app started with rather than the crate's;
+  a game can send `SettingsReset` itself.
+- **Saving.** A declared change marks the settings dirty and the save lands
+  on the first frame with no new change, so a slider drag costs one write when
+  it ends rather than one per frame. `AppExit` flushes a pending change.
 - **Conflicts.** When a capture binds a key another action on the same device
   already has, the other action loses it and a toast
   (`slotted.menu.binding_moved`, with `action` as the argument) says so. No

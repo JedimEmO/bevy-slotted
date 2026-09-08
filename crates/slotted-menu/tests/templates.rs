@@ -338,13 +338,7 @@ fn the_pause_screen_opens_in_three_themes_and_a_pad_walks_its_buttons() {
 #[test]
 fn the_confirm_dialog_opens_in_three_themes_and_a_pad_walks_its_buttons() {
     for theme in ["glass", "paper", "neon"] {
-        // The raw template carries both accept buttons; `confirm()` drops
-        // one. Here the walk crosses cancel → accept → accept_danger.
-        walk_buttons(
-            theme,
-            kinds::confirm(),
-            &["cancel", "accept", "accept_danger"],
-        );
+        walk_buttons(theme, kinds::confirm(), &["cancel", "accept"]);
     }
 }
 
@@ -478,7 +472,7 @@ fn an_empty_version_removes_the_version_node() {
     h.open(kinds::main_menu());
     h.settle();
     assert!(h.try_find(&by::test_id("version")).is_none());
-    assert_eq!(text_of(&h, find(&h, "title")), "slotted.menu.title");
+    assert_eq!(text_of(&h, find(&h, "title")), "Main menu");
 }
 
 #[test]
@@ -675,7 +669,13 @@ fn confirm_rewrites_the_title_and_the_message_with_args_and_focuses_cancel() {
     assert_eq!(text_of(&h, find(&h, "title")), "Quit");
     assert_eq!(text_of(&h, find(&h, "cancel")), "Back");
     assert_eq!(text_of(&h, find(&h, "accept")), "OK");
-    assert!(h.try_find(&by::test_id("accept_danger")).is_none());
+    assert_eq!(
+        h.world()
+            .get::<slotted_ui::ButtonState>(find(&h, "accept"))
+            .unwrap()
+            .variant,
+        slotted_ui::ButtonVariant::Primary
+    );
     let message = find(&h, "message");
     let rich = h.world().get::<slotted_ui::RichText>(message).unwrap();
     assert_eq!(rich.key.0, "slotted.menu.binding_moved");
@@ -748,8 +748,7 @@ fn danger_keeps_the_danger_button_and_a_confirm_stacks_over_a_confirm() {
         &mut h,
         ConfirmSpec::new("delete", "slotted.menu.confirm_title").danger(),
     );
-    assert!(h.try_find(&by::test_id("accept")).is_none());
-    let danger = find(&h, "accept_danger");
+    let danger = find(&h, "accept");
     assert_eq!(
         h.world()
             .get::<slotted_ui::ButtonState>(danger)
@@ -1323,4 +1322,183 @@ fn a_toast_arrives_through_the_fade_preset() {
     assert!(h.world().get::<slotted_theme::Tween>(up[0]).is_none());
     let alpha = h.world().get::<BackgroundColor>(up[0]).unwrap().0.alpha();
     assert!(alpha > 0.5, "painted: {alpha}");
+}
+
+// ---------------------------------------------------------------------------
+// Review fixes (M2): Escape ownership, the opt-in, pointer-mode bars, titles
+// ---------------------------------------------------------------------------
+
+/// The HUD editor's pattern: a consumer in the `Input` set that claims `Back`
+/// on Escape when it has something to cancel.
+#[derive(Resource, Default)]
+struct Cancelling(bool);
+
+fn claim_back_when_cancelling(
+    cancelling: Res<Cancelling>,
+    mut events: MessageReader<slotted_ui::UiActionEvent>,
+    mut claims: ResMut<slotted_ui::UiActionClaims>,
+) {
+    let back = events.read().any(|e| e.action == UiAction::Back);
+    if back && cancelling.0 {
+        claims.claim(UiAction::Back);
+    }
+}
+
+#[test]
+fn an_escape_another_consumer_claimed_does_not_pause_but_start_still_does() {
+    let mut h = UiHarness::builder()
+        .plugins((
+            SlottedPlugins::headless().set(AssetPlugin {
+                file_path: assets_dir(),
+                ..default()
+            }),
+            add_menu(MenuConfig::default()),
+            |app: &mut App| {
+                app.init_resource::<Cancelling>().add_systems(
+                    Update,
+                    claim_back_when_cancelling
+                        .after(slotted_ui::UiActionEmit)
+                        .in_set(slotted_ui::SlottedUiSet::Input),
+                );
+            },
+        ))
+        .resolution(1280.0, 720.0)
+        .theme("glass")
+        .build();
+    wait_for_theme(&mut h);
+    h.world_mut().resource_mut::<Cancelling>().0 = true;
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert_eq!(
+        h.stack(),
+        vec![],
+        "Escape belonged to the drag cancel, not the pause"
+    );
+    h.gamepad(GamepadButton::Start);
+    h.settle();
+    assert_eq!(h.stack(), vec![kinds::pause()], "a pure Menu press pauses");
+    h.world_mut().resource_mut::<Cancelling>().0 = false;
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert_eq!(h.stack(), vec![], "Escape as Back pops the pause");
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert_eq!(h.stack(), vec![kinds::pause()], "and unowned, it pauses");
+}
+
+#[test]
+fn without_a_menu_config_nothing_pauses_and_settings_is_the_games_choice() {
+    let mut h = UiHarness::builder()
+        .plugins((
+            SlottedPlugins::headless().set(AssetPlugin {
+                file_path: assets_dir(),
+                ..default()
+            }),
+            |app: &mut App| {
+                if !app.is_plugin_added::<MenuPlugin>() {
+                    app.add_plugins(MenuPlugin);
+                }
+                app.init_resource::<Seen>().add_systems(Last, record);
+            },
+        ))
+        .resolution(1280.0, 720.0)
+        .theme("glass")
+        .build();
+    wait_for_theme(&mut h);
+    assert!(
+        h.world().get_resource::<MenuConfig>().is_none(),
+        "the plugin inserts no config of its own"
+    );
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert_eq!(h.stack(), vec![], "no config, no pause");
+    h.gamepad(GamepadButton::Start);
+    h.settle();
+    assert_eq!(h.stack(), vec![]);
+    // The templates still register and a choice is still written; only the
+    // built-in settings push is off.
+    h.open(kinds::pause());
+    h.settle();
+    h.activate(find(&h, "settings"));
+    h.settle();
+    assert_eq!(h.stack(), vec![kinds::pause()], "settings pushed nothing");
+    let ids: Vec<String> = h
+        .world()
+        .resource::<Seen>()
+        .choices
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
+    assert_eq!(ids, vec!["settings".to_owned()]);
+    h.activate(find(&h, "resume"));
+    h.settle();
+    assert_eq!(h.stack(), vec![], "resume still pops: it needs no config");
+}
+
+#[test]
+fn a_hint_bar_spawned_in_pointer_mode_starts_hidden() {
+    let mut h = harness();
+    h.set_input_mode(InputMode::Pointer);
+    h.settle();
+    h.open(ScreenDef::from_ron(CONTROLS).unwrap());
+    h.settle();
+    let bar = find(&h, "hints");
+    let always = find(&h, "always");
+    assert!(
+        !h.is_visible(bar),
+        "a plain bar spawned in pointer mode is hidden"
+    );
+    assert!(h.is_visible(always), "`hint.always` shows regardless");
+    h.set_input_mode(InputMode::Keyboard);
+    h.settle();
+    assert!(h.is_visible(bar));
+}
+
+#[test]
+fn a_games_own_main_menu_keeps_its_title_and_version() {
+    let own = ScreenDef::from_ron(
+        r#"#![enable(implicit_some)]
+        (
+            kind: "slotted:main_menu",
+            initial_focus: "play",
+            root: (type: "panel", role: "panel", tags: {"test_id": "own_main"}, children: [
+                (type: "text", key: "game.title", style: "display", tags: {"test_id": "title"}),
+                (type: "text", key: "game.version", style: "caption", tags: {"test_id": "version"}),
+                (type: "button", label: "slotted.menu.play", tags: {"test_id": "play", "menu": "play"}),
+            ]),
+        )"#,
+    )
+    .unwrap();
+    let mut h = UiHarness::builder()
+        .plugins((
+            SlottedPlugins::headless().set(AssetPlugin {
+                file_path: assets_dir(),
+                ..default()
+            }),
+            move |app: &mut App| {
+                app.world_mut()
+                    .resource_mut::<slotted_ui::Screens>()
+                    .register(own.clone());
+                if !app.is_plugin_added::<MenuPlugin>() {
+                    app.add_plugins(MenuPlugin);
+                }
+                app.insert_resource(MenuConfig {
+                    title: LocKey("slotted.menu.title".to_owned()),
+                    version: String::new(),
+                    ..default()
+                });
+            },
+        ))
+        .resolution(1280.0, 720.0)
+        .theme("glass")
+        .build();
+    wait_for_theme(&mut h);
+    h.open(kinds::main_menu());
+    h.settle();
+    assert_eq!(text_of(&h, find(&h, "title")), "game.title");
+    assert_eq!(
+        text_of(&h, find(&h, "version")),
+        "game.version",
+        "an empty config version removes only the crate's node"
+    );
 }

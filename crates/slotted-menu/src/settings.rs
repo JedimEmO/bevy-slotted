@@ -444,14 +444,16 @@ impl SettingsSpec {
         self.tabs.iter().flat_map(|tab| tab.rows.iter())
     }
 
-    /// The tab that carries `id`.
-    pub fn tab_by_id(&self, id: &str) -> Option<&SettingsTab> {
-        self.tabs.iter().find(|tab| tab.id == id)
-    }
-
-    /// Every declared store key, sorted.
+    /// Every declared store key, sorted and deduplicated.
     pub fn keys(&self) -> Vec<String> {
-        self.defaults().into_keys().collect()
+        let mut keys: Vec<String> = self
+            .rows()
+            .filter_map(SettingsRow::key)
+            .map(str::to_owned)
+            .collect();
+        keys.sort();
+        keys.dedup();
+        keys
     }
 }
 
@@ -642,6 +644,19 @@ pub fn apply_settings(world: &mut World) {
         .get_resource::<SettingsStorage>()
         .and_then(|storage| storage.0.load());
 
+    // Rules first, so a saved value is made to fit before it is seeded: a
+    // file from an older build (an option that no longer exists, a number
+    // past a tightened range, a hand edit) must not put into the store what
+    // no control could have written. A value that cannot be made to fit
+    // falls back to the default, with one warning naming the key.
+    let spec_rules = spec.rules();
+    {
+        let mut rules = world.resource_mut::<ValueRules>();
+        for (key, rule) in spec_rules.0.clone() {
+            rules.insert(key, rule);
+        }
+    }
+
     let mut store = world.resource_mut::<ValueStore>();
     let mut seed = spec.defaults();
     for (key, value) in &mut seed {
@@ -649,7 +664,22 @@ pub fn apply_settings(world: &mut World) {
             *value = existing.clone();
         }
         if let Some(saved) = saved.as_ref().and_then(|s| s.values.get(key)) {
-            *value = saved.clone();
+            let conformed = match spec_rules.get(key) {
+                Some(rule) => rule.conform(saved),
+                None => Ok(saved.clone()),
+            };
+            match conformed {
+                Ok(fit) if same_kind(&fit, value) => *value = fit,
+                Ok(_) => tracing::warn!(
+                    key,
+                    "saved settings hold a value of the wrong kind; using the default"
+                ),
+                Err(reason) => tracing::warn!(
+                    key,
+                    %reason,
+                    "saved settings hold a value the rule refuses; using the default"
+                ),
+            }
         }
     }
     if let Some(first) = spec.tabs.first()
@@ -659,17 +689,34 @@ pub fn apply_settings(world: &mut World) {
     }
     store.restore(seed);
 
-    let mut rules = world.resource_mut::<ValueRules>();
-    for (key, rule) in spec.rules().0 {
-        rules.insert(key, rule);
-    }
-
+    // The bindings the game built the app with are what Reset returns to,
+    // not the crate's compiled-in table: a game that inserted its own
+    // `UiBindings` keeps them.
+    let game_bindings = world.resource::<UiBindings>().clone();
+    world.insert_resource(DefaultBindings(game_bindings));
     if let Some(bindings) = saved.and_then(|s| s.bindings) {
         *world.resource_mut::<UiBindings>() = bindings;
     }
 
     world.insert_resource(SettingsApplied);
 }
+
+/// Whether two values are the same variant, so a saved `Text` never lands
+/// under a slider key.
+fn same_kind(a: &Value, b: &Value) -> bool {
+    matches!(
+        (a, b),
+        (Value::Bool(_), Value::Bool(_))
+            | (Value::Int(_), Value::Int(_))
+            | (Value::Float(_), Value::Float(_))
+            | (Value::Text(_), Value::Text(_))
+    )
+}
+
+/// The bindings the app started with, captured by [`apply_settings`] before
+/// a saved file overrides them; what [`reset_settings`] restores.
+#[derive(Resource, Debug, Clone, PartialEq)]
+pub struct DefaultBindings(pub UiBindings);
 
 /// What [`save_settings`] writes: the declared keys the store holds and the
 /// bindings as they are.
@@ -688,9 +735,16 @@ pub fn saved_settings(
     }
 }
 
-/// `Last`: saves when a declared value or a binding changed this frame, and
-/// on exit (contract 4.3). Nothing before [`apply_settings`] ran, so an empty
-/// store never overwrites a file.
+/// Something declared changed since the last save.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SettingsDirty(pub bool);
+
+/// `Last`: saves once the changes stop, and on exit (contract 4.3). A
+/// declared `ValueChanged` or a `BindingChanged` marks the store dirty; the
+/// save happens on the first frame with no new change, so a slider drag
+/// that writes every frame costs one write when it ends rather than one per
+/// frame. `AppExit` flushes whatever is pending. Nothing before
+/// [`apply_settings`] ran, so an empty store never overwrites a file.
 #[allow(clippy::too_many_arguments)]
 pub fn save_settings(
     settings: Option<Res<Settings>>,
@@ -698,6 +752,7 @@ pub fn save_settings(
     applied: Option<Res<SettingsApplied>>,
     store: Res<ValueStore>,
     bindings: Res<UiBindings>,
+    mut dirty: ResMut<SettingsDirty>,
     mut changed: MessageReader<ValueChanged>,
     mut rebound: MessageReader<slotted_ui::BindingChanged>,
     mut exit: MessageReader<AppExit>,
@@ -714,10 +769,22 @@ pub fn save_settings(
         .any(|c| spec.rows().any(|row| row.key() == Some(c.key.as_str())));
     let rebound = rebound.read().next().is_some();
     let exiting = exit.read().next().is_some();
-    if !(value_changed || rebound || exiting) {
+    let changed_now = value_changed || rebound;
+    let pending = dirty.0 || changed_now;
+    // Settle: save once the changes stop. Exit: save whatever is pending.
+    let flush = if exiting {
+        pending
+    } else {
+        dirty.0 && !changed_now
+    };
+    if changed_now {
+        dirty.0 = true;
+    }
+    if !flush {
         return;
     }
     storage.0.save(&saved_settings(spec, &store, &bindings));
+    dirty.0 = false;
 }
 
 /// `Update`: the template's Reset button (`MenuChoice` id `reset`) sends
@@ -735,10 +802,11 @@ pub fn reset_on_menu_choice(
 
 /// Applies [`SettingsReset`] (contract 4.3): every default back through
 /// `SetValue`, so rules and guards still apply, and the bindings back to
-/// [`UiBindings::default`].
+/// what the app started with ([`DefaultBindings`], else the crate's table).
 pub fn reset_settings(
     mut resets: MessageReader<SettingsReset>,
     settings: Option<Res<Settings>>,
+    defaults: Option<Res<DefaultBindings>>,
     mut writes: MessageWriter<SetValue>,
     mut bindings: ResMut<UiBindings>,
 ) {
@@ -755,7 +823,7 @@ pub fn reset_settings(
             source: None,
         });
     }
-    *bindings = UiBindings::default();
+    *bindings = defaults.map_or_else(UiBindings::default, |d| d.0.clone());
 }
 
 /// `SlottedUiSet::Render`, the frame a capture lands: the action that was
@@ -815,14 +883,11 @@ pub fn resolve_binding_conflicts(
 
 /// Registers the settings systems.
 pub fn build(app: &mut App) {
+    app.init_resource::<SettingsDirty>();
     app.add_systems(
         Update,
         (
-            apply_settings.run_if(
-                |s: Option<Res<Settings>>, done: Option<Res<SettingsApplied>>| {
-                    s.is_some() && done.is_none()
-                },
-            ),
+            apply_settings,
             (reset_on_menu_choice, reset_settings).chain(),
             resolve_binding_conflicts.in_set(slotted_ui::SlottedUiSet::Render),
         ),
