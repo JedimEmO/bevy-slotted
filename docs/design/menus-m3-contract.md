@@ -140,8 +140,9 @@ pub fn open_history(commands: &mut Commands);                             // pus
   overlay still pauses. Test: a `focus: true` overlay over nothing gets its `initial_focus`; a modal
   pushed above takes it and popping the modal gives it back; a plain overlay is skipped both ways;
   Back over the focusable overlay pops nothing.
-- 2.2 **`close_stacked(commands, root)`**: the public way to drop one entry that is not the top,
-  through `close_screen` and `on_screen_closed` (which already handles it). Test: closing an
+- 2.2 **`close_stacked(commands, root)`** (implemented in the skeleton as the `CloseStacked`
+  command: `pop_entry` plus `finish_change`; a root the stack does not hold closes like
+  `close_screen`): the public way to drop one entry that is not the top. A's test: closing an
   overlay under a modal leaves the modal, its focus and its scrim alone.
 - 2.3 **Rich text reveal.** `RichReveal` on a `rich_text` node; `render_rich_text` re-renders when
   it changes (a `Ref<RichReveal>` beside `Ref<RichText>`; the runs are not re-parsed, the spans
@@ -234,7 +235,7 @@ Closing the screen from outside (`clear_screens`, a hot-reload respawn) is obser
 
 ### 3.3 Tests (B)
 
-`crates/slotted-menu/tests/dialogue.rs` (the runner half): `from_ron` parses the 3.1 sample and
+`crates/slotted-menu/tests/dialogue.rs` (B owns the file; C tests in `dialogue_screen.rs`): `from_ron` parses the 3.1 sample and
 rejects a dangling `next`, a missing start, an empty choice, a duplicate option id and a bad
 condition, each with the right error; `Condition` parses both forms and reads `Bool`, numbers and
 text truthiness; a registered dialogue starts, the screen kind is on the stack as an overlay,
@@ -310,7 +311,8 @@ C rewrites per state, plus two new verbs `hint_bar.rs` learns: a `hint.secondary
 
 ### 4.6 Tests (C)
 
-`crates/slotted-menu/tests/dialogue.rs` (the screen half) in three themes: the template registers
+`crates/slotted-menu/tests/dialogue_screen.rs` (C's own file; copy the helpers from
+`tests/dialogue.rs`, which B owns) in three themes: the template registers
 and opens as a focusable overlay; a `Say` shows speaker, portrait and a `text` whose reveal is
 `Some(0)` then grows with virtual time at `chars_per_second`; Accept mid-reveal shows everything
 and the next Accept advances; reduced motion shows everything at once; a `Choice` spawns the

@@ -139,9 +139,37 @@ pub fn clear_screens(commands: &mut Commands) {
 /// 2.2): the way an overlay, which `Back` and [`pop_screen`] never reach,
 /// leaves the stack. Entries above it stay where they are.
 pub fn close_stacked(commands: &mut Commands, root: Entity) {
-    // M3-IMPL: A
-    let _ = (commands, root);
-    todo!("close_stacked");
+    commands.queue(CloseStacked(root));
+}
+
+/// The command behind [`close_stacked`]: the entry goes the way
+/// [`pop_entry`] takes it, and z, visibility, focus and `StackChanged`
+/// follow. A root the stack does not hold is closed like
+/// [`close_screen`](crate::close_screen) would.
+#[derive(Debug, Clone, Copy)]
+pub struct CloseStacked(pub Entity);
+
+impl Command for CloseStacked {
+    type Out = ();
+
+    fn apply(self, world: &mut World) {
+        let index = world
+            .resource::<ScreenStack>()
+            .entries
+            .iter()
+            .position(|e| e.root == self.0);
+        match index {
+            Some(index) => {
+                pop_entry(world, index);
+                finish_change(world);
+            }
+            None if world.get_entity(self.0).is_ok() => {
+                world.trigger(ScreenClosed { entity: self.0 });
+                world.despawn(self.0);
+            }
+            None => {}
+        }
+    }
 }
 
 /// The command behind [`push_screen`].

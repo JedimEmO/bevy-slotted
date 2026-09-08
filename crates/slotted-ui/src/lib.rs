@@ -109,9 +109,9 @@ pub use semantic::{
     WidgetNode, sync_accessibility,
 };
 pub use stack::{
-    ClearScreens, PopScreen, PopTo, PushScreen, ScreenStack, Scrim, StackChanged, StackEntry,
-    clear_screens, close_stacked, pop_on_back, pop_screen, pop_to, push_screen, push_screen_at,
-    replace_screen,
+    ClearScreens, CloseStacked, PopScreen, PopTo, PushScreen, ScreenStack, Scrim, StackChanged,
+    StackEntry, clear_screens, close_stacked, pop_on_back, pop_screen, pop_to, push_screen,
+    push_screen_at, replace_screen,
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,
