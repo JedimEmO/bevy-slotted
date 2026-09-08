@@ -1,8 +1,7 @@
 //! Fluent localisation, layered by load order. Contract section 2.7.
 
-use std::collections::HashSet;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use bevy::asset::{Asset, AssetLoader, LoadContext, io::Reader};
 use bevy::prelude::*;
@@ -62,9 +61,6 @@ pub struct LocaleTable {
     pub lang: LanguageIdentifier,
     /// `(owner, bundle)`; `None` owner is base.
     pub layers: Vec<(Option<ModId>, FluentBundle<FluentResource>)>,
-    /// Keys already reported missing, so the warning is once per key and not
-    /// once per frame per text node.
-    missing: Mutex<HashSet<String>>,
 }
 
 impl LocaleTable {
@@ -73,7 +69,6 @@ impl LocaleTable {
         Self {
             lang,
             layers: Vec::new(),
-            missing: Mutex::new(HashSet::new()),
         }
     }
 
@@ -107,9 +102,6 @@ impl LocaleTable {
     /// Drops every layer, keeping the language.
     pub fn clear(&mut self) {
         self.layers.clear();
-        if let Ok(mut missing) = self.missing.lock() {
-            missing.clear();
-        }
     }
 
     /// The first layer that has `key`, formatted with `args`.
@@ -135,20 +127,6 @@ impl LocaleTable {
         }
         None
     }
-
-    /// `resolve`, logging once for a key nothing defines.
-    #[cfg(feature = "ui")]
-    fn resolve_or_warn(&self, key: &LocKey, args: Option<&FluentArgs<'_>>) -> Option<String> {
-        if let Some(text) = self.resolve(key, args) {
-            return Some(text);
-        }
-        if let Ok(mut missing) = self.missing.lock()
-            && missing.insert(key.0.clone())
-        {
-            tracing::warn!(key = %key.0, "no locale layer defines this key");
-        }
-        None
-    }
 }
 
 impl Default for LocaleTable {
@@ -159,12 +137,14 @@ impl Default for LocaleTable {
 
 #[cfg(feature = "ui")]
 impl Localizer for LocaleTable {
-    /// The port `slotted-ui` and `slotted-browser` resolve through. It warns
-    /// once per key that nothing defines, the same as a `LocText` does, so a
-    /// browser card and a screen label report a missing key identically.
+    /// The port `slotted-ui` and `slotted-browser` resolve through. It does
+    /// not warn on a miss: since menus M2 the table is the *primary* of a
+    /// `Localization` chain whose fallbacks (a library crate's English) answer
+    /// what the catalogue lacks, so a miss here is routine. A key nothing in
+    /// the chain defines is reported once by the `LocText` that draws it.
     fn resolve(&self, key: &LocKey, args: &slotted_ui::LocArgs) -> Option<String> {
         if args.is_empty() {
-            return self.resolve_or_warn(key, None);
+            return self.resolve(key, None);
         }
         let mut fluent = FluentArgs::new();
         for (name, value) in args {
@@ -175,7 +155,7 @@ impl Localizer for LocaleTable {
                 slotted_ui::Value::Text(t) => fluent.set(name.as_str(), t.as_str()),
             }
         }
-        self.resolve_or_warn(key, Some(&fluent))
+        self.resolve(key, Some(&fluent))
     }
 }
 

@@ -4,6 +4,8 @@
 
 use std::collections::BTreeSet;
 
+use bevy::input_focus::directional_navigation::FocusableArea;
+use bevy::input_focus::navigator::find_best_candidate;
 use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
@@ -155,12 +157,17 @@ fn explicit_link(
 /// focus (menus contract 2.4).
 ///
 /// An explicit `NavLinks` link on the focused node or one of its ancestors
-/// wins; otherwise Bevy's `AutoDirectionalNavigator` picks the target. A link
-/// whose id resolves to nothing under the same screen root is logged once per
-/// screen spawn and falls through to the navigator. Keyboard-sourced actions
-/// are already suppressed while a text field has the keyboard
+/// wins; then a manual edge in the `DirectionalNavigationMap`; otherwise the
+/// best candidate by Bevy's scoring among the `AutoDirectionalNavigation`
+/// nodes *under the focused node's screen root*. Bevy's own
+/// `AutoDirectionalNavigator` is z-agnostic and would happily pick a button
+/// of the screen under a modal (a pause button below a settings row), which
+/// `enforce_focus_scope` then bounces back, so focus never moved (menus M2,
+/// package D). A link whose id resolves to nothing under the same screen
+/// root is logged once per screen spawn and falls through. Keyboard-sourced
+/// actions are already suppressed while a text field has the keyboard
 /// (`emit_ui_actions`), so this needs no guard of its own.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn directional_nav_actions(
     mut events: MessageReader<crate::actions::UiActionEvent>,
     claims: Res<crate::actions::UiActionClaims>,
@@ -172,6 +179,16 @@ pub fn directional_nav_actions(
     roots: Query<(), With<crate::semantic::ScreenRoot>>,
     mut warned: Query<&mut NavLinkWarned>,
     mut nav: AutoDirectionalNavigator,
+    navigable: Query<
+        (
+            Entity,
+            &bevy::ui::ComputedUiTargetCamera,
+            &ComputedNode,
+            &bevy::ui::ui_transform::UiGlobalTransform,
+            &InheritedVisibility,
+        ),
+        With<bevy::ui::auto_directional_navigation::AutoDirectionalNavigation>,
+    >,
     mut commands: Commands,
 ) {
     for event in events.read() {
@@ -216,10 +233,73 @@ pub fn directional_nav_actions(
                 );
             }
         }
-        if let Err(e) = nav.navigate(dir) {
-            tracing::trace!(?e, "directional navigation found no target");
+        // A manual edge first, as Bevy's navigator does.
+        if let Ok(target) = nav.manual_directional_navigation.navigate(dir) {
+            nav.manual_directional_navigation
+                .focus
+                .set(target, FocusCause::Navigated);
+            continue;
+        }
+        let Some(focused) = focused else { continue };
+        let Some((camera, origin)) = focusable_area(focused, &navigable) else {
+            continue;
+        };
+        let nodes: Vec<FocusableArea> = navigable
+            .iter()
+            .filter(|(entity, target, computed, _, visible)| {
+                *entity != focused
+                    && !computed.is_empty()
+                    && visible.get()
+                    && target.get() == Some(camera)
+                    && screen_root_of(*entity, &parents, &roots) == root
+            })
+            .filter_map(|(entity, _, _, _, _)| focusable_area(entity, &navigable).map(|(_, a)| a))
+            .collect();
+        if let Some(target) = find_best_candidate(&origin, dir, &nodes, &nav.config) {
+            nav.manual_directional_navigation
+                .focus
+                .set(target, FocusCause::Navigated);
+        } else {
+            tracing::trace!(?dir, "directional navigation found no target");
         }
     }
+}
+
+/// The target camera and the navigator's bounds of `entity`, as Bevy's
+/// `AutoDirectionalNavigator` computes them.
+#[allow(clippy::type_complexity)]
+fn focusable_area(
+    entity: Entity,
+    navigable: &Query<
+        (
+            Entity,
+            &bevy::ui::ComputedUiTargetCamera,
+            &ComputedNode,
+            &bevy::ui::ui_transform::UiGlobalTransform,
+            &InheritedVisibility,
+        ),
+        With<bevy::ui::auto_directional_navigation::AutoDirectionalNavigation>,
+    >,
+) -> Option<(Entity, FocusableArea)> {
+    let (entity, target, computed, transform, _) = navigable.get(entity).ok()?;
+    let camera = target.get()?;
+    let (scale, rotation, translation) = transform.to_scale_angle_translation();
+    let size = computed.size() * computed.inverse_scale_factor() * scale;
+    // Bevy's `get_rotated_bounds`, which is private: the axis-aligned box
+    // of the rotated rectangle.
+    let (sin, cos) = rotation.sin_cos();
+    let rotated = Vec2::new(
+        (size.x * cos).abs() + (size.y * sin).abs(),
+        (size.x * sin).abs() + (size.y * cos).abs(),
+    );
+    Some((
+        camera,
+        FocusableArea {
+            entity,
+            position: translation * computed.inverse_scale_factor(),
+            size: rotated,
+        },
+    ))
 }
 
 /// One action delivered to the focused node (menus M1 contract 1.2). Controls

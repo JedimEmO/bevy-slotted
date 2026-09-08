@@ -14,7 +14,7 @@ keywords = ["bevy", "testing", "ui", "headless", "gamedev"]
 categories = ["game-development", "development-tools::testing"]
 
 [features]
-default = ["snapshots"]
+default = ["snapshots", "menu"]
 # `UiHarness::load_mods` and friends (Phase 4 contract section 3), plus the
 # Lua `slotted.test` runner and the `test-mods` binary (Phase 6 section 3.2).
 # The runtime comes from the facade's `script-luaur` feature, never named
@@ -27,6 +27,10 @@ script-luaur = ["script", "slotted/script-luaur"]
 # `assert_tree_snapshot!` through `insta`. Off for a wasm build of the crate
 # (the playground shares the op implementations, not the snapshots).
 snapshots = ["dep:insta"]
+# `UiHarness::{toasts, hint_entries, confirm_accept, confirm_cancel,
+# menu_choices}` over `slotted-menu` (menus M2 contract 5). Turns the facade's
+# `menu` feature on, so `SlottedPlugins::headless()` carries `MenuPlugin`.
+menu = ["dep:slotted-menu", "slotted/menu"]
 # Run the real renderer with a software adapter and compare pixels. Phase 7.
 render = []
 
@@ -48,6 +52,7 @@ slotted-theme = { workspace = true }
 slotted-ui = { workspace = true }
 slotted-icons = { workspace = true }
 slotted-browser = { workspace = true }
+slotted-menu = { workspace = true, optional = true }
 slotted-packs = { workspace = true, optional = true, features = ["ui"] }
 slotted-script = { workspace = true, optional = true }
 # `debug` so a failing system parameter names itself (ADR 0002).

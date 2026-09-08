@@ -12,8 +12,8 @@
 //! store holds and writes a `SetValue` the store may refuse
 //! (docs/guide/values.md).
 //!
-//! The chest example opens it over the chest with `Menu`; a test opens it
-//! with `UiHarness::open`.
+//! The chest example reaches it through the pause screen's Settings button
+//! (`MenuConfig::settings_kind`); a test opens it with `UiHarness::open`.
 
 use bevy::prelude::*;
 use slotted::menu::{MenuPlugin, Settings, SettingsRow, SettingsSpec};
@@ -22,7 +22,7 @@ use slotted::packs::locale::LocaleTable;
 use slotted::prelude::*;
 use slotted::ui::{
     InputDevice, LocKey, Localization, SelectOption, Tags, TextOpts, TextRole, ToggleStyle,
-    UiActionEvent, UiNodeDef, Value, ValueGuard, ValueGuards, ValueStore,
+    UiNodeDef, Value, ValueGuard, ValueGuards, ValueStore,
 };
 use std::collections::BTreeMap;
 
@@ -292,24 +292,6 @@ pub fn open_settings(commands: &mut Commands) {
         let mut commands = world.commands();
         push_screen(&mut commands, def, None);
     });
-}
-
-/// `SlottedUiSet::Input`: an unclaimed `Menu` action opens the settings
-/// screen and claims the action. `Back` pops it through the stack like any
-/// other entry.
-pub fn open_settings_on_menu(
-    mut actions: MessageReader<UiActionEvent>,
-    mut claims: ResMut<slotted::ui::UiActionClaims>,
-    mut commands: Commands,
-) {
-    let wanted = actions
-        .read()
-        .any(|event| event.action == UiAction::Menu && !event.repeat);
-    if !wanted || claims.is_claimed(UiAction::Menu) {
-        return;
-    }
-    claims.claim(UiAction::Menu);
-    open_settings(&mut commands);
 }
 
 #[cfg(test)]

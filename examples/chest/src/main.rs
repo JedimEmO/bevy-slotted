@@ -8,6 +8,8 @@
 //! cargo run -p chest -- --cheat                  browser Ctrl+click gives
 //! cargo run -p chest -- --recipe minecraft:coal --shot shots/chest-recipe.png
 //! cargo run -p chest -- --settings --shot shots/chest-settings.png
+//! cargo run -p chest -- --pause --shot shots/chest-pause.png
+//! cargo run -p chest -- --confirm --shot shots/chest-confirm.png
 //! cargo run -p chest -- --record session.ron       record input, replay it in a test
 //! cargo run -p chest -- --theme paper              the same screen in another theme
 //! ```
@@ -26,9 +28,10 @@
 //! The browser panel docks beside the chest: type in its search field, press
 //! `R` over a card for its recipes, `U` for its uses, `A` to bookmark it, and
 //! `Backspace` to go back. The `+` button stays disabled because a chest has
-//! no crafting grid to fill. `Tab` opens the settings screen over the chest,
-//! every M1 control on three tabs bound to a value store; `E` and `Q` switch
-//! its tabs, `Esc` closes it.
+//! no crafting grid to fill. `Esc` with the chest closed opens the pause
+//! screen (menus M2); its Settings button opens the settings screen, every M1
+//! control on three tabs bound to a value store (`E` and `Q` switch its tabs,
+//! `Esc` closes it), and Quit asks before it exits.
 //!
 //! The scene, the orbit and the screenshot plumbing are lifted from
 //! `spikes/glass-ui`. Everything else comes out of `lib.rs`, which the headless
@@ -42,7 +45,7 @@ use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::ui::ui_transform::UiGlobalTransform;
 use bevy::window::{PrimaryWindow, WindowResolution};
-use chest::{ChestBinding, ChestDemoPlugin, ChestSettingsPlugin};
+use chest::{ChestBinding, ChestDemoPlugin, ChestMenuPlugin};
 use showcase::backdrop::{BackdropPlugin as SceneBackdropPlugin, MainCamera};
 use slotted::prelude::*;
 use slotted::theme::blur::{BackdropPlugin, BackdropSource};
@@ -55,6 +58,7 @@ const SHOT_AT: f32 = 2.0;
 
 /// Command line. Absent flags mean "interactive, forever".
 #[derive(Resource, Debug, Clone, Default)]
+#[allow(clippy::struct_excessive_bools)]
 struct Cli {
     /// Capture one frame to this path and exit.
     shot: Option<PathBuf>,
@@ -70,6 +74,10 @@ struct Cli {
     recipe: Option<String>,
     /// Open the settings screen over the chest before capturing (menus M1).
     settings: bool,
+    /// Close the chest and open the pause screen before capturing (menus M2).
+    pause: bool,
+    /// As `--pause`, then press Quit so the confirm dialog is up.
+    confirm: bool,
     /// Record every input to this RON file, written on exit.
     record: Option<PathBuf>,
     /// Theme name: `glass` (default), `paper` or `neon`, loaded from
@@ -87,6 +95,8 @@ fn main() {
         cheat: args.iter().any(|a| a == "--cheat"),
         recipe: value("--recipe"),
         settings: args.iter().any(|a| a == "--settings"),
+        pause: args.iter().any(|a| a == "--pause" || a == "--confirm"),
+        confirm: args.iter().any(|a| a == "--confirm"),
         record: value("--record").map(PathBuf::from),
         theme: value("--theme").unwrap_or_else(|| "glass".to_owned()),
     };
@@ -129,7 +139,7 @@ fn main() {
         divisor: 4,
         clear_color: Color::srgb(0.043, 0.055, 0.078),
     })
-    .add_plugins((ChestDemoPlugin, ChestSettingsPlugin))
+    .add_plugins((ChestDemoPlugin, ChestMenuPlugin))
     .insert_resource(ClearColor(Color::srgb(0.043, 0.055, 0.078)))
     .insert_resource(chest::CheatMode(cli.cheat))
     // The HUD position editor: `F7` toggles it, and where the player leaves
@@ -149,6 +159,7 @@ fn main() {
             park_paint,
             open_recipe_page,
             open_settings_for_shot,
+            open_pause_for_shot,
             shot_and_exit,
         ),
     );
@@ -366,6 +377,58 @@ fn open_settings_for_shot(
     showcase::settings::open_settings(&mut commands);
 }
 
+/// `--pause` / `--confirm`: pop the chest and pause a second before the
+/// shot, on the keyboard so the focus ring shows; `--confirm` then presses
+/// Quit half a second later, so the danger confirm is up for the capture.
+fn open_pause_for_shot(
+    cli: Res<Cli>,
+    time: Res<Time>,
+    mut mode: ResMut<slotted::ui::InputMode>,
+    stack: Res<ScreenStack>,
+    mut commands: Commands,
+    mut stage: Local<u8>,
+) {
+    if !cli.pause {
+        return;
+    }
+    // The real mouse may sit over the window and flip the mode back to
+    // pointer, which hides the ring and the hint bar; a shot is a keyboard
+    // shot.
+    if *stage >= 1 && *mode != slotted::ui::InputMode::Keyboard {
+        *mode = slotted::ui::InputMode::Keyboard;
+    }
+    match *stage {
+        0 if time.elapsed_secs() >= SHOT_AT * 0.5 => {
+            *stage = 1;
+            *mode = slotted::ui::InputMode::Keyboard;
+            // Pop the chest first: the pause is what `Menu` opens over
+            // nothing, and it wants the game behind it, not the chest.
+            if stack.top().is_some() {
+                slotted::ui::pop_screen(&mut commands);
+            }
+        }
+        1 if stack.top().is_none() => {
+            *stage = 2;
+            commands.queue(|world: &mut World| {
+                let kind = world
+                    .resource::<slotted::menu::MenuConfig>()
+                    .pause_kind
+                    .clone();
+                let Some(def) = world.resource::<Screens>().get(&kind).cloned() else {
+                    warn!("--pause: {} is not registered", kind.0);
+                    return;
+                };
+                slotted::ui::push_screen(&mut world.commands(), def, None);
+            });
+        }
+        2 if cli.confirm && time.elapsed_secs() >= SHOT_AT * 0.75 => {
+            *stage = 3;
+            chest::confirm_quit(&mut commands);
+        }
+        _ => {}
+    }
+}
+
 /// `--shot`: capture at [`SHOT_AT`] seconds, then leave.
 fn shot_and_exit(
     mut commands: Commands,
@@ -381,7 +444,7 @@ fn shot_and_exit(
     }
     if !*taken {
         *taken = true;
-        if binding.open.is_none() {
+        if binding.open.is_none() && !cli.pause {
             warn!("capturing with no chest screen open");
         }
         if let Some(parent) = path.parent() {

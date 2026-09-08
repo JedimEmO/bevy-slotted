@@ -522,6 +522,68 @@ fn menu_opens_the_pause_screen_when_nothing_is_open_and_pops_it_again() {
     assert_eq!(h.stack(), vec![], "Back pops it too");
 }
 
+/// `Escape` is both `Back` and `Menu` by default (menus M2 contract 1.1).
+/// With the pause over a page, one press pops the pause and only the pause;
+/// with nothing open, the same key pauses; Start on a pad (`Menu` alone)
+/// still pops the pause.
+#[test]
+fn escape_on_the_pause_pops_only_the_pause_and_start_pops_it_too() {
+    let mut h = harness();
+    assert_eq!(
+        h.world().resource::<UiBindings>().first_key(UiAction::Menu),
+        Some(KeyCode::Escape)
+    );
+    assert_eq!(
+        h.world().resource::<UiBindings>().first_key(UiAction::Back),
+        Some(KeyCode::Escape)
+    );
+    // A page underneath: pause over it through the pad, then Escape.
+    h.open(kinds::page());
+    h.settle();
+    h.gamepad(GamepadButton::Start);
+    h.settle();
+    assert_eq!(
+        h.stack(),
+        vec![kinds::page()],
+        "Menu over a page does nothing"
+    );
+    h.action(UiAction::Back);
+    h.settle();
+    assert_eq!(h.stack(), vec![]);
+    h.open(kinds::page());
+    h.settle();
+    h.world_mut().commands().queue(|world: &mut World| {
+        let def = world
+            .resource::<slotted_ui::Screens>()
+            .get(&kinds::pause())
+            .unwrap()
+            .clone();
+        slotted_ui::push_screen(&mut world.commands(), def, None);
+    });
+    h.settle();
+    assert_eq!(h.stack(), vec![kinds::page(), kinds::pause()]);
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert_eq!(
+        h.stack(),
+        vec![kinds::page()],
+        "one Escape pops the pause and leaves the page"
+    );
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert_eq!(h.stack(), vec![], "the page pops on Escape as Back");
+    h.key(KeyCode::Escape);
+    h.settle();
+    assert_eq!(
+        h.stack(),
+        vec![kinds::pause()],
+        "with nothing open Escape pauses"
+    );
+    h.gamepad(GamepadButton::Start);
+    h.settle();
+    assert_eq!(h.stack(), vec![], "Start pops the pause");
+}
+
 #[test]
 fn menu_does_not_pause_over_a_page_and_pause_on_menu_can_be_turned_off() {
     let mut h = harness();

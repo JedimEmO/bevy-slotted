@@ -8,7 +8,8 @@ Start with the one that matches what you are doing.
 | [architecture.md](architecture.md) | Understanding the crate graph, the ports, and where a change belongs. |
 | [screens.md](screens.md) | Building a screen. The `UiNodeDef` reference: every node type and its fields, the layout model, presentation, the screen stack, plus the item icon formats. |
 | [input.md](input.md) | Keyboard and gamepad: the action vocabulary, bindings, input mode, claims, focused actions, the focus ring, and driving them from a test. |
-| [values.md](values.md) | The value store a settings screen binds to: values, rules, guards, the messages, and the menu-property mirror. |
+| [values.md](values.md) | The value store a settings screen binds to: values, rules, guards, the messages, snapshot and restore, and the menu-property mirror. |
+| [menus.md](menus.md) | The game menus: `MenuConfig`, the five templates and their anchors, overriding and inheriting one, `MenuChoice`, pause, confirm, toast, page, the hint bar, `SettingsSpec` and persistence. |
 | [rich-text.md](rich-text.md) | The rich-text markup: bold, colour, size, key glyphs, item icons, and how it meets the locale file. |
 | [themes.md](themes.md) | Writing or editing a theme. Roles, materials, tokens, typography, control sizes, motion, and the three shipped skins. |
 | [modding.md](modding.md) | Writing a mod in Lua. The stages, the events, the commands, injection. |

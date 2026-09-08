@@ -472,7 +472,13 @@ and one it cannot. Put one in every header and beside every grid.
 
 `title_end` is the conventional name for the anchor at the end of a screen's
 title row; the demo mods inject there. Anchor names are free strings, so pick
-descriptive ones and document them with the screen.
+descriptive ones and document them with the screen. The menu templates name
+theirs in [menus.md](menus.md#the-templates).
+
+An injected node is a child of the anchor node, which is a plain flex row, so
+it sizes to its content. A button that should be as wide as the column it
+joins says so itself: wrap it in a `panel` with `width: "100%"` and a column
+layout, as `examples/menus` does for its About button.
 
 ### `custom`
 
@@ -582,6 +588,30 @@ screen, never a panic.
 Injections are still matched against the kind that opened, so an injection aimed
 at `demo:chest` does not follow the tree into `copper:chest`; target
 `slotted:any` to reach every screen with the anchor.
+
+### Rewriting a definition by id
+
+The same ids drive three methods on `ScreenDef` (menus M2), for code that
+takes a registered screen and makes one instance of it: `set_text(id, key,
+args)` rewrites a `text` or `rich_text` node's key and arguments, `set_tag(id,
+tag, value)` sets a tag on any node but an anchor, and `remove_node(id)` drops
+a node and its subtree (never the root). Each returns whether it found the
+node. `UiNodeDef::find_mut(id)` is the lookup under them; it walks panels,
+side tabs, scroll panels, tabs (a page's nodes are reachable, the `TabDef`s
+are not) and custom nodes. `slotted-menu`'s `confirm` is the worked example:
+it clones `slotted:confirm`, sets `title` and `message`, and removes whichever
+accept button the dialog does not want.
+
+```rust
+let mut def = (**screens.get(&kinds::confirm()).unwrap()).clone();
+def.set_text("message", LocKey("game.delete.message".into()), args);
+def.remove_node("accept");
+push_screen(&mut commands, Arc::new(def), None);
+```
+
+A button's label is not a text node; it is `ButtonOpts::label`, and
+`set_text` does not reach it (`slotted_menu::confirm::set_button_label` does,
+through `find_mut`). Folding that into `set_text` is on the follow-ups list.
 
 ## The screen stack
 

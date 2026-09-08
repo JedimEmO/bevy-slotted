@@ -146,6 +146,20 @@ fn on_my_accept(action: On<FocusedAction>, bindings: Query<&ValueBinding>, mut w
 }
 ```
 
+## Snapshot and restore
+
+`ValueStore::snapshot()` is the whole store as a `BTreeMap<String, Value>`,
+and `restore(map)` writes one back. The map serialises through `serde` with
+untagged values, so a RON file reads `"audio.master": 40.0, "video.vsync":
+true`. `restore` is deliberately not a batch of `SetValue`s: it inserts
+without rules, guards or `ValueChanged`, and bumps `version` exactly once,
+because a saved file is what the player already chose and re-validating it at
+startup would fire every guard and every bound control's repaint before the
+screen exists. It merges rather than clears, so a key the file lacks keeps
+what the game seeded. A saved value outside a rule's current range is loaded
+as is; the next write through the store corrects it. `slotted-menu`'s
+settings persistence is built on these two ([menus.md](menus.md#persistence)).
+
 ## In a test
 
 `UiHarness::value(key)` reads the store and `set_value(key, value)` writes a

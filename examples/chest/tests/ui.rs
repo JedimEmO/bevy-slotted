@@ -13,7 +13,7 @@
 #![allow(clippy::unwrap_used)]
 
 use bevy::prelude::*;
-use chest::{ChestBinding, ChestDemoPlugin, ChestSettingsPlugin};
+use chest::{ChestBinding, ChestDemoPlugin, ChestMenuPlugin};
 use pretty_assertions::assert_eq;
 use slotted_model::{InventoryRef, ToolbarAction};
 use slotted_test::prelude::*;
@@ -29,7 +29,7 @@ fn open_demo_chest_in(theme: &str) -> (UiHarness, Opened) {
     let registries = chest::load_registries();
     let mut harness = UiHarness::builder()
         .plugins(SlottedPlugins::headless())
-        .plugins((ChestDemoPlugin, ChestSettingsPlugin))
+        .plugins((ChestDemoPlugin, ChestMenuPlugin))
         .registries(registries.clone())
         .resolution(1600.0, 900.0)
         .theme(theme)
@@ -367,15 +367,17 @@ fn escape_closes_the_chest_through_the_stack() {
     harness.assert_conserved();
 }
 
-/// `Tab` (the `Menu` action) pushes the settings screen over the chest as a
-/// modal; the chest stays visible under it and `Escape` pops it back, with
-/// focus returning to the chest. The settings screen is the real
-/// `assets/screens/demo_settings.screen.ron` over the showcase's store seed.
+/// `Esc` is `Back` and `Menu` at once (menus M2): with the chest open it pops
+/// the chest, with nothing open it pauses, and on the pause it resumes. The
+/// pause's Settings button opens `demo:settings` (the showcase `SettingsSpec`
+/// over the `slotted:settings` frame), `Esc` pops it back to the pause, and
+/// `Tab` no longer opens anything: it is Bevy's tab-navigation key.
 #[test]
-fn tab_opens_settings_over_the_chest_and_escape_closes_it() {
-    let (mut harness, opened) = open_demo_chest();
+fn escape_pauses_with_the_chest_closed_and_the_pause_opens_settings() {
+    let (mut harness, _opened) = open_demo_chest();
     let chest = ScreenKind::new(chest::CHEST);
     let settings = ScreenKind::new(chest::SETTINGS);
+    let pause = slotted::menu::kinds::pause();
     let first = chest_slot(&harness, 0);
     assert_eq!(harness.focused(), Some(first));
 
@@ -383,53 +385,152 @@ fn tab_opens_settings_over_the_chest_and_escape_closes_it() {
     harness.settle();
     assert_eq!(
         harness.stack(),
-        vec![chest.clone(), settings.clone()],
-        "Tab pushed the settings screen over the chest"
+        vec![chest.clone()],
+        "Tab moves focus; it opens nothing"
     );
-    let root = harness.find(&by::screen(settings.clone()));
-    assert!(harness.is_visible(root));
-    assert!(
-        harness.is_visible(first),
-        "a modal keeps the chest visible under it"
-    );
-    assert_eq!(
-        harness.focused(),
-        Some(harness.find(&by::role(SemanticRole::Tab).within(root).index(0))),
-        "the modal's `initial_focus` is its first tab"
-    );
-    assert_eq!(
-        harness.find_all(&by::control("slider").within(root)).len(),
-        4,
-        "the settings controls are up"
-    );
-    assert!(
-        harness.world().resource::<ChestBinding>().open.is_some(),
-        "the chest is still open underneath"
-    );
-
-    // A second Tab does nothing: the screen is already on top.
-    harness.key(KeyCode::Tab);
-    harness.settle();
-    assert_eq!(harness.stack(), vec![chest.clone(), settings]);
 
     harness.key(KeyCode::Escape);
     harness.settle();
-    assert_eq!(harness.stack(), vec![chest], "Escape popped the settings");
-    assert!(
-        harness
-            .try_find(&by::screen(ScreenKind::new(chest::SETTINGS)))
-            .is_none()
+    assert_eq!(harness.stack(), vec![], "Escape over the chest pops it");
+    assert!(harness.world().resource::<ChestBinding>().open.is_none());
+
+    harness.key(KeyCode::Escape);
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![pause.clone()],
+        "Escape with nothing open pauses"
+    );
+    let root = harness.find(&by::screen(pause.clone()));
+    assert_eq!(
+        harness.focused(),
+        Some(harness.find(&by::test_id("resume").within(root))),
+        "the pause's `initial_focus` is Resume"
+    );
+
+    harness.activate(harness.find(&by::test_id("settings").within(root)));
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![pause.clone(), settings.clone()],
+        "Settings on the pause pushed `demo:settings`"
     );
     assert_eq!(
         harness
-            .focused()
-            .and_then(|e| harness.world().get::<slotted::ecs::SlotRef>(e).copied())
-            .map(|s| s.menu),
-        Some(opened.menu),
-        "focus is back on a chest slot"
+            .menu_choices()
+            .into_iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>(),
+        vec!["settings"]
     );
+    let modal = harness.find(&by::screen(settings.clone()));
+    assert!(harness.is_visible(modal));
+    assert_eq!(
+        harness.focused(),
+        Some(harness.find(&by::role(SemanticRole::Tab).within(modal).index(0))),
+        "the modal's `initial_focus` is its first tab"
+    );
+    assert_eq!(
+        harness.find_all(&by::control("slider").within(modal)).len(),
+        4,
+        "the settings controls are up"
+    );
+
+    harness.key(KeyCode::Escape);
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![pause.clone()],
+        "Escape popped the settings, not the pause"
+    );
+    assert!(harness.try_find(&by::screen(settings)).is_none());
+
+    harness.key(KeyCode::Escape);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![], "Escape on the pause resumes");
+
+    harness.key(KeyCode::KeyE);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![chest], "E reopens the chest");
     assert!(harness.world().resource::<ChestBinding>().open.is_some());
     harness.assert_conserved();
+}
+
+/// Quit on the pause screen opens a danger confirm; Cancel returns to the
+/// pause, Accept exits the app.
+#[test]
+fn quit_on_the_pause_confirms_with_a_danger_button_and_then_exits() {
+    let (mut harness, _opened) = open_demo_chest();
+    let pause = slotted::menu::kinds::pause();
+    let confirm = slotted::menu::kinds::confirm();
+
+    harness.key(KeyCode::Escape);
+    harness.settle();
+    harness.key(KeyCode::Escape);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![pause.clone()]);
+    let root = harness.find(&by::screen(pause.clone()));
+    harness.activate(harness.find(&by::test_id("quit").within(root)));
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![pause.clone(), confirm.clone()],
+        "Quit pushed the confirm over the pause"
+    );
+    assert_eq!(
+        harness
+            .menu_choices()
+            .into_iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>(),
+        vec!["quit"]
+    );
+    let dialog = harness.find(&by::screen(confirm.clone()));
+    assert!(
+        harness
+            .try_find(&by::test_id("accept_danger").within(dialog))
+            .is_some(),
+        "the accept button is the danger one"
+    );
+    assert!(
+        harness
+            .try_find(&by::test_id("accept").within(dialog))
+            .is_none(),
+        "the primary accept was removed"
+    );
+    assert_eq!(
+        harness
+            .text_of(harness.find(&by::test_id("title").within(dialog)))
+            .as_deref(),
+        Some("Quit?")
+    );
+    assert_eq!(
+        harness.focused(),
+        Some(harness.find(&by::test_id("cancel").within(dialog))),
+        "the confirm starts on Cancel"
+    );
+
+    harness.confirm_cancel();
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![pause.clone()],
+        "Cancel is back on the pause"
+    );
+    assert!(
+        harness.world().resource::<Messages<AppExit>>().is_empty(),
+        "nothing exited"
+    );
+
+    harness.activate(harness.find(&by::test_id("quit").within(root)));
+    harness.settle();
+    assert_eq!(harness.stack(), vec![pause, confirm]);
+    harness.confirm_accept();
+    let exits: Vec<AppExit> = bevy::ecs::message::MessageCursor::default()
+        .read(harness.world().resource::<Messages<AppExit>>())
+        .cloned()
+        .collect();
+    assert_eq!(exits, vec![AppExit::Success], "Accept exits");
 }
 
 /// Steps until the active theme asset is in `Assets<Theme>`, so a test can

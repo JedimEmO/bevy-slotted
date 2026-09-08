@@ -1,6 +1,6 @@
 # bevy_slotted implementation plan
 
-Status: v2.2, 2026-09-07, Phases 0 to 7 complete; Menus M0 (input model, focus ring, screen stack, layout model) and M1 (type scale, rich text, localisation arguments, value store, controls) landed. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
+Status: v2.3, 2026-09-08, Phases 0 to 7 complete; Menus M0 (input model, focus ring, screen stack, layout model), M1 (type scale, rich text, localisation arguments, value store, controls) and M2 (the `slotted-menu` crate: templates, pause, confirm, toast, page, hint bar, settings with persistence) landed. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
 
 ## 1. Goal and non-goals
 
@@ -353,7 +353,16 @@ A furnace-like machine screen: input, fuel and output slots, a tank, an energy b
 
 Loads `mods/` from disk with `mod.toml` manifests. `copper_chest` registers an item, a recipe and a screen in `data.lua` and reacts to slot clicks in `control.lua`. `appleskin_like` adds a tooltip part for foods. Scripts and RON hot reload through the file watcher. A dev console shows script logs and errors. Verifies: registry stages, packs, script API, native adapter.
 
-### 5.4 `web-playground`
+### 5.4 `menus`
+
+The game menus over the chest's scene: a main menu inheriting the
+`slotted:main_menu` template with an About button injected at `buttons_end`,
+Play opening the chest, Escape pausing, the pause's Settings opening the
+showcase `SettingsSpec` screen persisted under the temporary directory, Quit
+confirming, a toast on quick stack. Verifies: `slotted-menu`, the fallback
+chain, the harness's menu helpers. `tests/flow.rs` runs the flow by gamepad.
+
+### 5.5 `web-playground`
 
 The showcase. A static site with the Bevy canvas on the left and a code editor on the right (CodeMirror 6 from a CDN, or a plain textarea as fallback), tabs for `data.lua` and `control.lua` of a demo mod, and a Run button plus run-on-idle.
 
@@ -427,9 +436,21 @@ string; a `ValueStore` with rules, guards and the `SetValue` /
 control gets input; and the controls themselves (`button` rewritten,
 `toggle`, `slider`, `select`, `radio_group`, `key_binding`, `text_field`,
 `list`, `scroll`, `tabs`, `separator`, `spacer`, `image`), exercised by the
-`demo:settings` fixture the chest example opens on Tab. M2 to M4 (the
-settings bindings and templates, the `slotted-menu` crate) follow the
-proposal.
+`demo:settings` fixture. M2 is done (2026-09-08, contract
+`docs/design/menus-m2-contract.md`, notes
+`docs/design/menus-m2-notes-{A,B,C,D}.md`): the `slotted-menu` crate behind
+the facade's default `menu` feature, with five embedded templates
+(`slotted:main_menu`, `pause`, `settings`, `confirm`, `page`) a game
+overrides by registering first and extends by inheriting or injecting;
+`MenuChoice` as the one message to the game; `pause_on_menu` on the shared
+Escape; confirm dialogs, toasts and text pages by rewriting a template by
+id; a hint bar widget with glyph sets per pad vendor; `SettingsSpec`
+generating the settings screen, its defaults and rules, persisted through
+the `SettingsStore` port (`FileSettings`, `MemorySettings`); a
+`Localization` fallback chain so every template string has English without
+an `.ftl`; and `examples/menus` walking the whole flow by gamepad headless.
+The settings demo is a spec now. M3 and M4 (the playground's settings scene,
+the wasm bridge in the page, what the proposal lists after) follow it.
 
 ## 7. Testing strategy
 

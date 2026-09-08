@@ -40,7 +40,11 @@ pub enum UiAction {
     PagePrev,
     /// Next page of a list.
     PageNext,
-    /// Open the menu (pause, system).
+    /// Open the menu (pause, system). On the keyboard it shares `Escape`
+    /// with [`Back`](Self::Back): with a screen open the stack claims the
+    /// press as `Back` and pops; with nothing open `Menu` is what is left,
+    /// and `slotted-menu` pauses on it. `Tab` stays Bevy's tab-navigation
+    /// key.
     Menu,
 }
 
@@ -215,7 +219,7 @@ impl Default for UiBindings {
             (UiAction::TabNext, vec![K::KeyE]),
             (UiAction::PagePrev, vec![K::PageUp]),
             (UiAction::PageNext, vec![K::PageDown]),
-            (UiAction::Menu, vec![K::Tab]),
+            (UiAction::Menu, vec![K::Escape]),
         ]
         .into_iter()
         .collect();

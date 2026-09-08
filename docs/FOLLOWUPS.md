@@ -6,13 +6,99 @@ Entries the gap-closing round closed have been deleted rather than struck
 through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
 and summarised below. What is left here is open.
 
+## Menus M2, 2026-09-08
+
+The `slotted-menu` crate (`docs/design/menus-m2-contract.md`,
+`docs/design/menus-m2-notes-{A,B,C,D}.md`). What the four packages deferred.
+
+- **`Auto` glyphs follow the first pad, not the last one used.** Two pads
+  of different vendors show the first's glyphs. Recording the pad entity on
+  `UiActionEvent` and resolving from it is the fix; the emitter is the place.
+- **A `GamepadConnectionEvent` re-renders every key span and cell** even when
+  the resolved set did not change (an Xbox pad reconnecting). Cheap; a
+  resource caching the last resolved set would skip it.
+- **The select row press is a no-op with the popup open**, unchanged from
+  M1. A toggle wants the press to close and the click to be swallowed, which
+  needs state that outlives the press.
+- **`docs/guide/rich-text.md` does not mention `GlyphSet`**; `input.md` does.
+- **`set_text` does not reach a button label.** A button's label is
+  `ButtonOpts::label`; the confirm dialog rewrites its buttons through
+  `confirm::set_button_label`. `ScreenDef::set_text` should grow the `Button`
+  arm.
+- **The hint bar reads the theme's material kind** to decide on brackets. A
+  theme that wants a pill *and* brackets, or text without them, needs a
+  token or a tag; none exists.
+- **Overlay screens' bars say Back for `BackPolicy::Pop`**, which
+  `pop_on_back` does not honour for an overlay. No template is an overlay.
+- **A hint bar on a screen under a modal keeps its Back entry** and loses
+  its verb (the focus left it). Hiding a covered screen's bar, or freezing
+  it, is a design call; the chest's confirm shot shows the pause's bar
+  reading `Esc Close` under the dialog.
+- **A toast spawned before a catalogue loads keeps the key** until
+  `render_rich_text`'s own `Localization` change check repaints it, which
+  it does.
+- **The theme materials were tuned blind and then by shot.** Every value was
+  chosen from the palette and checked headless; D looked at the pause,
+  confirm, main menu, page and toast in three themes and fixed the danger
+  buttons. The settings screen's materials had M1's look at.
+- **`max_height: 70%` on a settings page resolves against the tabs column**,
+  whose height comes from the frame's `max_height: 85%`; at 720p the pages
+  are about 225 px tall, so the display tab scrolls too. A theme-sized or
+  frame-set page height is a design call.
+- **Reset does not close a capture in progress** and does not scroll the
+  pages.
+- **`apply_settings` runs once per app.** A `Settings` resource replaced
+  after it ran is not re-applied; removing `SettingsApplied` re-runs it.
+- **No per-action display names** for the conflict toast: `binding_moved`'s
+  `action` is the data name (`tab_next`). `slotted.menu.action.<name>` keys
+  would fix it.
+- **The `menu.title` and `menu.version` roles are unused.** A `text` node
+  takes a `TextRole` (`display`, `caption`), not a free role, so the main
+  menu's title paints `text.display` and the two roles B added sit in the
+  themes with nothing reading them. Either a `role` override on `text`, or
+  drop the roles.
+- **The main menu is a panel now**, placed at the left, so paper's ink reads
+  on a dark scene; an invisible column looked right in glass and neon and
+  unreadable in paper. A game whose scene suits bare text inherits and sets
+  the root role back to `invisible`.
+- **An injected node sizes to its content.** The anchor node is a plain flex
+  row, so a button injected into a column is as wide as its label; the
+  example wraps it in a `width: "100%"` column panel. The anchor could adopt
+  its parent's direction and stretch, but every existing injection (the
+  rail's Sort button) was laid out against the row.
+- **A shot's input mode is forced every frame** in the examples' shot
+  systems, because the real mouse over the window flips `InputMode` back to
+  pointer and hides the ring and the hint bar. A `--shot` that spawns no
+  winit pointer would be cleaner.
+- **The pause quit in `examples/menus` goes back to the title**, the title's
+  quit exits; the contract said "exits" for both. One id, two meanings by
+  `MenuChoice::screen`, is the demo of that field.
+- **`LocaleTable` no longer warns on a miss**, so a key nothing defines is
+  reported only by the `LocText` that draws it. The browser's own
+  `Localization::resolve` callers (a card's title) report nothing now; a
+  once-per-key warning at the `Localization` level, after the chain, is the
+  right place and needs interior mutability there.
+- **The scroll panel's bar shows with nothing to scroll** (the About page's
+  short body draws a full-height thumb). M1's scroll widget; hide the bar
+  when the content fits.
+- **`[i]` in the About body draws upright**: the shipped fonts have no
+  italic face and the rich text has no synthetic slant.
+- **The chest's `E` reopens the chest over the main menu** unless the game
+  clears `ChestBinding::def`, which `examples/menus` does on leave. A stack
+  policy ("a page ignores game keys") would be the general fix.
+
 ## Menus M1, 2026-09-07
 
 Type scale, rich text, localisation arguments, the value store and the
 controls (`docs/design/menus-m1-contract.md`,
 `docs/design/menus-m1-notes-{A,B,C,D}.md`). What the four packages deferred.
 The M0 entries for wheel scrolling, shrinking scroll children and the rebound
-keyboard `Accept` are closed by this milestone and deleted below.
+keyboard `Accept` are closed by this milestone and deleted below. M2 closed
+and deleted six of the M1 entries: the control materials tuned for the
+templates (B's materials, D's shots), the select popup closing on an outside
+press (A), key capture conflicts (C), `ValueRule` derived from a slider (C),
+the settings demo being a fixture (C's `SettingsSpec`), and the chest
+opening settings on Tab (D's `Menu` = Escape).
 
 - **`max_lines` is a `text` feature only.** `TextOpts` carries it for
   `rich_text` too, and a `rich_text` ignores it: truncating spans needs the
@@ -40,20 +126,6 @@ keyboard `Accept` are closed by this milestone and deleted below.
 - **The chest header grew** with `panel.title` on the scale (24/22/26 px).
   If the moodboard wants the old 15 px header, that is the `title` step in
   the theme files, not code.
-- **The control materials are the skeleton's first pass.** The tokens decide
-  the geometry (thumb travel is `spacing.md`, radii are `radii.sm`), and no
-  theme yet draws a toggle or a slider differently from the others beyond
-  colour. Tuning is a theme-file job for whoever styles the settings
-  template (M2).
-- **A select popup does not close on a click outside it.** `Back`, `Accept`
-  and a click on an option close it; a click elsewhere leaves it open with
-  focus moved out by Bevy's `click_to_focus`, so the next `Back` pops the
-  screen with the popup drawn. A global `Pointer<Press>` observer that closes
-  any open popup whose subtree was not pressed is the fix.
-- **A key capture does not unbind the key elsewhere.** Binding `K` to
-  `Accept` leaves `K` on whatever else had it; two actions can share a key.
-  Conflict handling (unbind, or refuse and say who has it) is a settings
-  design call for M2.
 - **A gamepad row cannot capture `Back`'s button.** `Back` cancels a capture
   on either device, so East can never be bound on a pad row. The rule the
   contract set for Escape, applied to both devices; a capture that ignores
@@ -62,11 +134,6 @@ keyboard `Accept` are closed by this milestone and deleted below.
   `BoundValue` entity event; C's `text_field`, `list` and `tabs` read the
   store themselves with a `StoreSeen(version)` marker. Either works; one
   mechanism would be tidier, and the switch needs no contract change.
-- **`ValueRule` is not derived from a slider's `min`/`max`/`step`.** A slider
-  clamps and snaps its own proposals, so a screen that forgets the rule still
-  behaves; a Lua or harness `set_value` outside the range is only caught when
-  the game declared the rule. Deriving one at spawn when none exists is a
-  small addition to `spawn_slider`.
 - **A numeric text filter is per character.** "One point, a leading minus"
   cannot be expressed through Bevy's `EditableTextFilter`, so `1-2.3.4`
   types. The store's rule is where the parse belongs; nothing pins it.
@@ -88,15 +155,6 @@ keyboard `Accept` are closed by this milestone and deleted below.
   only, which exclude sizes and positions by design. A rect snapshot would
   need a stable serialisation of `rect_of` over the tree and a decision on
   rounding.
-- **The settings demo is a fixture, not the M2 template.**
-  `assets/screens/demo_settings.screen.ron` exists to exercise every control
-  in three themes and to give the chest example something to open; it binds
-  `settings.*` keys nothing reads. The real settings screen, its bindings to
-  the game and its persistence are M2.
-- **The chest example opens settings on `Menu` (Tab)**, which is also Bevy's
-  tab-navigation key, so the press that opens the modal also moves focus in
-  the screen underneath before the modal takes it. Harmless in the demo; a
-  dedicated key for `Menu` is a bindings question for M2.
 
 - **Bevy's directional navigator takes the whole half-plane.**
   `AutoNavigationConfig::min_alignment_factor` is 0, and the scorer accepts a

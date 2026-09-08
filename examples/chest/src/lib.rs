@@ -15,8 +15,9 @@
 //!    [`slotted::prelude::ScreenDef`].
 //! 3. [`ChestDemoPlugin`] wires the screen to the keyboard: `Esc` closes it,
 //!    `E` opens it again, and the title and capacity labels are filled in.
-//!    [`ChestSettingsPlugin`] adds the settings screen over it: `Tab` (the
-//!    `Menu` action) pushes `demo:settings` as a modal, `Esc` pops it.
+//!    [`ChestMenuPlugin`] adds the menus over it: `Esc` with nothing open
+//!    pauses (`slotted-menu`'s pause screen), Settings on the pause opens
+//!    `demo:settings`, and Quit asks before it exits.
 //!
 //! The last two of those, and the contents table behind them, live in the
 //! shared [`showcase::chest`] module and are re-exported here, because the web
@@ -28,32 +29,34 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use slotted::prelude::{ScreenDef, SlottedUiSet};
-use slotted::ui::UiActionEmit;
+use slotted::prelude::ScreenDef;
 use slotted_registry::{DataStage, DirSource, FrozenRegistries, ModId};
 
 pub use showcase::chest::*;
+pub use showcase::menus::{QUIT_CONFIRM, QuitPlugin, confirm_quit};
 pub use showcase::settings::{SETTINGS, SettingsDemoPlugin};
 
-/// The settings screen over the chest (menus M1): [`SettingsDemoPlugin`]
-/// registers `demo:settings`, seeds and guards its `ValueStore`, and this
-/// plugin opens it on the `Menu` action (`Tab`, or Start on a pad) as a
-/// modal over whatever is up. `Back` pops it through the stack, so `Esc`
-/// closes it and focus returns to the chest.
+/// The menus over the chest (menus M2): [`SettingsDemoPlugin`] registers
+/// `demo:settings` from its `SettingsSpec`, the `MenuConfig` points the
+/// pause screen's Settings button at it, and [`QuitPlugin`] turns the pause
+/// screen's Quit into a danger confirm that exits.
+///
+/// `Esc` is `Back` and `Menu` at once (docs/guide/input.md): with the chest
+/// open it pops the chest, with nothing open it pauses, and on the pause it
+/// resumes. `Start` on a pad pauses and resumes the same way.
 ///
 /// Added by `examples/chest` and its tests, not by the playground's scenes:
 /// the showcase gets its own settings scene in M4.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ChestSettingsPlugin;
+pub struct ChestMenuPlugin;
 
-impl Plugin for ChestSettingsPlugin {
+impl Plugin for ChestMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(SettingsDemoPlugin).add_systems(
-            Update,
-            showcase::settings::open_settings_on_menu
-                .in_set(SlottedUiSet::Input)
-                .after(UiActionEmit),
-        );
+        app.add_plugins((SettingsDemoPlugin, QuitPlugin))
+            .insert_resource(showcase::menus::menu_config(
+                "demo.menus.title",
+                env!("CARGO_PKG_VERSION"),
+            ));
     }
 }
 

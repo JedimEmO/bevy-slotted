@@ -7,6 +7,165 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Menus M2: the `slotted-menu` crate
+
+`docs/design/menus-proposal.md` section 5, made binding by
+`docs/design/menus-m2-contract.md`. A main menu, a pause screen, settings
+generated from a spec and persisted, a confirm dialog, toasts, text pages
+and a hint bar, shipped as screen templates a game overrides by registering
+first and extends by inheriting or injecting. Nothing in the crate calls into
+game code; it speaks through `MenuChoice` and `ConfirmResult`.
+
+#### Added
+
+- **`slotted-menu`**, and the facade feature `menu = ["ui", "dep:slotted-menu"]`
+  in the defaults: `slotted::menu`, `MenuPlugin` in `SlottedPlugins` (after
+  `SlottedUiPlugin`, whose widget registry it adds `slotted:hint_bar` to),
+  the prelude line. Out of the `server` graph.
+- **`MenuConfig`** (`pause_kind`, `settings_kind`, `pause_on_menu`, `title`,
+  `version`), **`MenuChoice { id, screen, entity }`** (one per activated
+  `menu`-tagged button; `resume`, `close`, `back`, `settings`, `accept`,
+  `cancel` and `reset` are handled first and still delivered), `kinds::{
+  main_menu, pause, settings, confirm, page, all}`, `MENU_TAG`.
+- **Five templates** under `crates/slotted-menu/screens/`, compiled in,
+  registered in `PostStartup` unless the kind is taken: `slotted:main_menu`
+  (a panel at the left; ids `title`, `version`, `buttons`, `play`,
+  `settings`, `quit`, `hints`; anchors `title_end`, `buttons_end` inside the
+  button column, `footer`), `slotted:pause`, `slotted:settings` (the frame
+  a spec's screen inherits), `slotted:confirm` (`accept` and
+  `accept_danger`, one removed per dialog) and `slotted:page`, plus the
+  `toast.node.ron` snippet. `templates::{all, register_templates, cloned}`.
+- **English fallbacks** for every `slotted.menu.*` key (`strings::MenuStrings`,
+  `english`, `substitute`), pushed as a `Localization` fallback by
+  `install_strings`, which also writes `MenuConfig::title` and `version`
+  into the main menu.
+- **`pause_on_menu`**: a fresh unclaimed `Menu` with no page or modal open
+  pushes `pause_kind`; with it on top, pops it. Claims `Back` on the push and
+  leaves the pop to `pop_on_back` when the same press was also `Back`, so the
+  shared Escape does one thing.
+- **Confirm**: `confirm(commands, ConfirmSpec)` with `ConfirmSpec::{new,
+  danger, title, buttons, arg}`, `PendingConfirm` on the root,
+  `ConfirmResult { id, accepted }` exactly once per dialog (button or `Back`),
+  stacking confirms.
+- **Toast**: `toast(commands, ToastSpec)` with `ToastSpec::{new, level,
+  duration, arg}`, `ToastLevel::{Info, Success, Warning, Error}` and
+  `ToastLevel::role`, `Toasts { max_visible: 3 }`, `Toast { level, remaining }`,
+  `ToastHost`, `ToastColumn`, `ToastArriving`, `ToastFading`, `ToastQueue`;
+  a bottom-centre column in `zbands::TOAST` that grows upward, fades on the
+  theme's preset, counts down on virtual time, queues past the cap and
+  ignores the stack.
+- **Page**: `open_page(commands, PageSpec)` with `PageSpec::{new, arg}`.
+- **The hint bar**: widget kind `slotted:hint_bar` (`hint_bar::{kind,
+  HintBarWidget}`), `HintBar`, `HintEntries(Vec<HintEntry { action, label }>)`,
+  `HintRendered`, `HintGlyph`, `HintLabel`, `verb_for(role)`, the tags
+  `hint.accept` and `hint.always`, `update_hint_bars` in `Render`. Glyphs
+  are a pill or bracketed text depending on the kind of the theme's
+  `hint.glyph` material.
+- **Settings**: `SettingsSpec::{new, tab, row, tab_key, screen_def,
+  screen_def_over, defaults, rules, rows, tab_by_id, keys}`, `TABS_ID`,
+  `SettingsTab::{start_anchor, end_anchor, page}`, `SettingsRow::{Heading,
+  Separator, Toggle, Slider, Select, Radio, Text, Binding, Custom}` with
+  `key`, `default_value`, `rule`, `test_id`, `node`; `Settings { spec }`,
+  `SettingsApplied`, `apply_settings` (`PostStartup`, or the frame a
+  `Settings` appears), `save_settings` (`Last`: a declared `ValueChanged`,
+  any `BindingChanged`, `AppExit`), `SettingsReset` with
+  `reset_on_menu_choice` and `reset_settings` (defaults through `SetValue`,
+  bindings to default), `resolve_binding_conflicts` (the other action loses
+  the key; a `slotted.menu.binding_moved` toast). Generated ids:
+  `settings.tabs`, `settings.<tab>.page`, `settings.<key>`,
+  `bind.<device>.<action>`; anchors `settings.<tab>.start` and `.end`.
+- **Persistence**: `SettingsStore` (`load`, `save`), `SavedSettings { values,
+  bindings }`, `SettingsStorage(Arc<dyn SettingsStore>)` with `new` and
+  `file`, `FileSettings { path }` (a wasm stub), `MemorySettings` with `with`,
+  `get`, `set`, `to_ron`, `from_ron`.
+- **`slotted-ui`**: `Localization { primary, fallbacks }` with `new`,
+  `from_arc`, `set_primary`, `set_primary_arc`, `push_fallback`;
+  `resolve_with` walks the chain. `ScreenDef::{set_text, set_tag,
+  remove_node}`, `UiNodeDef::{find_mut, tags_mut, remove_descendant}`.
+  `ValueStore::{snapshot, restore}`. `GlyphSet` (`Auto`, `Keyboard`, `Xbox`,
+  `PlayStation`, `Switch`, `Generic`; resource, default `Auto`),
+  `button_glyph(button, set)`, `resolved_glyph_set(set, mode, &gamepads)`,
+  `resolved_glyph_set_for_vendor`, `VENDOR_PLAYSTATION`, `VENDOR_SWITCH`;
+  `key_glyph_text` takes the set. `zbands::TOAST` (950). A select popup
+  closes on a pointer press outside it (`on_press_outside_select_popup`).
+  `controls::inverse_of`.
+- **Eleven roles** (`roles::ALL` is 101): `toast`, `toast.info`,
+  `toast.success`, `toast.warning`, `toast.error`, `toast.text`, `hint.bar`,
+  `hint.glyph`, `hint.label`, `menu.title`, `menu.version`; the three themes
+  also define `hint.glyph.text`, `control.label.inverse`,
+  `text.label.inverse` and the `button.primary.{hover,focus,pressed}` and
+  `button.danger.{hover,focus,pressed}` states.
+- **`slotted-test`**: feature `menu` (default; enables the facade's) with
+  `UiHarness::{toasts, hint_entries, confirm_accept, confirm_cancel,
+  menu_choices}` and the `MenuChoiceRecorder` plugin the builder adds;
+  `stack_top()`.
+- **`examples/menus`**: a main menu (`menus:main`, inheriting
+  `slotted:main_menu`, with an About button injected at `buttons_end`) over
+  the chest's scene; Play opens the chest, Escape pops it and pauses, the
+  pause's Settings opens the showcase spec's screen persisted under the
+  temporary directory, Quit confirms (to the title from the pause, out of
+  the app from the title), a quick stack toasts. `--shot` with `--main`,
+  `--pause`, `--confirm`, `--page`, `--toast` and `--theme`; reference shots
+  under `examples/menus/shots/`; `tests/flow.rs`. `just run-menus`,
+  `just shot-menus`.
+- **`showcase::menus`**: `menu_config`, `confirm_quit`,
+  `quit_on_menu_choice`, `exit_on_quit_confirmed`, `QuitPlugin`,
+  `QUIT_CONFIRM`. The demo strings in `assets/locale/en-US.ftl`.
+- **`examples/chest`**: `--pause` and `--confirm` shot flags and their shots
+  in three themes; `ChestMenuPlugin`.
+- **`docs/guide/menus.md`**, and the M2 sections of `input.md`, `screens.md`,
+  `themes.md`, `values.md` and `testing.md`.
+
+#### Changed
+
+- **`UiBindings::default()` binds `Menu` to Escape** (shared with `Back`)
+  and `Start`; it was Tab, which is Bevy's tab-navigation key. Tab is bound
+  to nothing.
+- **`Localization` is a struct with fallbacks**, not a newtype over one
+  `Arc<dyn Localizer>`; `Localization(arc)` construction is gone, `from_arc`
+  replaces it. `slotted-packs` installs a pack set through `set_primary_arc`,
+  so a pushed fallback survives an install and a reload.
+- **`LocaleTable` no longer warns on a key it lacks**: it is the primary of a
+  chain whose fallbacks answer what the catalogue does not, so a miss there
+  is routine. A key nothing defines is still reported once by the `LocText`
+  that draws it. The `missing` set is gone.
+- **Directional navigation stays on the focused node's screen.**
+  `directional_nav_actions` picks the best candidate (Bevy's scoring) among
+  the `AutoDirectionalNavigation` nodes under the same `ScreenRoot`, after a
+  manual `DirectionalNavigationMap` edge; Bevy's z-agnostic navigator would
+  hand focus to a button of the screen under a modal, which the focus scope
+  bounced back, so `Down` on a settings row over the pause did nothing.
+- **`key_glyph_text(action, mode, bindings, set)`**, `refresh_key_glyphs` and
+  `paint_key_bindings` take `Res<GlyphSet>`, `Query<&Gamepad>` and
+  `MessageReader<GamepadConnectionEvent>`; `render_rich_text` resolves the
+  set once per run.
+- **`is_accent_fill`** matches `button.primary*` and `button.danger*`, and
+  `invert_active_labels` uses `control.label.inverse` / `text.label.inverse`
+  when the theme defines them (the M1 inversion flipped back on focus and
+  changed the label's size).
+- **The three themes paint `button.danger` solid** (`$danger` fill) so the
+  inverse label reads; the translucent fill left paper's and neon's danger
+  labels invisible.
+- **The showcase settings demo is a `SettingsSpec`**
+  (`showcase::settings::spec`, `defaults`, `UiScaleGuard`,
+  `SettingsDemoPlugin` inserting `Settings`); ids follow the generated
+  convention. `examples/chest`: Tab opens nothing, Escape with the chest
+  closed pauses, the pause's Settings opens `demo:settings`, Quit confirms
+  with a danger button and exits; `ChestMenuPlugin` replaces
+  `ChestSettingsPlugin`.
+- **`slotted-test` depends on `slotted-menu`** behind its default `menu`
+  feature, so `SlottedPlugins::headless()` in the harness carries
+  `MenuPlugin`.
+
+#### Removed
+
+- **`assets/screens/demo_settings.screen.ron`**, `showcase::screens::
+  SETTINGS_SCREEN_RON`, `showcase::settings::{SCREEN_PATH, screen, rules,
+  register_screen, seed_store, on_reset, open_settings_on_menu}`.
+- **`crates/slotted-menu/tests/skeleton.rs`** (its check is the first test of
+  `templates.rs`).
+- **`LocaleTable::resolve_or_warn`.**
+
 ### Menus M1: type scale, rich text, localisation arguments, value store, controls
 
 `docs/design/menus-proposal.md` sections 4.5 to 4.7, made binding by

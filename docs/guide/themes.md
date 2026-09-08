@@ -69,14 +69,15 @@ how you opt into distinguishing it.
 State changes are role changes. The slot widget swaps `slot` for `slot.hover`,
 and only the changed node repaints.
 
-`roles::ALL` is the 89 well-known roles. A theme that covers them covers every
+`roles::ALL` is the 101 well-known roles. A theme that covers them covers every
 shipped widget.
 
 | Group | Roles |
 |---|---|
 | Panels | `panel`, `panel.title` |
 | Slots | `slot`, `slot.hover`, `slot.focus`, `slot.carried`, `count` |
-| Text | `text`, `text.muted`, `text.display`, `text.heading`, `text.label`, `text.caption`, `text.key` (a `{key:..}` glyph), `text.icon` (an item name in a paragraph), `control.label` (a control's label) |
+| Text | `text`, `text.muted`, `text.display`, `text.heading`, `text.label`, `text.caption`, `text.key` (a `{key:..}` glyph), `text.icon` (an item name in a paragraph), `control.label` (a control's label), `text.inverse` (a label on an accent fill) |
+| Menus | `menu.title`, `menu.version`, `hint.bar`, `hint.glyph`, `hint.label`, `toast`, `toast.info`, `toast.success`, `toast.warning`, `toast.error`, `toast.text` |
 | Buttons | `button`, `button.primary`, `button.danger`, `button.hover`, `button.focus`, `button.pressed`, `button.disabled` |
 | Toggles | `toggle`, `toggle.on`, `toggle.thumb`, `toggle.hover`, `toggle.focus`, `toggle.disabled`, `checkbox`, `checkbox.on` |
 | Sliders | `slider`, `slider.fill`, `slider.thumb`, `slider.text`, `slider.focus`, `slider.disabled` |
@@ -105,6 +106,23 @@ states once per control rather than every combination. When two states hold at
 once the control picks the role in the order `disabled`, then `active`, then
 `focus`, then `hover`. A theme may define `button` once and let every state
 fall through to it, or draw each one.
+
+A label on an accent fill flips colour. A `button.primary` or `button.danger`
+in any state paints its label with `control.label.inverse` (a `text.label` on
+such a fill with `text.label.inverse`) when the theme defines that key, else
+with `text.inverse`. The dotted roles exist so the inverse label keeps the
+rest role's size and font and only the colour changes; the three shipped
+themes define both, and `text.inverse` stays in `ALL` as the fallback. What
+this means for a theme: an accent fill has to contrast with the inverse
+colour, not the normal one, so a translucent danger fill over a dark panel
+with a dark inverse label is unreadable. The three themes paint danger
+solid for that reason.
+
+The hint bar reads the *kind* of `hint.glyph`: a `Text` material means "no
+pill, draw `[Enter]`" (paper); anything else is a pill with the glyph text in
+`hint.glyph.text` (glass and neon draw an accent pill). `hint.glyph.text` is
+not in `ALL`; a theme that draws bare text defines it the same as
+`hint.glyph`, since the shipped themes must share one key set.
 
 `carried`, the stack following the pointer, is deliberately outside `ALL`:
 leaving it out is legal and the item view draws the stack unadorned.

@@ -86,6 +86,8 @@ shot-chest:
     cargo run -p chest -- --recipe minecraft:coal --shot examples/chest/shots/chest-recipe.png
     cargo run -p chest -- --paint --shot examples/chest/shots/chest-paint.png
     cargo run -p chest -- --settings --shot examples/chest/shots/chest-settings.png
+    cargo run -p chest -- --pause --shot examples/chest/shots/chest-pause.png
+    cargo run -p chest -- --confirm --shot examples/chest/shots/chest-confirm.png
     just shot-check
 
 # Are the icons actually in the captures?
@@ -109,6 +111,24 @@ shot-chest-themes:
     cargo run -p chest -- --theme neon --recipe minecraft:coal --shot examples/chest/shots/chest-recipe-neon.png
     cargo run -p chest -- --theme paper --settings --shot examples/chest/shots/chest-settings-paper.png
     cargo run -p chest -- --theme neon --settings --shot examples/chest/shots/chest-settings-neon.png
+    cargo run -p chest -- --theme paper --pause --shot examples/chest/shots/chest-pause-paper.png
+    cargo run -p chest -- --theme neon --pause --shot examples/chest/shots/chest-pause-neon.png
+    cargo run -p chest -- --theme paper --confirm --shot examples/chest/shots/chest-confirm-paper.png
+    cargo run -p chest -- --theme neon --confirm --shot examples/chest/shots/chest-confirm-neon.png
+
+# The menus example in a window: the main menu over the chest's scene.
+run-menus:
+    cargo run -p menus
+
+# Recapture the menus example's reference screenshots (menus M2).
+shot-menus:
+    cargo run -p menus -- --main --shot examples/menus/shots/menus-main.png
+    cargo run -p menus -- --theme paper --main --shot examples/menus/shots/menus-main-paper.png
+    cargo run -p menus -- --theme neon --main --shot examples/menus/shots/menus-main-neon.png
+    cargo run -p menus -- --pause --shot examples/menus/shots/menus-pause.png
+    cargo run -p menus -- --confirm --shot examples/menus/shots/menus-confirm.png
+    cargo run -p menus -- --page --shot examples/menus/shots/menus-page.png
+    cargo run -p menus -- --toast --shot examples/menus/shots/menus-toast.png
 
 # The modded example in a window: three mods, loaded from disk, hot reloading.
 run-modded:

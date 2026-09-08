@@ -29,6 +29,8 @@ pub mod live;
 pub mod locator;
 #[cfg(feature = "script")]
 pub mod lua_tests;
+#[cfg(feature = "menu")]
+pub mod menu;
 #[cfg(feature = "script")]
 pub mod mods;
 pub mod queries;

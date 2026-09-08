@@ -1,6 +1,6 @@
 # Menus M2 contract: the `slotted-menu` crate
 
-Status: v1.1, 2026-09-08 (v1.1: skeleton facts in 1.3). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
+Status: v1.2, 2026-09-08 (v1.1: skeleton facts in 1.3; v1.2: D's main menu shape in 3.1, and 5 notes the pause quit of `examples/menus` returns to the title). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
 section 5, and to the M0 and M1 contracts whose vocabulary this uses without restating. Four
 packages: **A** (foundation changes in `slotted-ui` and `slotted-packs`), **B** (the crate's core:
 templates, menu actions, pause, confirm, toast, page, hint bar) and **C** (settings: spec, generated
@@ -176,7 +176,7 @@ pub struct MemorySettings(Arc<Mutex<Option<SavedSettings>>>);   // to_ron / from
 
 | Kind | Presentation | Structure and anchors |
 |---|---|---|
-| `slotted:main_menu` | page, fade | `place: left` column: `text` display title (id `title`), `text` caption version (id `version`), anchor `title_end`; button column (id `buttons`): play, settings, quit with `menu` tags; anchor `buttons_end`; hint bar; anchor `footer`. `initial_focus: "play"` |
+| `slotted:main_menu` | page, fade | `place: left` `panel` column (a panel, not an invisible column, since D's paper shot: ink text on a dark scene is unreadable): `text` display title (id `title`), `text` caption version (id `version`), anchor `title_end`; button column (id `buttons`): play, settings, quit with `menu` tags, then anchor `buttons_end` *inside* the column so an injected button lines up with them; hint bar; anchor `footer`. `initial_focus: "play"` |
 | `slotted:pause` | modal, scrim, slide_up | title (id `title`), buttons resume / settings / quit (`menu` tags), anchor `buttons_end`, hint bar. `initial_focus: "resume"` |
 | `slotted:settings` | modal, scrim, fade | title (id `title`), anchor `title_end`, a `tabs` node with id `settings.tabs` and no tabs (C's generated screen replaces it by id), `separator`, footer row: hint bar, spacer, Reset (id `reset`), Done (`slotted:close`, id `done`). `initial_focus: "settings.tabs"` |
 | `slotted:confirm` | modal, scrim, fade, `back: pop` | title (id `title`), `rich_text` message (id `message`), button row: cancel (id `cancel`, `menu: cancel`), accept (id `accept`, `menu: accept`, primary or danger), hint bar. `initial_focus: "cancel"` |
@@ -294,7 +294,8 @@ its glyphs when `GlyphSet` flips. Role completeness at 101.
 - `examples/menus` (native, `publish = false`): a main menu over the showcase backdrop; Play pushes
   the chest (the showcase chest lib), Escape pops it, Escape again pauses, Settings opens the
   showcase `SettingsSpec` screen with `FileSettings` under the scratch dir, Quit confirms with a
-  danger button and then exits, quick stack shows a toast, an `About` page from the main menu.
+  danger button and then exits (from the pause it confirms and returns to the title, which is
+  what `MenuChoice::screen` is for), quick stack shows a toast, an `About` page from the main menu.
   `--shot` flags: `--main`, `--pause`, `--confirm`, `--page`, `--toast` in the three themes;
   reference shots under `examples/menus/shots/`.
 - `UiBindings::default()` `Menu` = Escape + Start (was Tab), `docs/guide/input.md` updated.

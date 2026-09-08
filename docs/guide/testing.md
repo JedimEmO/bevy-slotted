@@ -145,8 +145,15 @@ never load. A game's tests run from the game's crate root and find its
 `hud_layers`, `hud_tree`, `screen_tree`.
 
 For the input side: `focused()` is Bevy's `InputFocus`, `input_mode()` the
-current `InputMode`, `stack()` the open screen kinds bottom to top, and
-`focus_ring()` the ring's `FocusRingState` (its target and whether it shows).
+current `InputMode`, `stack()` the open screen kinds bottom to top,
+`stack_top()` the kind of the top non-overlay screen, and `focus_ring()` the
+ring's `FocusRingState` (its target and whether it shows).
+
+For the menus (the `menu` feature, on by default): `toasts()` is every toast
+on screen oldest first, `hint_entries(bar)` a hint bar's entries,
+`confirm_accept()` and `confirm_cancel()` press the button on the confirm on
+top, and `menu_choices()` drains every `MenuChoice` since the last call
+([menus.md](menus.md#in-a-test)).
 
 `assert_conserved()` checks that no item was created or destroyed since the
 harness opened, which is the assertion worth putting at the end of anything that

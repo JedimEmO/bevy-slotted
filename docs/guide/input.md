@@ -19,7 +19,7 @@ capture, which are not navigation.
 | `Up`, `Down`, `Left`, `Right` | arrows, WASD | d-pad, left stick | Move focus. These repeat while held. |
 | `TabPrev`, `TabNext` | Q, E | left bumper, right bumper | Previous and next tab. |
 | `PagePrev`, `PageNext` | Page Up, Page Down | left trigger, right trigger | Previous and next page of a list. |
-| `Menu` | Tab | Start | Open the menu. |
+| `Menu` | Escape | Start | Open the menu: with nothing open, the pause screen. Shares Escape with `Back`; see below. |
 
 An action arrives as a `UiActionEvent { action, device, repeat }` message, at
 most one per action per frame: two keys bound to `Up` pressed together are one
@@ -32,6 +32,13 @@ the same cadence. Nothing but the four directions repeats.
 The left stick counts as pressed in a direction past `stick_deadzone` (0.5)
 and releases at half of that, so a stick resting near the edge of the deadzone
 does not chatter. A stick and a d-pad produce the same event.
+
+`Menu` and `Back` share Escape on purpose. The two never compete: with a
+screen open the stack claims the press as `Back` and pops, and with nothing
+open only `Menu` has anything to do, which is where `slotted-menu`'s
+`pause_on_menu` pauses ([menus.md](menus.md#pause)). Tab is not bound to
+anything; it stays Bevy's tab-navigation key. Before menus M2 `Menu` was Tab,
+so the press that opened a menu also moved focus in the screen underneath.
 
 While a text field is being edited, keyboard-sourced actions other than
 `Back` are not emitted: the field sees its own arrows and its own letters.
@@ -147,6 +154,30 @@ three things branch on it: the focus ring, the `{key:..}` glyphs in a rich
 text and a `key_binding` cell ([rich-text.md](rich-text.md)), and a `select`
 that opens its popup on `Accept` only in pointer mode. Nothing else should.
 
+## Glyph sets
+
+A `{key:accept}` in a rich text, a `key_binding` cell and a hint bar entry all
+spell the bound key or button through `key_glyph_text(action, mode, bindings,
+set)`. `GlyphSet` is a resource that says whose buttons a pad's glyphs are:
+
+| `GlyphSet` | `Accept`, `Back`, `Secondary`, north | Bumpers, triggers | `Menu` |
+|---|---|---|---|
+| `Xbox` | `A B X Y` | `LB RB LT RT` | `☰` |
+| `PlayStation` | `✕ ○ □ △` | `L1 R1 L2 R2` | `Options` |
+| `Switch` | `B A Y X` | `L R ZL ZR` | `+` |
+| `Generic` | Bevy's names: `South`, `East`, `DPadUp` | `LeftTrigger` | `Start` |
+| `Keyboard` | the keyboard binding, even in gamepad mode | | |
+
+The default is `Auto`, which reads the first connected pad's vendor id:
+`0x054C` is PlayStation, `0x057E` is Switch, anything else or no pad is
+Xbox. `resolved_glyph_set(set, mode, &gamepads)` is the resolution, and
+`resolved_glyph_set_for_vendor` the seam under it. Every glyph re-renders when
+`GlyphSet`, `InputMode` or `UiBindings` change or a pad connects, so plugging
+a DualShock in flips `A` to `✕` on the spot. `Keyboard` is for a text-only
+UI that names keys whatever the player holds; a gamepad `key_binding` row
+under it shows `Generic`, because a row that exists to rebind the pad has to
+name a pad button.
+
 ## Focus and the ring
 
 Bevy's `InputFocus` stays the source of truth for what is focused. The crate
@@ -159,9 +190,12 @@ adds a policy and a visual on top:
 - A screen takes focus when it opens, on its `initial_focus` node or the first
   focusable in tree order ([screens.md](screens.md#focus-and-nav-links)), and
   only when it is a `page` or a `modal` on top of the stack.
-- Inside a container, Bevy's directional navigator picks the neighbour.
-  Between containers, `nav.up`, `nav.down`, `nav.left` and `nav.right` tags on
-  a node name where focus goes next.
+- Inside a container, Bevy's scoring picks the neighbour, among the
+  focusable nodes of the *same screen*: a modal over a page never hands focus
+  to a button underneath it, which Bevy's own `AutoDirectionalNavigator`
+  would (it is z-agnostic). Between containers, `nav.up`, `nav.down`,
+  `nav.left` and `nav.right` tags on a node name where focus goes next, and
+  a manual `DirectionalNavigationMap` edge wins over both.
 - The stack keeps focus inside the top entry and restores each entry's last
   focus when it regains the top.
 

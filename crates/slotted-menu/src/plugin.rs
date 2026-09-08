@@ -146,9 +146,12 @@ pub fn pause_on_menu(
     config: Res<MenuConfig>,
     mut commands: Commands,
 ) {
-    let fresh = events
-        .read()
-        .any(|e| e.action == UiAction::Menu && !e.repeat);
+    let mut fresh = false;
+    let mut back = false;
+    for event in events.read() {
+        fresh |= event.action == UiAction::Menu && !event.repeat;
+        back |= event.action == UiAction::Back;
+    }
     if !fresh || claims.is_claimed(UiAction::Menu) {
         return;
     }
@@ -163,9 +166,19 @@ pub fn pause_on_menu(
             };
             push_screen(&mut commands, def.clone(), None);
             claims.claim(UiAction::Menu);
+            // The same press is also `Back` on the keyboard; without this
+            // `pop_on_back` would pop the pause the frame it arrived.
+            claims.claim(UiAction::Back);
         }
         Some(top) if top.kind == config.pause_kind => {
-            pop_screen(&mut commands);
+            // Escape is both `Back` and `Menu` by default. When the same
+            // press also arrived as `Back` and the pause pops on `Back`,
+            // `pop_on_back` (or whoever claimed `Back` first, a select
+            // popup say) owns the pop; popping here too would take the
+            // screen under the pause with it.
+            if !(back && top.presentation.back == slotted_ui::def::BackPolicy::Pop) {
+                pop_screen(&mut commands);
+            }
             claims.claim(UiAction::Menu);
         }
         _ => {}

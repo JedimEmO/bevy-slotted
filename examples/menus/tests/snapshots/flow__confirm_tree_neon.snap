@@ -1,0 +1,188 @@
+---
+source: examples/menus/tests/flow.rs
+expression: h.screen_tree()
+---
+ScreenTree(
+  roots: [
+    TreeNode(
+      role: Screen,
+      screen: Some("slotted:confirm"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Panel,
+          test_id: Some("confirm"),
+          tags: {
+            "test_id": "confirm",
+          },
+          widget: Some("slotted:panel"),
+          visible: true,
+          children: [
+            TreeNode(
+              role: Text,
+              label: Some("demo.menus.leave.title"),
+              test_id: Some("title"),
+              tags: {
+                "test_id": "title",
+              },
+              widget: Some("slotted:text"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Text,
+              label: Some("demo.menus.leave.message"),
+              test_id: Some("message"),
+              tags: {
+                "test_id": "message",
+              },
+              widget: Some("slotted:rich_text"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("message_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("buttons"),
+              tags: {
+                "test_id": "buttons",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Custom("hint_bar"),
+                  test_id: Some("hints"),
+                  tags: {
+                    "test_id": "hints",
+                  },
+                  widget: Some("slotted:hint_bar"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Decor,
+                  widget: Some("slotted:spacer"),
+                  visible: false,
+                ),
+                TreeNode(
+                  role: Button,
+                  label: Some("slotted.menu.cancel"),
+                  test_id: Some("cancel"),
+                  tags: {
+                    "menu": "cancel",
+                    "test_id": "cancel",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                  focused: true,
+                ),
+                TreeNode(
+                  role: Button,
+                  label: Some("demo.menus.leave.accept"),
+                  test_id: Some("accept_danger"),
+                  tags: {
+                    "menu": "accept",
+                    "test_id": "accept_danger",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Screen,
+      screen: Some("slotted:pause"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Panel,
+          test_id: Some("pause"),
+          tags: {
+            "test_id": "pause",
+          },
+          widget: Some("slotted:panel"),
+          visible: true,
+          children: [
+            TreeNode(
+              role: Text,
+              label: Some("slotted.menu.paused"),
+              test_id: Some("title"),
+              tags: {
+                "test_id": "title",
+              },
+              widget: Some("slotted:text"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("title_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Button,
+              label: Some("slotted.menu.resume"),
+              test_id: Some("resume"),
+              tags: {
+                "menu": "resume",
+                "test_id": "resume",
+              },
+              widget: Some("slotted:button"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Button,
+              label: Some("slotted.menu.settings"),
+              test_id: Some("settings"),
+              tags: {
+                "menu": "settings",
+                "test_id": "settings",
+              },
+              widget: Some("slotted:button"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Button,
+              label: Some("slotted.menu.quit"),
+              test_id: Some("quit"),
+              tags: {
+                "menu": "quit",
+                "test_id": "quit",
+              },
+              widget: Some("slotted:button"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("buttons_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Decor,
+              widget: Some("slotted:separator"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Custom("hint_bar"),
+              test_id: Some("hints"),
+              tags: {
+                "test_id": "hints",
+              },
+              widget: Some("slotted:hint_bar"),
+              visible: true,
+            ),
+          ],
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Carried,
+      visible: true,
+    ),
+  ],
+)

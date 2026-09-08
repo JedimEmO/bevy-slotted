@@ -3817,6 +3817,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "menus"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chest",
+ "insta",
+ "pretty_assertions",
+ "showcase",
+ "slotted",
+ "slotted-model",
+ "slotted-registry",
+ "slotted-test",
+ "tracing",
+]
+
+[[package]]
 name = "minicov"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5575,6 +5591,7 @@ dependencies = [
  "slotted-browser",
  "slotted-ecs",
  "slotted-icons",
+ "slotted-menu",
  "slotted-model",
  "slotted-packs",
  "slotted-registry",

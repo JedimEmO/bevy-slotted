@@ -6,13 +6,15 @@
 //! chest's menu and contents ([`chest`]), the machine's simulation and face
 //! widget ([`machine`]), the copper chest the Lua mods build ([`mods`]), the
 //! cube ring and orbit every scene sits in front of ([`backdrop`]), the
-//! settings screen's store, rules and guard ([`settings`]), and the screen
-//! files compiled in so a scene switch never waits on an asset handle
+//! settings screen's store, rules and guard ([`settings`]), the menu config
+//! and the quit flow the examples share ([`menus`]), and the screen files
+//! compiled in so a scene switch never waits on an asset handle
 //! ([`screens`]).
 
 pub mod backdrop;
 pub mod chest;
 pub mod machine;
+pub mod menus;
 pub mod mods;
 pub mod screens;
 pub mod settings;

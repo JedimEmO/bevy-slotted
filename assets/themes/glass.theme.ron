@@ -242,7 +242,7 @@
         // the same size and font as at rest, only the colour flips.
         "control.label.inverse": Text(color: "$base", size: "$body", weight: 600),
         "text.label.inverse": Text(color: "$base", size: "$label", weight: 600),
-        "button.danger": Solid(fill: "#FF6B6B33", border: "$danger", radius: 8.0),
+        "button.danger": Solid(fill: "$danger", border: "#FFFFFF33", radius: 8.0),
         // Menus M2: the primary and danger buttons keep their fill through
         // focus, hover and press (a menu's focused button is usually the
         // primary one), and say so with the border and a shade.
@@ -264,9 +264,9 @@
             border: "#FFFFFF33",
             radius: 8.0,
         ),
-        "button.danger.hover": Solid(fill: "#FF6B6B59", border: "$danger", radius: 8.0),
-        "button.danger.focus": Solid(fill: "#FF6B6B59", border: "#FFFFFFCC", radius: 8.0),
-        "button.danger.pressed": Solid(fill: "#FF6B6B80", border: "$danger", radius: 8.0),
+        "button.danger.hover": Solid(fill: "#FF8585", border: "#FFFFFF33", radius: 8.0),
+        "button.danger.focus": Solid(fill: "#FF8585", border: "#FFFFFFCC", radius: 8.0),
+        "button.danger.pressed": Solid(fill: "#E85555", border: "#FFFFFF33", radius: 8.0),
         "button.focus": Solid(fill: "#243447E6", border: "$accent", radius: 8.0),
         "button.pressed": Solid(fill: "#0B0E14E6", border: "$accent", radius: 8.0),
         "button.disabled": Solid(fill: "#1B233066", border: "#2A344666", radius: 8.0),

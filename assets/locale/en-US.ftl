@@ -82,3 +82,20 @@ demo-settings-controls-player_name_hint = Your name
 demo-settings-footer = Press {"{key:back}"} to close, {"{key:tab_next}"} for the next tab
 demo-settings-reset = Reset
 demo-settings-done = Done
+
+# The examples' menus (`showcase::menus`, `examples/menus`): the quit confirm,
+# the menus example's title, its About page and its toast. The template
+# strings themselves (`slotted.menu.*`) fall back to English inside
+# `slotted-menu` and are not repeated here.
+demo-quit-title = Quit?
+demo-quit-message = Unsaved progress will be lost.
+demo-quit-accept = Quit
+demo-menus-title = Slotted
+demo-menus-about = About
+demo-menus-about-title = About this example
+demo-menus-about-body = [b]slotted[/b] is a set of Bevy plugins for inventory screens and game menus. This example is the main menu, the pause screen, the settings screen and the confirm dialog, all from the templates in [i]slotted-menu[/i], over the chest from the chest example. Press {"{key:back}"} to go back.
+demo-menus-leave-title = Leave the game?
+demo-menus-leave-message = The chest and everything in it stays where it is.
+demo-menus-leave-accept = Leave
+demo-menus-quick_stack = Quick stack: every stack with a match in the chest went there.
+demo-menus-footer = Built on slotted-menu. Esc pauses the game; Start does on a pad.

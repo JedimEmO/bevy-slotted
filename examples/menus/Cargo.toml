@@ -1,0 +1,28 @@
+[package]
+name = "menus"
+description = "The slotted menus: a main menu, the pause screen, settings with persistence, a confirm, a toast and a page, over the chest example's scene."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+slotted = { workspace = true, features = ["blur", "dev", "live-icons", "gltf-icons"] }
+showcase = { path = "../showcase", features = ["viewport"] }
+# The chest the Play button opens: its registries, its screen and its plugin.
+chest = { path = "../chest" }
+slotted-model = { workspace = true }
+slotted-registry = { workspace = true, features = ["std-fs"] }
+bevy = { version = "0.19.1", features = ["bevy_ui_widgets", "png"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+slotted-test = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
