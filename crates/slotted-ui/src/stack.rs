@@ -62,6 +62,16 @@ impl ScreenStack {
         self.entries.last()
     }
 
+    /// The topmost entry that takes focus (menus M3 contract 2.1): a page,
+    /// a modal, or an overlay that said `focus: true`. What focus scoping,
+    /// initial focus and the hint bar mean by "the top".
+    pub fn focus_top(&self) -> Option<&StackEntry> {
+        self.entries
+            .iter()
+            .rev()
+            .find(|e| e.presentation.takes_focus())
+    }
+
     /// Whether a screen of `kind` is open.
     pub fn is_open(&self, kind: &ScreenKind) -> bool {
         self.entries.iter().any(|e| &e.kind == kind)
@@ -123,6 +133,15 @@ pub fn pop_to(commands: &mut Commands, kind: &ScreenKind) {
 /// Pops everything.
 pub fn clear_screens(commands: &mut Commands) {
     commands.queue(ClearScreens);
+}
+
+/// Closes one stack entry by its root, wherever it sits (menus M3 contract
+/// 2.2): the way an overlay, which `Back` and [`pop_screen`] never reach,
+/// leaves the stack. Entries above it stay where they are.
+pub fn close_stacked(commands: &mut Commands, root: Entity) {
+    // M3-IMPL: A
+    let _ = (commands, root);
+    todo!("close_stacked");
 }
 
 /// The command behind [`push_screen`].

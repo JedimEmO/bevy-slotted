@@ -272,9 +272,17 @@ pub mod roles {
     pub const MENU_TITLE: Role = Role::new_static("menu.title");
     /// The main menu's version line. Menus M2.
     pub const MENU_VERSION: Role = Role::new_static("menu.version");
+    /// The dialogue panel. Menus M3.
+    pub const DIALOGUE: Role = Role::new_static("dialogue");
+    /// The speaker's name on a dialogue line. Menus M3.
+    pub const DIALOGUE_SPEAKER: Role = Role::new_static("dialogue.speaker");
+    /// The spoken text. Menus M3.
+    pub const DIALOGUE_TEXT: Role = Role::new_static("dialogue.text");
+    /// The portrait frame. Menus M3.
+    pub const DIALOGUE_PORTRAIT: Role = Role::new_static("dialogue.portrait");
 
     /// Every well-known role, for completeness checks.
-    pub const ALL: [Role; 101] = [
+    pub const ALL: [Role; 105] = [
         PANEL,
         PANEL_TITLE,
         SLOT,
@@ -376,6 +384,10 @@ pub mod roles {
         HINT_LABEL,
         MENU_TITLE,
         MENU_VERSION,
+        DIALOGUE,
+        DIALOGUE_SPEAKER,
+        DIALOGUE_TEXT,
+        DIALOGUE_PORTRAIT,
     ];
 }
 

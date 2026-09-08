@@ -226,6 +226,41 @@ pub struct Sizes {
     /// Height of a control used inline or in a list row.
     #[serde(default = "default_control_height_compact")]
     pub control_height_compact: f32,
+    /// Edge length of a dialogue portrait (menus M3 contract 4.1).
+    #[serde(default = "default_portrait")]
+    pub portrait: f32,
+}
+
+const fn default_portrait() -> f32 {
+    64.0
+}
+
+/// The dialogue runner's pacing (menus M3 contract 1.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DialogueTokens {
+    /// Typewriter speed; `0` reveals every line at once.
+    #[serde(default = "default_chars_per_second")]
+    pub chars_per_second: u32,
+    /// Milliseconds after a line's reveal before its choices show.
+    #[serde(default = "default_choice_delay")]
+    pub choice_delay: u32,
+}
+
+const fn default_chars_per_second() -> u32 {
+    40
+}
+
+const fn default_choice_delay() -> u32 {
+    150
+}
+
+impl Default for DialogueTokens {
+    fn default() -> Self {
+        Self {
+            chars_per_second: default_chars_per_second(),
+            choice_delay: default_choice_delay(),
+        }
+    }
 }
 
 const fn default_control_height() -> f32 {
@@ -280,6 +315,7 @@ impl Default for Sizes {
             chrome_height: default_chrome_height(),
             control_height: default_control_height(),
             control_height_compact: default_control_height_compact(),
+            portrait: default_portrait(),
         }
     }
 }
@@ -318,6 +354,9 @@ pub struct Tokens {
     pub palette: BTreeMap<String, ThemeColor>,
     /// Rarity ring colours keyed by `slotted_registry::Rarity::as_str()`.
     pub rarity: BTreeMap<String, ThemeColor>,
+    /// Dialogue pacing (menus M3).
+    #[serde(default)]
+    pub dialogue: DialogueTokens,
 }
 
 impl Durations {

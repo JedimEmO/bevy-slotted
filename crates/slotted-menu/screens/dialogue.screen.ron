@@ -1,0 +1,50 @@
+// The dialogue screen (menus M3 contract 4.1): an overlay that takes focus,
+// placed at the bottom. The runner rewrites `speaker` and `text` per node,
+// spawns the portrait into `portrait` and the option buttons into `choices`.
+#![enable(implicit_some)]
+(
+    kind: "slotted:dialogue",
+    presentation: (mode: "overlay", scrim: false, transition: "slide_up", back: "ignore",
+                   focus: true),
+    root: (
+        type: "panel", role: "dialogue",
+        layout: (direction: "column", gap: 2.0, padding: 3.0, width: "90%", max_width: 900,
+                 align: "stretch", place: (anchor: "bottom", offset: (0.0, -24.0))),
+        tags: {"test_id": "dialogue"},
+        children: [
+            (type: "panel", role: "invisible",
+             layout: (direction: "row", gap: 2.0, align: "center"),
+             tags: {"test_id": "header"},
+             children: [
+                (type: "panel", role: "dialogue.portrait",
+                 layout: (width: 64, height: 64),
+                 tags: {"test_id": "portrait"}),
+                (type: "text", key: "slotted.menu.dialogue.speaker", style: "label",
+                 role: "dialogue.speaker", tags: {"test_id": "speaker"}),
+             ]),
+            (type: "anchor", id: "header_end"),
+            (type: "panel", role: "invisible",
+             layout: (direction: "column", min_height: 66, align: "stretch"),
+             tags: {"test_id": "text_box"},
+             children: [
+                (type: "rich_text", key: "slotted.menu.dialogue.speaker", style: "body",
+                 role: "dialogue.text", tags: {"test_id": "text"}),
+             ]),
+            (type: "anchor", id: "text_end"),
+            (type: "panel", role: "invisible",
+             layout: (direction: "column", gap: 1.0, align: "stretch"),
+             tags: {"test_id": "choices"}),
+            (type: "anchor", id: "choices_end"),
+            (type: "panel", role: "invisible",
+             layout: (direction: "row", gap: 2.0, align: "center"),
+             tags: {"test_id": "footer"},
+             children: [
+                (type: "custom", kind: "slotted:hint_bar", tags: {"test_id": "hints"}),
+                (type: "spacer"),
+                (type: "rich_text", key: "slotted.menu.dialogue.continue", style: "caption",
+                 inline: true, tags: {"test_id": "continue"}),
+             ]),
+            (type: "anchor", id: "footer"),
+        ],
+    ),
+)

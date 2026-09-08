@@ -287,6 +287,10 @@
         "hint.label": Text(color: "$muted", size: "$caption"),
         "menu.title": Text(color: "$lime", size: "$display"),
         "menu.version": Text(color: "$muted", size: "$caption"),
+        "dialogue": CutCorners(fill: "$charcoal", border: "$cyan", cut: 10.0, elevation: "mid"),
+        "dialogue.speaker": Text(color: "$lime", size: "$label", font: "display", weight: 700),
+        "dialogue.text": Text(color: "$text", size: "$body"),
+        "dialogue.portrait": CutCorners(fill: "#000000", border: "$magenta", cut: 6.0),
 
         "invisible": Solid(fill: "#00000000"),
     },

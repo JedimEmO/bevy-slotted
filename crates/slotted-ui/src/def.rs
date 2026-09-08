@@ -259,6 +259,11 @@ pub struct TextOpts {
     /// images beside the text rather than item names in it.
     #[serde(default)]
     pub inline: bool,
+    /// Paint this theme role instead of the [`TextRole`]'s `text.*` role
+    /// (menus M3 contract 2.4): `role: "dialogue.speaker"`. A role the theme
+    /// lacks falls back to the `TextRole`'s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
 }
 
 const fn yes() -> bool {
@@ -273,6 +278,7 @@ impl Default for TextOpts {
             align: TextAlign::Left,
             max_lines: None,
             inline: false,
+            role: None,
         }
     }
 }
@@ -907,12 +913,22 @@ pub struct Presentation {
     /// What `Back` does.
     #[serde(default)]
     pub back: BackPolicy,
+    /// Whether the screen takes focus when it is the topmost entry that
+    /// does (menus M3 contract 2.1). Defaults to `mode != overlay`; an
+    /// overlay with choices (the dialogue) says `focus: true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<bool>,
 }
 
 impl Presentation {
     /// Whether a scrim is drawn: `scrim`, else `mode == modal`.
     pub fn scrim(&self) -> bool {
         self.scrim.unwrap_or(self.mode == PresentationMode::Modal)
+    }
+
+    /// Whether the screen takes focus: `focus`, else `mode != overlay`.
+    pub fn takes_focus(&self) -> bool {
+        self.focus.unwrap_or(self.mode != PresentationMode::Overlay)
     }
 }
 

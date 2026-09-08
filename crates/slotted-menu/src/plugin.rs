@@ -256,5 +256,7 @@ impl Plugin for MenuPlugin {
         crate::toast::build(app);
         crate::confirm::build(app);
         crate::settings::build(app);
+        crate::dialogue::build(app);
+        crate::dialogue_screen::build(app);
     }
 }

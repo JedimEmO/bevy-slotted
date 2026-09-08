@@ -294,6 +294,10 @@
         "hint.label": Text(color: "$muted", size: "$caption"),
         "menu.title": Text(color: "$ink", size: "$display"),
         "menu.version": Text(color: "$muted", size: "$caption", font: "mono"),
+        "dialogue": Solid(fill: "$sheet", border: "$ink", radius: 0.0, elevation: "ink"),
+        "dialogue.speaker": Text(color: "$ink", size: "$label", font: "mono", weight: 700),
+        "dialogue.text": Text(color: "$ink", size: "$body"),
+        "dialogue.portrait": Solid(fill: "$sheet", border: "$ink", radius: 0.0),
 
         "invisible": Solid(fill: "#00000000"),
     },

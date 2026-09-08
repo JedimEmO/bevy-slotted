@@ -231,8 +231,10 @@ fn every_embedded_template_parses_and_names_its_kind() {
         ron::from_str(templates::TOAST_NODE).expect("the toast snippet parses");
     assert_eq!(toast.id(), Some("toast"));
     for def in &defs {
+        // The dialogue's focus is its option buttons, spawned per node
+        // (menus M3 contract 4.2), so it names none.
         assert!(
-            def.initial_focus.is_some(),
+            def.initial_focus.is_some() || def.kind == kinds::dialogue(),
             "{} names an initial focus",
             def.kind.0
         );
@@ -370,7 +372,7 @@ fn the_settings_frame_opens_in_three_themes_and_a_pad_reaches_reset_and_done() {
 
 #[test]
 fn every_new_role_resolves_in_three_themes_and_the_table_is_complete() {
-    assert_eq!(roles::ALL.len(), 101);
+    assert_eq!(roles::ALL.len(), 105);
     for theme in ["glass", "paper", "neon"] {
         let h = harness_in(theme, MenuConfig::default());
         let active = h.world().resource::<slotted_theme::ActiveTheme>().0.clone();

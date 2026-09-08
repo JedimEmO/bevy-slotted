@@ -320,6 +320,26 @@ pub fn value_text(value: &crate::values::Value) -> String {
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct RichRuns(pub Vec<RichRun>);
 
+/// How much of a rich text node is shown (menus M3 contract 2.3): the
+/// typewriter's cursor. `None` shows everything; `Some(n)` the first `n`
+/// units, where a unit is one `char` of a text run and a whole `{key:..}`
+/// or `{icon:..}` run. The remainder is laid out but painted transparent, so
+/// a line never reflows while it types.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RichReveal(pub Option<usize>);
+
+impl RichReveal {
+    /// Everything shown.
+    pub const ALL: Self = Self(None);
+
+    /// How many units a full reveal of `runs` takes.
+    pub fn units(runs: &[RichRun]) -> usize {
+        // M3-IMPL: A
+        let _ = runs;
+        todo!("RichReveal::units")
+    }
+}
+
 /// On the `TextSpan` a `{key:action}` run rendered to, so a mode or binding
 /// change can rewrite its text without re-parsing the node.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]

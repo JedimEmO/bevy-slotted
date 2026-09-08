@@ -35,6 +35,12 @@ pub fn english(key: &str) -> Option<&'static str> {
         "slotted.menu.confirm_title" => "Are you sure?",
         "slotted.menu.version" => "Version {version}",
         "slotted.menu.binding_moved" => "{action} lost its key",
+        "slotted.menu.dialogue.speaker" => "",
+        "slotted.menu.dialogue.continue" => "{key:accept} continue",
+        "slotted.menu.dialogue.skip" => "Skip",
+        "slotted.menu.dialogue.next" => "Continue",
+        "slotted.menu.dialogue.history" => "History",
+        "slotted.menu.dialogue.leave" => "Leave",
         _ => return None,
     })
 }

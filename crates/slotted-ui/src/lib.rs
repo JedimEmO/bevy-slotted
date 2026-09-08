@@ -92,7 +92,7 @@ pub use rich::{
     GlyphSet, RichError, RichRun, RichRuns, RunKind, RunStyle, button_glyph, key_glyph_text,
     resolved_glyph_set,
 };
-pub use rich::{RichKeySpan, key_glyph};
+pub use rich::{RichKeySpan, RichReveal, key_glyph};
 pub use rich::{VENDOR_PLAYSTATION, VENDOR_SWITCH, resolved_glyph_set_for_vendor};
 pub use scale::{UiUnits, ui_scale_of};
 pub use screen::{
@@ -110,7 +110,8 @@ pub use semantic::{
 };
 pub use stack::{
     ClearScreens, PopScreen, PopTo, PushScreen, ScreenStack, Scrim, StackChanged, StackEntry,
-    clear_screens, pop_on_back, pop_screen, pop_to, push_screen, push_screen_at, replace_screen,
+    clear_screens, close_stacked, pop_on_back, pop_screen, pop_to, push_screen, push_screen_at,
+    replace_screen,
 };
 pub use tooltip::{
     HoverStart, TooltipContent, TooltipCtx, TooltipHost, TooltipPart, TooltipParts, TooltipRequest,

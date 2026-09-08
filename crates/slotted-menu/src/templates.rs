@@ -31,10 +31,21 @@ pub mod kinds {
     pub fn page() -> ScreenKind {
         ScreenKind::new("slotted:page")
     }
+    /// The dialogue overlay (menus M3).
+    pub fn dialogue() -> ScreenKind {
+        ScreenKind::new("slotted:dialogue")
+    }
 
     /// Every template kind.
-    pub fn all() -> [ScreenKind; 5] {
-        [main_menu(), pause(), settings(), confirm(), page()]
+    pub fn all() -> [ScreenKind; 6] {
+        [
+            main_menu(),
+            pause(),
+            settings(),
+            confirm(),
+            page(),
+            dialogue(),
+        ]
     }
 }
 
@@ -48,13 +59,15 @@ pub const SETTINGS: &str = include_str!("../screens/settings.screen.ron");
 pub const CONFIRM: &str = include_str!("../screens/confirm.screen.ron");
 /// See [`MAIN_MENU`].
 pub const PAGE: &str = include_str!("../screens/page.screen.ron");
+/// See [`MAIN_MENU`]. Menus M3.
+pub const DIALOGUE: &str = include_str!("../screens/dialogue.screen.ron");
 /// The one-toast snippet (contract 3.4): a `UiNodeDef`, not a screen.
 pub const TOAST_NODE: &str = include_str!("../screens/toast.node.ron");
 
 /// Every template, parsed. Panics on a malformed embedded file, which the
 /// crate's own tests catch before a consumer ever does.
 pub fn all() -> Vec<ScreenDef> {
-    [MAIN_MENU, PAUSE, SETTINGS, CONFIRM, PAGE]
+    [MAIN_MENU, PAUSE, SETTINGS, CONFIRM, PAGE, DIALOGUE]
         .into_iter()
         .map(|text| ScreenDef::from_ron(text).expect("an embedded template parses"))
         .collect()

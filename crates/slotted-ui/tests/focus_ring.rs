@@ -328,7 +328,7 @@ fn every_shipped_theme_defines_the_ring_and_the_scrim() {
     const GLASS: &str = include_str!("../../../assets/themes/glass.theme.ron");
     const PAPER: &str = include_str!("../../../assets/themes/paper.theme.ron");
     const NEON: &str = include_str!("../../../assets/themes/neon.theme.ron");
-    assert_eq!(roles::ALL.len(), 101);
+    assert_eq!(roles::ALL.len(), 105);
     assert!(roles::ALL.contains(&roles::FOCUS_RING));
     assert!(roles::ALL.contains(&roles::SCRIM));
     for (name, text) in [("glass", GLASS), ("paper", PAPER), ("neon", NEON)] {
