@@ -37,6 +37,8 @@ pub use slotted_registry as registry;
 pub use slotted_browser as browser;
 #[cfg(feature = "ui")]
 pub use slotted_icons as icons;
+#[cfg(feature = "menu")]
+pub use slotted_menu as menu;
 #[cfg(feature = "net")]
 pub use slotted_net as net;
 #[cfg(feature = "packs")]
@@ -60,6 +62,8 @@ pub mod prelude {
     pub use slotted_ecs::prelude::*;
     #[cfg(feature = "ui")]
     pub use slotted_icons::prelude::*;
+    #[cfg(feature = "menu")]
+    pub use slotted_menu::prelude::*;
     #[cfg(feature = "packs")]
     pub use slotted_packs::prelude::*;
     #[cfg(feature = "ui")]

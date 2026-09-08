@@ -283,6 +283,19 @@
         "tab.focus": Solid(fill: "#FFFFFF0F", border: "$accent", radius: 999.0),
         "separator": Solid(fill: "$hairline"),
 
+        // Menus M2: toasts, the hint bar and the main menu header.
+        "toast": Glass(tint: "#141A24E6", border: "#FFFFFF1A", radius: 12.0, elevation: "mid"),
+        "toast.info": Glass(tint: "#141A24E6", border: "$accent", radius: 12.0, elevation: "mid"),
+        "toast.success": Glass(tint: "#141A24E6", border: "#7FFFB0", radius: 12.0, elevation: "mid"),
+        "toast.warning": Glass(tint: "#141A24E6", border: "$warm", radius: 12.0, elevation: "mid"),
+        "toast.error": Glass(tint: "#141A24E6", border: "$danger", radius: 12.0, elevation: "mid"),
+        "toast.text": Text(color: "$text", size: "$body"),
+        "hint.bar": Solid(fill: "#00000000"),
+        "hint.glyph": Text(color: "$base", size: "$caption", font: "display", weight: 700),
+        "hint.label": Text(color: "$muted", size: "$caption"),
+        "menu.title": Text(color: "$text", size: "$display"),
+        "menu.version": Text(color: "$muted", size: "$caption"),
+
         "invisible": Solid(fill: "#00000000"),
     },
 )

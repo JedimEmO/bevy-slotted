@@ -1,0 +1,48 @@
+[package]
+name = "slotted-menu"
+description = "Game menus for slotted: main menu, pause, settings with persistence, confirm dialogs, toasts, pages and a hint bar, all as inheritable screen templates."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slotted-menu"
+homepage.workspace = true
+keywords = ["bevy", "ui", "menu", "settings", "gamedev"]
+categories = ["game-development", "gui"]
+
+[features]
+default = []
+
+[dependencies]
+slotted-model = { workspace = true }
+slotted-theme = { workspace = true }
+slotted-ui = { workspace = true }
+# The same headless slice slotted-ui builds against: layout and picking, no
+# renderer. A consumer's own Bevy adds the rest.
+bevy = { workspace = true, features = [
+    "bevy_asset",
+    "bevy_input_focus",
+    "bevy_picking",
+    "bevy_scene",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_widgets",
+    "bevy_window",
+    "serialize",
+] }
+serde = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+slotted-test = { workspace = true }
+pretty_assertions = { workspace = true }
+insta = { workspace = true }
+bevy = { workspace = true, features = ["std", "default_font", "bevy_state"] }
+
+[lints]
+workspace = true

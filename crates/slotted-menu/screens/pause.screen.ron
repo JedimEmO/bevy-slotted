@@ -1,0 +1,25 @@
+// The pause screen (menus M2 contract 3.1): a modal over the game.
+#![enable(implicit_some)]
+(
+    kind: "slotted:pause",
+    presentation: (mode: "modal", scrim: true, transition: "slide_up", back: "pop"),
+    initial_focus: "resume",
+    root: (
+        type: "panel", role: "panel",
+        layout: (direction: "column", gap: 2.0, padding: 3.0, min_width: 320, align: "stretch"),
+        tags: {"test_id": "pause"},
+        children: [
+            (type: "text", key: "slotted.menu.paused", style: "title", tags: {"test_id": "title"}),
+            (type: "anchor", id: "title_end"),
+            (type: "button", label: "slotted.menu.resume", variant: "primary",
+             tags: {"test_id": "resume", "menu": "resume"}),
+            (type: "button", label: "slotted.menu.settings",
+             tags: {"test_id": "settings", "menu": "settings"}),
+            (type: "button", label: "slotted.menu.quit",
+             tags: {"test_id": "quit", "menu": "quit"}),
+            (type: "anchor", id: "buttons_end"),
+            (type: "separator"),
+            (type: "custom", kind: "slotted:hint_bar", tags: {"test_id": "hints"}),
+        ],
+    ),
+)

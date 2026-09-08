@@ -1,0 +1,34 @@
+// A scrolling text page (menus M2 contract 3.5). `open_page()` rewrites
+// `title` and `body`.
+#![enable(implicit_some)]
+(
+    kind: "slotted:page",
+    presentation: (mode: "page", transition: "slide_left", back: "pop"),
+    initial_focus: "done",
+    root: (
+        type: "panel", role: "panel",
+        layout: (direction: "column", gap: 2.0, padding: 3.0, width: 640, max_height: "85%",
+                 align: "stretch"),
+        tags: {"test_id": "page"},
+        children: [
+            (type: "text", key: "slotted.menu.title", style: "heading", tags: {"test_id": "title"}),
+            (type: "anchor", id: "title_end"),
+            (type: "scroll", layout: (direction: "column", gap: 1.0, max_height: "60%", grow: 1.0),
+             tags: {"test_id": "scroll"},
+             children: [
+                (type: "rich_text", key: "slotted.menu.title", style: "body",
+                 tags: {"test_id": "body"}),
+                (type: "anchor", id: "body_end"),
+             ]),
+            (type: "panel", role: "invisible",
+             layout: (direction: "row", gap: 2.0, align: "center"),
+             tags: {"test_id": "footer"},
+             children: [
+                (type: "custom", kind: "slotted:hint_bar", tags: {"test_id": "hints"}),
+                (type: "spacer"),
+                (type: "button", widget: "slotted:close", label: "slotted.menu.done",
+                 variant: "primary", tags: {"test_id": "done"}),
+             ]),
+        ],
+    ),
+)

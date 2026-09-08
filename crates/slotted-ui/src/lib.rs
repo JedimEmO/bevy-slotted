@@ -86,8 +86,11 @@ pub use preview::{
     update_carried_validity, update_drag_phantoms, update_slot_hints,
 };
 pub use recording::{RECORDING_VERSION, RecordedButton, RecordedFrame, RecordedInput, Recording};
-pub use rich::{RichError, RichRun, RichRuns, RunKind, RunStyle, key_glyph_text};
-pub use rich::{RichKeySpan, button_glyph, key_glyph};
+pub use rich::{
+    GlyphSet, RichError, RichRun, RichRuns, RunKind, RunStyle, button_glyph, key_glyph_text,
+    resolved_glyph_set,
+};
+pub use rich::{RichKeySpan, key_glyph};
 pub use scale::{UiUnits, ui_scale_of};
 pub use screen::{
     Injection, Injections, MAX_INHERIT_DEPTH, ScreenClosed, ScreenLaidOut, ScreenLayout,

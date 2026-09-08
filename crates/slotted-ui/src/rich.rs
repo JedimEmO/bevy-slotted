@@ -339,7 +339,7 @@ pub fn refresh_key_glyphs(
         return;
     }
     for (key, mut span) in &mut spans {
-        let want = key_glyph_text(key.0, *mode, &bindings);
+        let want = key_glyph_text(key.0, *mode, &bindings, GlyphSet::Auto);
         if span.0 != want {
             span.0 = want;
         }
@@ -354,13 +354,47 @@ pub fn key_glyph_text(
     action: UiAction,
     mode: crate::actions::InputMode,
     bindings: &crate::actions::UiBindings,
+    set: GlyphSet,
 ) -> String {
     use crate::actions::InputMode;
     let glyph = match mode {
-        InputMode::Gamepad => bindings.first_button(action).map(button_glyph),
+        InputMode::Gamepad => bindings.first_button(action).map(|b| button_glyph(b, set)),
         InputMode::Keyboard | InputMode::Pointer => bindings.first_key(action).map(key_glyph),
     };
     glyph.unwrap_or_else(|| action.as_str().to_owned())
+}
+
+/// Which family of button names a `{key:..}` glyph and the hint bar use
+/// (menus M2 contract 2.4). `Auto` follows the first connected pad's vendor.
+#[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum GlyphSet {
+    /// `PlayStation` for Sony, `Switch` for Nintendo, `Xbox` otherwise.
+    #[default]
+    Auto,
+    /// Keyboard names even for a pad binding (a text-only UI).
+    Keyboard,
+    /// `A B X Y LB RB LT RT`.
+    Xbox,
+    /// `✕ ○ □ △ L1 R1 L2 R2`.
+    PlayStation,
+    /// `B A Y X L R ZL ZR`.
+    Switch,
+    /// Bevy's names: `South`, `East`, ...
+    Generic,
+}
+
+/// Resolves `Auto` from the connected pads (menus M2 contract 2.4).
+pub fn resolved_glyph_set(
+    set: GlyphSet,
+    mode: crate::actions::InputMode,
+    gamepads: &Query<&Gamepad>,
+) -> GlyphSet {
+    // M2-IMPL: A — vendor ids: 0x054C PlayStation, 0x057E Switch.
+    let _ = (mode, gamepads);
+    match set {
+        GlyphSet::Auto => GlyphSet::Xbox,
+        other => other,
+    }
 }
 
 /// A keyboard key's display text.
@@ -417,10 +451,12 @@ pub fn key_glyph(key: KeyCode) -> String {
     name
 }
 
-/// A gamepad button's display text, in the Xbox-style names most players
-/// read: `A`, `B`, `X`, `Y`, `LB`, `RT`, `D-pad ↑`.
-pub fn button_glyph(button: bevy::input::gamepad::GamepadButton) -> String {
+/// A gamepad button's display text in `set` (`Auto` reads as Xbox here; the
+/// caller resolves it first through [`resolved_glyph_set`]).
+pub fn button_glyph(button: bevy::input::gamepad::GamepadButton, set: GlyphSet) -> String {
     use bevy::input::gamepad::GamepadButton as G;
+    // M2-IMPL: A — PlayStation, Switch and Generic tables.
+    let _ = set;
     match button {
         G::South => "A".to_owned(),
         G::East => "B".to_owned(),
@@ -445,6 +481,7 @@ pub fn button_glyph(button: bevy::input::gamepad::GamepadButton) -> String {
 
 /// Registers the rich text systems.
 pub fn build(app: &mut App) {
+    app.init_resource::<GlyphSet>();
     app.add_systems(
         Update,
         (crate::widgets::text::render_rich_text, refresh_key_glyphs)

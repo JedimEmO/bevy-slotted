@@ -689,7 +689,7 @@ fn a_missing_localisation_key_falls_back_to_the_key_and_is_resolved_once() {
         .resource_mut::<Screens>()
         .register(ScreenDef::from_ron(BASE).unwrap());
     h.world_mut()
-        .insert_resource(Localization(counter.clone() as Arc<dyn Localizer>));
+        .insert_resource(Localization::from_arc(counter.clone() as Arc<dyn Localizer>));
 
     h.open_screen(ScreenKind::new("gaps:base"), ChestFixture::empty());
     h.settle();
@@ -748,7 +748,7 @@ fn a_chip_whose_title_key_is_missing_still_draws_one_legible_chip() {
         Arc::new(DefaultScreenHandler),
     );
     h.world_mut()
-        .insert_resource(Localization(counter.clone() as Arc<dyn Localizer>));
+        .insert_resource(Localization::from_arc(counter.clone() as Arc<dyn Localizer>));
 
     h.open_screen(ScreenKind::new("gaps:scale"), ChestFixture::filled());
     h.browser().wait_for_index();

@@ -16,6 +16,8 @@ pub mod zbands {
     pub const BROWSER: i32 = 200;
     /// The focus ring (menus contract 2.3).
     pub const FOCUS: i32 = 900;
+    /// Toasts (menus M2 contract 3.4): over every screen, under tooltips.
+    pub const TOAST: i32 = 950;
     /// Tooltips.
     pub const TOOLTIP: i32 = 1000;
     /// The carried stack following the pointer.

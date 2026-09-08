@@ -14,7 +14,7 @@ keywords = ["bevy", "inventory", "ui", "modding", "gamedev"]
 categories = ["game-development", "gui"]
 
 [features]
-default = ["ui", "browser", "packs", "script-luaur", "gpu-icons"]
+default = ["ui", "browser", "menu", "packs", "script-luaur", "gpu-icons"]
 # Mods and resource packs: discovery, `pack://`, the script lifecycle (Phase 4).
 # Independent of `ui`: a dedicated server loads the same mods with no widgets
 # compiled in. With `ui` on, `slotted-packs/ui` comes with it and the pack
@@ -54,6 +54,9 @@ ui = [
 server = ["packs", "script-luaur", "net"]
 # The item and recipe browser overlay (Phase 3).
 browser = ["ui", "dep:slotted-browser"]
+# Game menus: main menu, pause, settings with persistence, confirm, toast,
+# page and the hint bar (menus M2).
+menu = ["ui", "dep:slotted-menu"]
 # Backdrop blur for glass panels (ADR 0003).
 blur = ["ui", "slotted-theme/blur"]
 # Exclusion-zone highlighter, id tooltips, the HUD position editor and the
@@ -88,6 +91,7 @@ slotted-theme = { workspace = true, optional = true }
 slotted-ui = { workspace = true, optional = true }
 slotted-icons = { workspace = true, optional = true }
 slotted-browser = { workspace = true, optional = true }
+slotted-menu = { workspace = true, optional = true }
 slotted-packs = { workspace = true, optional = true }
 slotted-script = { workspace = true, optional = true }
 slotted-script-luaur = { workspace = true, optional = true }

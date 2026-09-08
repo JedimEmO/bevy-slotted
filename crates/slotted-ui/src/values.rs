@@ -129,6 +129,18 @@ impl ValueStore {
         self.values.iter().map(|(k, v)| (k.as_str(), v))
     }
 
+    /// A copy of every value, for persisting (menus M2 contract 2.3).
+    pub fn snapshot(&self) -> BTreeMap<String, Value> {
+        self.values.clone()
+    }
+
+    /// Inserts every entry of `map` without rules, guards or events, and
+    /// bumps the version once.
+    pub fn restore(&mut self, map: BTreeMap<String, Value>) {
+        self.values.extend(map);
+        self.version += 1;
+    }
+
     /// The commit path [`apply_set_values`] uses.
     pub(crate) fn commit(&mut self, key: &str, value: Value) -> Option<Value> {
         let old = self.values.insert(key.to_owned(), value);

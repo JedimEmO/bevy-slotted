@@ -1,0 +1,14 @@
+// One toast (menus M2 contract 3.4): a `UiNodeDef`, spawned under the toast
+// host, not a screen. `toast()` rewrites `toast.text`'s key and the panel's
+// role for the level.
+#![enable(implicit_some)]
+(
+    type: "panel", role: "toast.info",
+    layout: (direction: "row", gap: 1.0, padding: (1.0, 2.5, 1.0, 2.5), min_width: 240,
+             max_width: 480, align: "center"),
+    tags: {"test_id": "toast"},
+    children: [
+        (type: "rich_text", key: "slotted.menu.title", style: "body", wrap: true,
+         tags: {"test_id": "toast.text"}),
+    ],
+)

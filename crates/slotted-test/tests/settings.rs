@@ -649,8 +649,18 @@ fn the_footer_reads_the_live_bindings_for_the_input_mode() {
     h.settle();
     let bindings = h.world().resource::<UiBindings>().clone();
     let expected = vec![
-        key_glyph_text(UiAction::Back, InputMode::Gamepad, &bindings),
-        key_glyph_text(UiAction::TabNext, InputMode::Gamepad, &bindings),
+        key_glyph_text(
+            UiAction::Back,
+            InputMode::Gamepad,
+            &bindings,
+            slotted_ui::GlyphSet::Auto,
+        ),
+        key_glyph_text(
+            UiAction::TabNext,
+            InputMode::Gamepad,
+            &bindings,
+            slotted_ui::GlyphSet::Auto,
+        ),
     ];
     assert_eq!(footer_glyphs(&mut h), expected);
     assert_eq!(footer_glyphs(&mut h)[0], "B", "East is the pad's B");

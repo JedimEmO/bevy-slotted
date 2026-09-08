@@ -5401,6 +5401,7 @@ dependencies = [
  "slotted-browser",
  "slotted-ecs",
  "slotted-icons",
+ "slotted-menu",
  "slotted-model",
  "slotted-net",
  "slotted-packs",
@@ -5458,6 +5459,23 @@ dependencies = [
  "slotted-registry",
  "tracing",
  "wgpu-types",
+]
+
+[[package]]
+name = "slotted-menu"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "insta",
+ "pretty_assertions",
+ "ron",
+ "serde",
+ "slotted-model",
+ "slotted-test",
+ "slotted-theme",
+ "slotted-ui",
+ "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

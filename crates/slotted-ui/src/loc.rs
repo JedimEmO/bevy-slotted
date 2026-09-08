@@ -54,27 +54,61 @@ impl Localizer for NoLocalization {
     }
 }
 
-/// The active [`Localizer`].
+/// The active [`Localizer`], plus fallbacks (menus M2 contract 2.1).
 ///
-/// `slotted-packs` inserts one over the mods' `.ftl` layers at the end of each
-/// load and each reload. Everything else reads it.
+/// `slotted-packs` sets the primary over the mods' `.ftl` layers at the end
+/// of each load and each reload through [`set_primary`](Self::set_primary),
+/// which keeps the fallbacks; a library crate that ships English defaults
+/// for its own keys pushes one with [`push_fallback`](Self::push_fallback).
+/// Everything else reads it.
 #[derive(Resource, Clone)]
-pub struct Localization(pub Arc<dyn Localizer>);
+pub struct Localization {
+    /// The catalogue asked first.
+    pub primary: Arc<dyn Localizer>,
+    /// Asked in order when the primary has no answer.
+    pub fallbacks: Vec<Arc<dyn Localizer>>,
+}
 
 impl Localization {
-    /// Wraps `localizer`.
+    /// Wraps `localizer` as the primary, with no fallbacks.
     pub fn new(localizer: impl Localizer) -> Self {
-        Self(Arc::new(localizer))
+        Self::from_arc(Arc::new(localizer))
+    }
+
+    /// Wraps a shared localizer as the primary, with no fallbacks.
+    pub fn from_arc(localizer: Arc<dyn Localizer>) -> Self {
+        Self {
+            primary: localizer,
+            fallbacks: Vec::new(),
+        }
+    }
+
+    /// Replaces the primary and keeps the fallbacks.
+    pub fn set_primary(&mut self, localizer: impl Localizer) {
+        self.primary = Arc::new(localizer);
+    }
+
+    /// Replaces the primary with a shared localizer and keeps the fallbacks.
+    pub fn set_primary_arc(&mut self, localizer: Arc<dyn Localizer>) {
+        self.primary = localizer;
+    }
+
+    /// Adds a fallback after the existing ones.
+    pub fn push_fallback(&mut self, localizer: impl Localizer) {
+        self.fallbacks.push(Arc::new(localizer));
     }
 
     /// The display text for `key`, or `None` when nothing defines it.
     pub fn resolve(&self, key: &LocKey) -> Option<String> {
-        self.0.resolve(key, no_args())
+        self.resolve_with(key, no_args())
     }
 
-    /// The display text for `key` with `args`, or `None`.
+    /// The display text for `key` with `args`, or `None`: the primary, then
+    /// each fallback in order.
     pub fn resolve_with(&self, key: &LocKey, args: &LocArgs) -> Option<String> {
-        self.0.resolve(key, args)
+        self.primary
+            .resolve(key, args)
+            .or_else(|| self.fallbacks.iter().find_map(|f| f.resolve(key, args)))
     }
 
     /// The display text for `key`, falling back to the key itself.
@@ -99,7 +133,7 @@ impl Localization {
 
 impl Default for Localization {
     fn default() -> Self {
-        Self(Arc::new(NoLocalization))
+        Self::new(NoLocalization)
     }
 }
 

@@ -1,0 +1,33 @@
+// The settings frame (menus M2 contract 3.1). A `SettingsSpec` generates a
+// screen that inherits this one and replaces the empty `settings.tabs` node
+// with the real tabs; a game may also inherit it by hand.
+#![enable(implicit_some)]
+(
+    kind: "slotted:settings",
+    presentation: (mode: "modal", scrim: true, transition: "fade", back: "pop"),
+    initial_focus: "settings.tabs",
+    root: (
+        type: "panel", role: "panel",
+        layout: (direction: "column", gap: 2.0, padding: 3.0, width: 720, max_height: "85%",
+                 align: "stretch"),
+        tags: {"test_id": "settings"},
+        children: [
+            (type: "text", key: "slotted.menu.settings_title", style: "title",
+             tags: {"test_id": "title"}),
+            (type: "anchor", id: "title_end"),
+            (type: "tabs", tabs: [], tags: {"test_id": "settings.tabs"}),
+            (type: "separator"),
+            (type: "panel", role: "invisible",
+             layout: (direction: "row", gap: 2.0, align: "center"),
+             tags: {"test_id": "footer"},
+             children: [
+                (type: "custom", kind: "slotted:hint_bar", tags: {"test_id": "hints"}),
+                (type: "spacer"),
+                (type: "button", label: "slotted.menu.reset",
+                 tags: {"test_id": "reset", "menu": "reset"}),
+                (type: "button", widget: "slotted:close", label: "slotted.menu.done",
+                 variant: "primary", tags: {"test_id": "done"}),
+             ]),
+        ],
+    ),
+)

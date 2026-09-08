@@ -331,16 +331,7 @@ fn replace_node(list: &mut [UiNodeDef], id: &str, node: &UiNodeDef) -> bool {
 /// Deletes every node under `root` whose id is `id`. The root itself is never
 /// removed: a screen with no tree is not a screen.
 fn remove_node(root: &mut UiNodeDef, id: &str) -> bool {
-    let Some(children) = root.children_mut() else {
-        return false;
-    };
-    let before = children.len();
-    children.retain(|c| c.id() != Some(id));
-    let mut found = children.len() != before;
-    for child in children.iter_mut() {
-        found |= remove_node(child, id);
-    }
-    found
+    root.remove_descendant(id)
 }
 
 /// A node another mod or crate adds to a screen it does not own.

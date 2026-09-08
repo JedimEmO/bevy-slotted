@@ -79,7 +79,9 @@ pub fn spawn_key_binding(
     let glyph = ctx
         .world
         .get_resource::<UiBindings>()
-        .map(|b| crate::rich::key_glyph_text(action, mode_for(device), b))
+        .map(|b| {
+            crate::rich::key_glyph_text(action, mode_for(device), b, crate::rich::GlyphSet::Auto)
+        })
         .unwrap_or_default();
     let cell_height = tokens.sizes.control_height - 2.0 * tokens.spacing.sm;
     let cell = ctx
@@ -249,7 +251,12 @@ pub fn paint_key_bindings(
         let want = if state.capturing {
             "…".to_owned()
         } else {
-            crate::rich::key_glyph_text(state.action, mode_for(state.device), &bindings)
+            crate::rich::key_glyph_text(
+                state.action,
+                mode_for(state.device),
+                &bindings,
+                crate::rich::GlyphSet::Auto,
+            )
         };
         if let Ok(mut text) = texts.get_mut(parts.text)
             && text.0 != want

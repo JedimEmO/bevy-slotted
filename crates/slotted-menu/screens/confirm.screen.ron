@@ -1,0 +1,34 @@
+// The confirm dialog (menus M2 contract 3.3). `confirm()` rewrites `title`,
+// `message`, `accept`/`accept_danger` and `cancel`, and removes whichever
+// accept button the spec did not ask for.
+#![enable(implicit_some)]
+(
+    kind: "slotted:confirm",
+    presentation: (mode: "modal", scrim: true, transition: "fade", back: "pop"),
+    initial_focus: "cancel",
+    root: (
+        type: "panel", role: "panel",
+        layout: (direction: "column", gap: 2.0, padding: 3.0, width: 420, align: "stretch"),
+        tags: {"test_id": "confirm"},
+        children: [
+            (type: "text", key: "slotted.menu.confirm_title", style: "title",
+             tags: {"test_id": "title"}),
+            (type: "rich_text", key: "slotted.menu.confirm_title", style: "body",
+             tags: {"test_id": "message"}),
+            (type: "anchor", id: "message_end"),
+            (type: "panel", role: "invisible",
+             layout: (direction: "row", gap: 2.0, justify: "end", align: "center"),
+             tags: {"test_id": "buttons"},
+             children: [
+                (type: "custom", kind: "slotted:hint_bar", tags: {"test_id": "hints"}),
+                (type: "spacer"),
+                (type: "button", label: "slotted.menu.cancel",
+                 tags: {"test_id": "cancel", "menu": "cancel"}),
+                (type: "button", label: "slotted.menu.ok", variant: "primary",
+                 tags: {"test_id": "accept", "menu": "accept"}),
+                (type: "button", label: "slotted.menu.ok", variant: "danger",
+                 tags: {"test_id": "accept_danger", "menu": "accept"}),
+             ]),
+        ],
+    ),
+)

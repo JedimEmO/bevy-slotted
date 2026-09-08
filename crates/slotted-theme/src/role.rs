@@ -250,8 +250,31 @@ pub mod roles {
     /// button. Menus M1.
     pub const TEXT_INVERSE: Role = Role::new_static("text.inverse");
 
+    /// A toast panel; the level roles fall back to it. Menus M2.
+    pub const TOAST: Role = Role::new_static("toast");
+    /// An info toast. Menus M2.
+    pub const TOAST_INFO: Role = Role::new_static("toast.info");
+    /// A success toast. Menus M2.
+    pub const TOAST_SUCCESS: Role = Role::new_static("toast.success");
+    /// A warning toast. Menus M2.
+    pub const TOAST_WARNING: Role = Role::new_static("toast.warning");
+    /// An error toast. Menus M2.
+    pub const TOAST_ERROR: Role = Role::new_static("toast.error");
+    /// A toast's text. Menus M2.
+    pub const TOAST_TEXT: Role = Role::new_static("toast.text");
+    /// The hint bar row. Menus M2.
+    pub const HINT_BAR: Role = Role::new_static("hint.bar");
+    /// A hint bar key or button glyph. Menus M2.
+    pub const HINT_GLYPH: Role = Role::new_static("hint.glyph");
+    /// A hint bar verb. Menus M2.
+    pub const HINT_LABEL: Role = Role::new_static("hint.label");
+    /// The main menu's title. Menus M2.
+    pub const MENU_TITLE: Role = Role::new_static("menu.title");
+    /// The main menu's version line. Menus M2.
+    pub const MENU_VERSION: Role = Role::new_static("menu.version");
+
     /// Every well-known role, for completeness checks.
-    pub const ALL: [Role; 90] = [
+    pub const ALL: [Role; 101] = [
         PANEL,
         PANEL_TITLE,
         SLOT,
@@ -342,6 +365,17 @@ pub mod roles {
         TAB_FOCUS,
         SEPARATOR,
         TEXT_INVERSE,
+        TOAST,
+        TOAST_INFO,
+        TOAST_SUCCESS,
+        TOAST_WARNING,
+        TOAST_ERROR,
+        TOAST_TEXT,
+        HINT_BAR,
+        HINT_GLYPH,
+        HINT_LABEL,
+        MENU_TITLE,
+        MENU_VERSION,
     ];
 }
 

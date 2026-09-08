@@ -264,6 +264,19 @@
         "tab.focus": CutCorners(fill: "$slate", border: "$magenta", cut: 8.0),
         "separator": Solid(fill: "$edge"),
 
+        // Menus M2: cut toasts with a coloured edge, pill glyphs.
+        "toast": CutCorners(fill: "$charcoal", border: "$edge", cut: 8.0, elevation: "mid"),
+        "toast.info": CutCorners(fill: "$charcoal", border: "$cyan", cut: 8.0, elevation: "mid"),
+        "toast.success": CutCorners(fill: "$charcoal", border: "$lime", cut: 8.0, elevation: "mid"),
+        "toast.warning": CutCorners(fill: "$charcoal", border: "$magenta", cut: 8.0, elevation: "mid"),
+        "toast.error": CutCorners(fill: "$charcoal", border: "$danger", cut: 8.0, elevation: "mid"),
+        "toast.text": Text(color: "$text", size: "$body"),
+        "hint.bar": Solid(fill: "#00000000"),
+        "hint.glyph": Text(color: "$charcoal", size: "$caption", font: "display", weight: 700),
+        "hint.label": Text(color: "$muted", size: "$caption"),
+        "menu.title": Text(color: "$lime", size: "$display"),
+        "menu.version": Text(color: "$muted", size: "$caption"),
+
         "invisible": Solid(fill: "#00000000"),
     },
 )

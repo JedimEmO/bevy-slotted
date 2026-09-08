@@ -269,6 +269,19 @@
         "tab.focus": Solid(fill: "$sheet", border: "$orange", radius: 0.0),
         "separator": Solid(fill: "$rule"),
 
+        // Menus M2: ink-framed toasts, bracketed mono hints.
+        "toast": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "ink"),
+        "toast.info": Solid(fill: "$sheet", border: "$ink", radius: 2.0, elevation: "ink"),
+        "toast.success": Solid(fill: "$sheet", border: "$teal", radius: 2.0, elevation: "ink"),
+        "toast.warning": Solid(fill: "$sheet", border: "$orange", radius: 2.0, elevation: "ink"),
+        "toast.error": Solid(fill: "$sheet", border: "$danger", radius: 2.0, elevation: "ink"),
+        "toast.text": Text(color: "$ink", size: "$body"),
+        "hint.bar": Solid(fill: "#00000000"),
+        "hint.glyph": Text(color: "$orange", size: "$label", font: "mono"),
+        "hint.label": Text(color: "$muted", size: "$caption"),
+        "menu.title": Text(color: "$ink", size: "$display"),
+        "menu.version": Text(color: "$muted", size: "$caption", font: "mono"),
+
         "invisible": Solid(fill: "#00000000"),
     },
 )

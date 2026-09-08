@@ -1455,6 +1455,39 @@ impl UiNodeDef {
         }
     }
 
+    /// Mutable locator tags, `None` for an anchor.
+    pub fn tags_mut(&mut self) -> Option<&mut Tags> {
+        match self {
+            Self::Panel { tags, .. }
+            | Self::SlotGrid { tags, .. }
+            | Self::VirtualGrid { tags, .. }
+            | Self::Slot { tags, .. }
+            | Self::Text { tags, .. }
+            | Self::RichText { tags, .. }
+            | Self::Button { tags, .. }
+            | Self::Toggle { tags, .. }
+            | Self::Slider { tags, .. }
+            | Self::Select { tags, .. }
+            | Self::RadioGroup { tags, .. }
+            | Self::KeyBinding { tags, .. }
+            | Self::TextField { tags, .. }
+            | Self::List { tags, .. }
+            | Self::Scroll { tags, .. }
+            | Self::Tabs { tags, .. }
+            | Self::Separator { tags, .. }
+            | Self::Spacer { tags, .. }
+            | Self::Image { tags, .. }
+            | Self::Tank { tags, .. }
+            | Self::Bar { tags, .. }
+            | Self::Progress { tags, .. }
+            | Self::SideTab { tags, .. }
+            | Self::IconButton { tags, .. }
+            | Self::Viewport { tags, .. }
+            | Self::Custom { tags, .. } => Some(tags),
+            Self::Anchor { .. } => None,
+        }
+    }
+
     /// Direct children, empty for leaves.
     pub fn children(&self) -> &[UiNodeDef] {
         match self {
@@ -1491,6 +1524,31 @@ impl UiNodeDef {
             | Self::Custom { children, .. } => Some(children),
             _ => None,
         }
+    }
+
+    /// The node with id `id` (see [`id`](Self::id)), itself or a descendant,
+    /// for rewriting a cloned template (menus M2 contract 2.2).
+    pub fn find_mut(&mut self, id: &str) -> Option<&mut UiNodeDef> {
+        if self.id() == Some(id) {
+            return Some(self);
+        }
+        self.children_mut()?
+            .iter_mut()
+            .find_map(|child| child.find_mut(id))
+    }
+
+    /// Removes every descendant with id `id`. `true` when one was found.
+    pub fn remove_descendant(&mut self, id: &str) -> bool {
+        let Some(children) = self.children_mut() else {
+            return false;
+        };
+        let before = children.len();
+        children.retain(|c| c.id() != Some(id));
+        let mut found = children.len() != before;
+        for child in children.iter_mut() {
+            found |= child.remove_descendant(id);
+        }
+        found
     }
 
     /// Depth-first walk.
@@ -1550,6 +1608,42 @@ pub struct ScreenDef {
 }
 
 impl ScreenDef {
+    /// Rewrites the `text` or `rich_text` node with id `id` to show `key`
+    /// with `args` (menus M2 contract 2.2). `false` when no such node.
+    pub fn set_text(&mut self, id: &str, key: LocKey, args: crate::loc::LocArgs) -> bool {
+        match self.root.find_mut(id) {
+            Some(
+                UiNodeDef::Text { key: k, opts, .. } | UiNodeDef::RichText { key: k, opts, .. },
+            ) => {
+                *k = key;
+                opts.args = args;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Sets a tag on the node with id `id`. `false` when no such node.
+    pub fn set_tag(&mut self, id: &str, tag: &str, value: &str) -> bool {
+        match self.root.find_mut(id) {
+            Some(UiNodeDef::Anchor { .. }) | None => false,
+            Some(node) => {
+                if let Some(tags) = node.tags_mut() {
+                    tags.0.insert(tag.to_owned(), value.to_owned());
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Removes the node with id `id` from the tree. `false` when no such node
+    /// (the root cannot be removed).
+    pub fn remove_node(&mut self, id: &str) -> bool {
+        self.root.remove_descendant(id)
+    }
+
     /// Parses a RON screen. The same text works as a registry `screens/*.ron`
     /// payload.
     ///

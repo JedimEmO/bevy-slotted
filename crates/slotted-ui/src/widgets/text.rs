@@ -260,6 +260,7 @@ pub fn resolve_runs(
 /// every new or changed [`RichText`], and of all of them when the catalogue
 /// or the theme changes.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 pub fn render_rich_text(
     mut commands: Commands,
     loc: Res<Localization>,
@@ -328,7 +329,9 @@ pub fn render_rich_text(
         let span_of = |run: &RichRun| -> (TextSpan, TextFont, TextColor, RichPart) {
             let text = match &run.kind {
                 RunKind::Text => run.text.clone(),
-                RunKind::Key(action) => rich::key_glyph_text(*action, *mode, &bindings),
+                RunKind::Key(action) => {
+                    rich::key_glyph_text(*action, *mode, &bindings, rich::GlyphSet::Auto)
+                }
                 RunKind::Icon(item) => item_name(registries.as_deref(), &loc, item),
             };
             let (font, color) = palette.styled(run);

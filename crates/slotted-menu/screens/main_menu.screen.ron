@@ -1,0 +1,36 @@
+// The main menu (menus M2 contract 3.1): a page with the title, the version
+// line and a button column on the left. A game inherits from it to add
+// buttons (`buttons_end`), a logo (`title_end`) or a footer (`footer`), and
+// overrides it by registering `slotted:main_menu` first.
+#![enable(implicit_some)]
+(
+    kind: "slotted:main_menu",
+    presentation: (mode: "page", transition: "fade", back: "ignore"),
+    initial_focus: "play",
+    root: (
+        type: "panel", role: "invisible",
+        layout: (direction: "column", gap: 3.0, padding: (6.0, 0.0, 6.0, 8.0),
+                 place: (anchor: "left", offset: (0.0, 0.0)), align: "start"),
+        tags: {"test_id": "main_menu"},
+        children: [
+            (type: "text", key: "slotted.menu.title", style: "display", tags: {"test_id": "title"}),
+            (type: "text", key: "slotted.menu.version", style: "caption", tags: {"test_id": "version"}),
+            (type: "anchor", id: "title_end"),
+            (type: "panel", role: "invisible",
+             layout: (direction: "column", gap: 1.0, min_width: 240),
+             tags: {"test_id": "buttons"},
+             children: [
+                (type: "button", label: "slotted.menu.play", variant: "primary",
+                 tags: {"test_id": "play", "menu": "play"}),
+                (type: "button", label: "slotted.menu.settings",
+                 tags: {"test_id": "settings", "menu": "settings"}),
+                (type: "button", label: "slotted.menu.quit",
+                 tags: {"test_id": "quit", "menu": "quit"}),
+             ]),
+            (type: "anchor", id: "buttons_end"),
+            (type: "spacer"),
+            (type: "custom", kind: "slotted:hint_bar", tags: {"test_id": "hints"}),
+            (type: "anchor", id: "footer"),
+        ],
+    ),
+)

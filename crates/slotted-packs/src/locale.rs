@@ -196,7 +196,7 @@ impl Locales {
     /// The port over the same catalogue.
     #[cfg(feature = "ui")]
     pub fn port(&self) -> Localization {
-        Localization(self.0.clone())
+        Localization::from_arc(self.0.clone())
     }
 }
 
@@ -311,7 +311,12 @@ pub(crate) fn load_locales(
     // rather than mutating it is what lets a reader use change detection.
     let locales = Locales::new(locales);
     #[cfg(feature = "ui")]
-    world.insert_resource(locales.port());
+    // The primary only: a fallback some library pushed (menus M2 contract
+    // 2.1) survives a pack install and a reload.
+    match world.get_resource_mut::<Localization>() {
+        Some(mut current) => current.set_primary_arc(locales.0.clone()),
+        None => world.insert_resource(locales.port()),
+    }
     world.insert_resource(locales);
 }
 

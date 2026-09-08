@@ -75,6 +75,7 @@ slotted-theme = { path = "crates/slotted-theme", version = "0.1.0" }
 slotted-ui = { path = "crates/slotted-ui", version = "0.1.0" }
 slotted-icons = { path = "crates/slotted-icons", version = "0.1.0" }
 slotted-browser = { path = "crates/slotted-browser", version = "0.1.0" }
+slotted-menu = { path = "crates/slotted-menu", version = "0.1.0" }
 # No `version`, like `slotted-testutils` and for a related reason. This is only
 # ever a dev-dependency here, and it is a cycle: `slotted-test` depends on the
 # facade, which depends on `slotted-ui`, whose own tests drive the harness.

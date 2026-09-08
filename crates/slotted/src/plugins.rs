@@ -67,6 +67,10 @@ impl PluginGroup for SlottedPlugins {
         {
             group = group.add(slotted_browser::SlottedBrowserPlugin::default());
         }
+        #[cfg(feature = "menu")]
+        {
+            group = group.add(slotted_menu::MenuPlugin);
+        }
         #[cfg(feature = "script-luaur")]
         {
             group = group.add(LuaurHostPlugin);
