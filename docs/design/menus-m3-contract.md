@@ -1,6 +1,6 @@
 # Menus M3 contract: dialogue
 
-Status: v1.0, 2026-09-08. Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
+Status: v1.1, 2026-09-08 (v1.0 plus the "v1.1 (B)" notes). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
 section 5.3, and to the M0, M1 and M2 contracts whose vocabulary this uses without restating. Four
 packages: **A** (foundation changes in `slotted-ui` and `slotted-theme`), **B** (the dialogue
 model, the registry and asset loader, the runner) and **C** (the `slotted:dialogue` screen: template,
@@ -92,7 +92,7 @@ pub struct ActiveDialogue {
     pub history: Vec<HistoryLine>,
 }
 pub struct HistoryLine { pub speaker: Option<String>, pub text: String }   // resolved markup, recorded when a say node is entered
-impl ActiveDialogue { pub fn current(&self) -> &DialogueNode; pub fn options(&self, values: &ValueStore) -> Vec<(usize, &ChoiceOption, bool /* enabled */)>; }
+impl ActiveDialogue { pub fn current(&self) -> &DialogueNode; pub fn options(&self, values: Option<&ValueStore>) -> Vec<(usize, &ChoiceOption, bool /* enabled */)>; }   // v1.1 (B): `Option`, as the skeleton had it; no store = every option enabled
 
 pub fn start_dialogue(commands: &mut Commands, id: DialogueId);          // warns when unknown
 pub fn start_dialogue_with(commands: &mut Commands, dialogue: Arc<Dialogue>);
@@ -127,8 +127,12 @@ pub fn open_history(commands: &mut Commands);                             // pus
   template and the systems of B and C.
 - `DialogueId` and `NodeId` are plain newtypes over `String` so M4's Lua bridge passes them as
   strings; `serde(transparent)`.
-- `LocKey` and `IconDef` already serialise from a bare string and a `(image: ..)`/`(item: ..)` map,
-  so a `.dialogue.ron` reads as in section 3.1.
+- `LocKey` serialises from a bare string. `IconDef` *writes* the `(image: ..)`/`(item: ..)` map,
+  but RON's typed reader only knows the `image(..)` spelling of an enum (the screen loader gets
+  the map through the model path, which a `say(..)`-tagged file cannot take, since `ron::Value`
+  drops struct names). **v1.1 (B)**: the `portrait` field reads the map by hand
+  (`deserialize_icon`), so a `.dialogue.ron` reads as in section 3.1; the `image(..)` form is not
+  accepted.
 
 ## 2. Package A: foundation
 
@@ -222,7 +226,8 @@ option's `next`, or finishes when `None`. `jump_dialogue` enters any node of the
 game observing a message can answer in the same frame and the order is deterministic.
 
 The runner also owns the input: `dialogue_actions` in `SlottedUiSet::Navigate`, before
-`pop_on_back`, reads `UiActionEvent`s while `stack.focus_top()` is the dialogue root (a modal above
+`pop_on_back` and before `pause_on_menu` (**v1.1 (B)**: Escape is `Back` and `Menu`; the pause
+claims `Back` when it pushes, so the dialogue's `back_cancels` claim has to land first), reads `UiActionEvent`s while `stack.focus_top()` is the dialogue root (a modal above
 silences it). A fresh unclaimed `Accept` on a `Say` calls `advance_dialogue` and claims. `Back`
 with `back_cancels` ends the dialogue and claims; otherwise Back is left alone (nothing pops an
 overlay). `Secondary` with `history` opens the history page (C's `open_history`) and claims. On a

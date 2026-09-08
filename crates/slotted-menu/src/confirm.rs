@@ -100,17 +100,11 @@ pub fn rewritten(mut def: ScreenDef, spec: &ConfirmSpec) -> ScreenDef {
     def
 }
 
-/// Rewrites the label of the `button` node with id `id`. `ScreenDef::set_text`
-/// addresses `text` and `rich_text` nodes; a button's label is one of its
-/// options. `false` when no such button.
+/// Rewrites the label of the node with id `id`: `ScreenDef::set_text`, which
+/// reaches a `button` since menus M3 (contract 2.6). `false` when no such
+/// node.
 pub fn set_button_label(def: &mut ScreenDef, id: &str, label: &LocKey) -> bool {
-    match def.root.find_mut(id) {
-        Some(UiNodeDef::Button { opts, .. }) => {
-            opts.label = Some(label.clone());
-            true
-        }
-        _ => false,
-    }
+    def.set_text(id, label.clone(), slotted_ui::LocArgs::default())
 }
 
 /// Pushes a confirm dialog: the registered `slotted:confirm` def, rewritten

@@ -326,10 +326,13 @@
         "hint.label": Text(color: "$muted", size: "$caption"),
         "menu.title": Text(color: "$text", size: "$display"),
         "menu.version": Text(color: "$muted", size: "$caption"),
-        "dialogue": Glass(tint: "#141A24E6", border: "#FFFFFF22", radius: 14.0, elevation: "mid"),
+        // Menus M3: the dialogue is a translucent sheet over the world, the
+        // speaker in the accent, the portrait a darker tile with an accent
+        // edge. The screen draws no scrim, so the tint carries the contrast.
+        "dialogue": Glass(tint: "#141A24CC", border: "#FFFFFF2E", radius: 14.0, elevation: "mid"),
         "dialogue.speaker": Text(color: "$accent", size: "$label", font: "display", weight: 700),
         "dialogue.text": Text(color: "$text", size: "$body"),
-        "dialogue.portrait": Glass(tint: "#0B0F16CC", border: "$accent", radius: 10.0),
+        "dialogue.portrait": Glass(tint: "#0B0F16D9", border: "$accent", radius: 10.0),
 
         "invisible": Solid(fill: "#00000000"),
     },

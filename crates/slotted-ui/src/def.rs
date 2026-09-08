@@ -848,7 +848,8 @@ string_enum! {
         Page = "page",
         /// Keeps the entries below visible, scrims them, traps focus.
         Modal = "modal",
-        /// Takes no focus, blocks nothing, is not counted by `Back`.
+        /// Blocks nothing and is not counted by `Back`; takes no focus
+        /// unless it says `focus: true` (menus M3 contract 2.1).
         Overlay = "overlay",
     }
 }
@@ -1633,7 +1634,9 @@ pub struct ScreenDef {
 
 impl ScreenDef {
     /// Rewrites the `text` or `rich_text` node with id `id` to show `key`
-    /// with `args` (menus M2 contract 2.2). `false` when no such node.
+    /// with `args` (menus M2 contract 2.2), or the `button` with that id to
+    /// carry `key` as its label (menus M3 contract 2.6; a button label takes
+    /// no arguments, so `args` is dropped there). `false` when no such node.
     pub fn set_text(&mut self, id: &str, key: LocKey, args: crate::loc::LocArgs) -> bool {
         match self.root.find_mut(id) {
             Some(
@@ -1641,6 +1644,10 @@ impl ScreenDef {
             ) => {
                 *k = key;
                 opts.args = args;
+                true
+            }
+            Some(UiNodeDef::Button { opts, .. }) => {
+                opts.label = Some(key);
                 true
             }
             _ => false,

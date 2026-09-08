@@ -419,11 +419,12 @@ pub fn on_slot_accept(
 /// Observer on `ScreenSpawned`: gives the new screen its initial focus
 /// (menus contract 2.4).
 ///
-/// Only a `page` or a `modal` takes focus, and only when it is the top of the
-/// stack or not in the stack at all. The choice, `initial_focus`'s first
-/// focusable descendant or else the first `Focusable` in tree order, is
-/// recorded in `ScreenRoot::initial_focus` even when `InputFocus` is absent,
-/// so the stack can restore it later.
+/// Only a screen whose presentation takes focus (a `page`, a `modal`, or an
+/// overlay that said `focus: true`; menus M3 contract 2.1) takes it, and only
+/// when it is the stack's focus top or not in the stack at all. The choice,
+/// `initial_focus`'s first focusable descendant or else the first `Focusable`
+/// in tree order, is recorded in `ScreenRoot::initial_focus` even when
+/// `InputFocus` is absent, so the stack can restore it later.
 #[allow(clippy::too_many_arguments)]
 pub fn focus_on_spawn(
     spawned: On<crate::screen::ScreenSpawned>,
@@ -442,11 +443,11 @@ pub fn focus_on_spawn(
     let Ok((mut screen, hint)) = hints.get_mut(root) else {
         return;
     };
-    if screen.presentation.mode == crate::def::PresentationMode::Overlay {
+    if !screen.presentation.takes_focus() {
         return;
     }
     let in_stack = stack.entry(root).is_some();
-    let on_top = stack.top().is_some_and(|top| top.root == root);
+    let on_top = stack.focus_top().is_some_and(|top| top.root == root);
     if in_stack && !on_top {
         return;
     }

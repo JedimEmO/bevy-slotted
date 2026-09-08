@@ -35,6 +35,13 @@ impl Themed {
     }
 }
 
+/// Beside a [`Themed`] whose role the theme may lack: the role painted
+/// instead, with one warning per paint (menus M3 contract 2.4). A `text`
+/// node with `role: "dialogue.speaker"` carries its `TextRole`'s `text.*`
+/// role here, so a theme without the dialogue group still paints it.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ThemedFallback(pub Role);
+
 /// The blurred-glass parameters a [`Material::Glass`] resolves to. Only the
 /// `blur` feature turns this into a `MaterialNode`; without the feature the
 /// paint carries a degraded solid fill instead and this stays `None`.
@@ -461,6 +468,7 @@ pub fn apply_theme(
     mut nodes: Query<(
         Entity,
         Ref<Themed>,
+        Option<&ThemedFallback>,
         Option<&mut Node>,
         Option<&mut TextFont>,
     )>,
@@ -482,11 +490,11 @@ pub fn apply_theme(
     let mut glass_assets = glass_assets;
     #[cfg(feature = "blur")]
     let mut cut_assets = cut_assets;
-    for (entity, themed, node, text_font) in &mut nodes {
+    for (entity, themed, fallback, node, text_font) in &mut nodes {
         if !repaint_all && !themed.is_changed() {
             continue;
         }
-        let Some(material) = theme.material(&themed.0) else {
+        let Some(material) = material_or_fallback(theme, &themed.0, fallback) else {
             tracing::warn!(role = %themed.0, theme = %theme.name, "no material for role");
             continue;
         };
@@ -567,6 +575,26 @@ pub fn apply_theme(
             );
         }
     }
+}
+
+/// `role`'s material, else `fallback`'s with a warning, else `None`.
+fn material_or_fallback<'t>(
+    theme: &'t Theme,
+    role: &Role,
+    fallback: Option<&ThemedFallback>,
+) -> Option<&'t Material> {
+    if let Some(material) = theme.material(role) {
+        return Some(material);
+    }
+    let fallback = fallback?;
+    let material = theme.material(&fallback.0)?;
+    tracing::warn!(
+        role = %role,
+        fallback = %fallback.0,
+        theme = %theme.name,
+        "no material for role; painting the fallback"
+    );
+    Some(material)
 }
 
 #[cfg(feature = "blur")]

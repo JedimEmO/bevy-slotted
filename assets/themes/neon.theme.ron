@@ -287,7 +287,10 @@
         "hint.label": Text(color: "$muted", size: "$caption"),
         "menu.title": Text(color: "$lime", size: "$display"),
         "menu.version": Text(color: "$muted", size: "$caption"),
-        "dialogue": CutCorners(fill: "$charcoal", border: "$cyan", cut: 10.0, elevation: "mid"),
+        // Menus M3: a hard-edged charcoal panel with a cyan edge, the
+        // speaker shouting in the accent display face, the portrait a black
+        // cut tile with a magenta edge.
+        "dialogue": CutCorners(fill: "#12141AF2", border: "$cyan", cut: 10.0, elevation: "mid"),
         "dialogue.speaker": Text(color: "$lime", size: "$label", font: "display", weight: 700),
         "dialogue.text": Text(color: "$text", size: "$body"),
         "dialogue.portrait": CutCorners(fill: "#000000", border: "$magenta", cut: 6.0),

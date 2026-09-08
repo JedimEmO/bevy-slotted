@@ -29,8 +29,8 @@ pub mod blur;
 pub mod cut;
 
 pub use apply::{
-    ActiveTheme, CutPaint, FontPaint, GlassPaint, Paint, SlicedPaint, Themed, TiledPaint,
-    apply_theme,
+    ActiveTheme, CutPaint, FontPaint, GlassPaint, Paint, SlicedPaint, Themed, ThemedFallback,
+    TiledPaint, apply_theme,
 };
 pub use material::{Corners, Material, ThemeColor, ThemeSize};
 pub use motion::{

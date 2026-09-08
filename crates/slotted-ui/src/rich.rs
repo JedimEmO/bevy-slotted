@@ -334,9 +334,12 @@ impl RichReveal {
 
     /// How many units a full reveal of `runs` takes.
     pub fn units(runs: &[RichRun]) -> usize {
-        // M3-IMPL: A
-        let _ = runs;
-        todo!("RichReveal::units")
+        runs.iter()
+            .map(|run| match run.kind {
+                RunKind::Text => run.text.chars().count(),
+                RunKind::Key(_) | RunKind::Icon(_) => 1,
+            })
+            .sum()
     }
 }
 

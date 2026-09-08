@@ -1,0 +1,20 @@
+// The sample of menus M3 contract 3.1, as a file: the asset loader round
+// trip in `tests/dialogue.rs` loads it through a `fixtures://` asset source.
+#![enable(implicit_some)]
+(
+    id: "demo:greeting",
+    start: "hello",
+    nodes: {
+        "hello": say(speaker: "demo-elder", portrait: (image: "portraits/elder.png"),
+                     text: "demo-greeting-hello", next: "ask"),
+        "ask": choice(prompt: "demo-greeting-ask", options: [
+            (id: "yes", text: "demo-yes", next: "yes"),
+            (id: "no", text: "demo-no", next: "bye"),
+            (id: "secret", text: "demo-secret", next: "secret", enabled_if: "found_key"),
+        ]),
+        "yes": say(speaker: "demo-elder", text: "demo-greeting-yes", args: {"name": "Traveller"},
+                   next: "bye"),
+        "secret": say(text: "demo-greeting-secret", next: "bye"),
+        "bye": end,
+    },
+)

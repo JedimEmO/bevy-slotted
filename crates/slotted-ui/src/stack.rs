@@ -143,7 +143,7 @@ pub fn close_stacked(commands: &mut Commands, root: Entity) {
 }
 
 /// The command behind [`close_stacked`]: the entry goes the way
-/// [`pop_entry`] takes it, and z, visibility, focus and `StackChanged`
+/// `pop_entry` takes it, and z, visibility, focus and `StackChanged`
 /// follow. A root the stack does not hold is closed like
 /// [`close_screen`](crate::close_screen) would.
 #[derive(Debug, Clone, Copy)]
@@ -448,11 +448,13 @@ fn set_if_changed<C: Component + PartialEq>(entity: &mut EntityWorldMut<'_>, val
     }
 }
 
-/// Puts `InputFocus` on the top entry's recorded focus, else its root's
-/// initial focus. Clears it when the focused node died with a popped
-/// screen and nothing is left to take over.
+/// Puts `InputFocus` on the focus top's recorded focus, else its root's
+/// initial focus (menus M3 contract 2.1: [`ScreenStack::focus_top`], so a
+/// `focus: true` overlay gets its focus back when the modal above it pops).
+/// Clears it when the focused node died with a popped screen and nothing is
+/// left to take over.
 fn restore_focus(world: &mut World) {
-    let top = world.resource::<ScreenStack>().top().cloned();
+    let top = world.resource::<ScreenStack>().focus_top().cloned();
     let alive = |world: &World, e: Option<Entity>| e.filter(|e| world.get_entity(*e).is_ok());
     let target = top.and_then(|top| {
         alive(world, top.focus).or_else(|| {
@@ -537,8 +539,9 @@ fn screen_root_of(
     }
 }
 
-/// `SlottedUiSet::Navigate`: keeps `InputFocus` inside the top entry
-/// (menus contract 3.2).
+/// `SlottedUiSet::Navigate`: keeps `InputFocus` inside the topmost entry
+/// that takes focus (menus contract 3.2; M3 contract 2.1 and 2.7: a
+/// `focus: true` overlay counts, a plain overlay never does).
 pub fn enforce_focus_scope(
     focus: Option<ResMut<InputFocus>>,
     stack: Res<ScreenStack>,
@@ -554,7 +557,7 @@ pub fn enforce_focus_scope(
     let Some(root) = screen_root_of(focused, &parents, &roots) else {
         return;
     };
-    let Some(top) = stack.top() else {
+    let Some(top) = stack.focus_top() else {
         return;
     };
     if root == top.root || stack.entry(root).is_none() {

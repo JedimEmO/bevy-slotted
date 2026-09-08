@@ -5,12 +5,12 @@
 use bevy::asset::AssetServer;
 use bevy::prelude::*;
 use bevy::text::{ComputedTextBlock, FontStyle, FontWeight, LineHeight};
-use slotted_theme::{ActiveTheme, Paint, Theme, ThemeSize, Themed, roles};
+use slotted_theme::{ActiveTheme, Paint, Role, Theme, ThemeSize, Themed, ThemedFallback, roles};
 
 use crate::actions::{InputMode, UiBindings};
 use crate::def::{IconDef, LocKey, TextAlign, TextOpts, TextRole};
 use crate::loc::{LocArgs, Localization};
-use crate::rich::{self, RichKeySpan, RichRun, RichRuns, RunKind};
+use crate::rich::{self, RichKeySpan, RichReveal, RichRun, RichRuns, RunKind};
 use crate::screen::SpawnCtx;
 use crate::semantic::{LocText, SemanticLabel, SemanticRole, WidgetNode};
 use crate::widgets::{IconImages, kinds};
@@ -57,7 +57,9 @@ pub const fn text_layout(opts: &TextOpts) -> TextLayout {
     TextLayout::new(justify(opts.align), linebreak(opts.wrap))
 }
 
-/// Spawns a plain text node.
+/// Spawns a plain text node. With `opts.role` the node is painted in that
+/// role, the `TextRole`'s `text.*` role standing by as its
+/// [`ThemedFallback`] (menus M3 contract 2.4).
 pub fn spawn_text(
     ctx: &mut SpawnCtx<'_>,
     key: &LocKey,
@@ -68,12 +70,17 @@ pub fn spawn_text(
         Node::default(),
         Text::new(key.0.clone()),
         text_layout(opts),
-        Themed(style.role()),
+        Themed(opts.role.clone().unwrap_or_else(|| style.role())),
         SemanticRole::Text,
         SemanticLabel(key.0.clone()),
         WidgetNode(kinds::text()),
         LocText::with_args(key.clone(), opts.args.clone()),
     ));
+    if opts.role.is_some() {
+        ctx.world
+            .entity_mut(entity)
+            .insert(ThemedFallback(style.role()));
+    }
     if let Some(max) = opts.max_lines {
         ctx.world.entity_mut(entity).insert(MaxLines(max));
     }
@@ -91,6 +98,10 @@ pub struct RichText {
     pub args: LocArgs,
     /// Base style; `[b]`, `[color]` and `[size]` override parts of it.
     pub style: TextRole,
+    /// The role the base paint comes from instead of `style`'s `text.*`
+    /// role (menus M3 contract 2.4); a role the theme lacks falls back to
+    /// `style` with one warning.
+    pub role: Option<Role>,
     /// A single-line row whose `{icon:..}` are images beside the text.
     pub inline: bool,
     /// Line layout of the paragraph.
@@ -107,6 +118,11 @@ pub struct RichPart;
 #[derive(Component, Debug, Clone, Copy, Default)]
 pub struct RichParseWarned;
 
+/// On a rich text node whose `role` the theme lacked, so the fallback is
+/// logged once per node rather than once per rebuild.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct RichRoleWarned;
+
 /// Spawns a rich text paragraph: one `Text` with a `TextSpan` child per run,
 /// or with `inline` a flex row of text fragments and icon images.
 pub fn spawn_rich_text(
@@ -119,17 +135,18 @@ pub fn spawn_rich_text(
         key: key.clone(),
         args: opts.args.clone(),
         style,
+        role: opts.role.clone(),
         inline: opts.inline,
         layout: text_layout(opts),
     };
     let common = (
-        Themed(style.role()),
+        Themed(opts.role.clone().unwrap_or_else(|| style.role())),
         SemanticRole::Text,
         SemanticLabel(key.0.clone()),
         WidgetNode(kinds::rich_text()),
         rich,
     );
-    if opts.inline {
+    let entity = if opts.inline {
         let gap = ctx.tokens().spacing.xs;
         ctx.spawn_node((
             Node {
@@ -142,7 +159,13 @@ pub fn spawn_rich_text(
         ))
     } else {
         ctx.spawn_node((Node::default(), Text::default(), text_layout(opts), common))
+    };
+    if opts.role.is_some() {
+        ctx.world
+            .entity_mut(entity)
+            .insert(ThemedFallback(style.role()));
     }
+    entity
 }
 
 /// Where a span's `TextFont` and `TextColor` come from: the theme when it
@@ -257,8 +280,17 @@ pub fn resolve_runs(
 }
 
 /// `SlottedUiSet::Render`, before `refresh_key_glyphs`: builds the spans of
-/// every new or changed [`RichText`], and of all of them when the catalogue
-/// or the theme changes.
+/// every new or changed [`RichText`], of one whose [`RichReveal`] changed
+/// or was removed, and of all of them when the catalogue or the theme
+/// changes.
+///
+/// The reveal (menus M3 contract 2.3) is painted, not laid out: every run
+/// is spawned whole, and the part past the cursor is a second span of the
+/// same font in a fully transparent colour (an inline icon image is
+/// `Visibility::Hidden`), so a typing line never reflows. A `{key:..}` run
+/// keeps its [`RichKeySpan`] either side of the cursor; `refresh_key_glyphs`
+/// rewrites a span's text only, never its colour, so an unrevealed key
+/// stays invisible through a binding change and a revealed one stays shown.
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_lines)]
 pub fn render_rich_text(
@@ -273,11 +305,14 @@ pub fn render_rich_text(
     bindings: Res<UiBindings>,
     glyphs: Res<rich::GlyphSet>,
     gamepads: Query<&Gamepad>,
+    mut unrevealed: RemovedComponents<RichReveal>,
     mut nodes: Query<(
         Entity,
         Ref<RichText>,
+        Option<Ref<RichReveal>>,
         Option<&Children>,
         Has<RichParseWarned>,
+        Has<RichRoleWarned>,
         Option<&mut RichRuns>,
     )>,
     parts: Query<(), With<RichPart>>,
@@ -289,13 +324,18 @@ pub fn render_rich_text(
     let all = loc.is_changed()
         || active.as_ref().is_some_and(Res::is_changed)
         || themes.as_ref().is_some_and(Res::is_changed);
+    let unrevealed: Vec<Entity> = unrevealed.read().collect();
     // The set a `{key}` run renders in; `refresh_key_glyphs` keeps it
     // current when the set or the pads change.
     let glyphs = rich::resolved_glyph_set(*glyphs, *mode, &gamepads);
-    for (entity, rich, children, warned, runs) in &mut nodes {
-        if !all && !rich.is_changed() {
+    for (entity, rich, reveal, children, warned, role_warned, runs) in &mut nodes {
+        let reveal_changed = reveal.as_ref().is_some_and(Ref::is_changed)
+            || (reveal.is_none() && unrevealed.contains(&entity));
+        if !all && !rich.is_changed() && !reveal_changed {
             continue;
         }
+        // Units still to show; `None` shows everything.
+        let mut budget: Option<usize> = reveal.as_deref().and_then(|r| r.0);
         let (parsed, error) = resolve_runs(&loc, &rich);
         if let Some(error) = error
             && !warned
@@ -317,7 +357,19 @@ pub fn render_rich_text(
             }
         }
 
-        let role = rich.style.role();
+        let mut role = rich.style.role();
+        if let Some(wanted) = &rich.role {
+            if theme.is_none_or(|t| t.material(wanted).is_some()) {
+                role = wanted.clone();
+            } else if !role_warned {
+                tracing::warn!(
+                    role = %wanted,
+                    fallback = %role,
+                    "rich text role missing from the theme; painting the fallback"
+                );
+                commands.entity(entity).insert(RichRoleWarned);
+            }
+        }
         let palette = SpanPalette {
             theme,
             assets: assets.as_deref(),
@@ -331,22 +383,38 @@ pub fn render_rich_text(
                 .and_then(|t| Paint::for_role(t, &roles::TEXT_ICON))
                 .unwrap_or_default(),
         };
-        let span_of = |run: &RichRun| -> (TextSpan, TextFont, TextColor, RichPart) {
-            let text = match &run.kind {
+        let text_of = |run: &RichRun| -> String {
+            match &run.kind {
                 RunKind::Text => run.text.clone(),
                 RunKind::Key(action) => rich::key_glyph_text(*action, *mode, &bindings, glyphs),
                 RunKind::Icon(item) => item_name(registries.as_deref(), &loc, item),
-            };
-            let (font, color) = palette.styled(run);
-            (TextSpan(text), font, color, RichPart)
+            }
         };
+        // Spawns `run` under `parent` as one span, or as a shown span and a
+        // transparent one when the cursor falls inside it.
+        let spawn_spans =
+            |commands: &mut Commands, budget: &mut Option<usize>, parent: Entity, run: &RichRun| {
+                let text = text_of(run);
+                let (font, color) = palette.styled(run);
+                let (shown, hidden) = split_revealed(&text, run, budget);
+                let mut spawn = |text: String, color: TextColor| {
+                    let mut span = commands.spawn((TextSpan(text), font.clone(), color, RichPart));
+                    span.insert(ChildOf(parent));
+                    if let RunKind::Key(action) = run.kind {
+                        span.insert(RichKeySpan(action));
+                    }
+                };
+                if let Some(shown) = shown {
+                    spawn(shown, color);
+                }
+                if let Some(hidden) = hidden {
+                    spawn(hidden, TextColor(Color::NONE));
+                }
+            };
 
         if !rich.inline {
             for run in &parsed {
-                let mut span = commands.spawn((span_of(run), ChildOf(entity)));
-                if let RunKind::Key(action) = run.kind {
-                    span.insert(RichKeySpan(action));
-                }
+                spawn_spans(&mut commands, &mut budget, entity, run);
             }
             continue;
         }
@@ -357,6 +425,11 @@ pub fn render_rich_text(
         for run in &parsed {
             if let RunKind::Icon(item) = &run.kind {
                 fragment = None;
+                let visibility = if take_unit(&mut budget) {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                };
                 commands.spawn((
                     icons.image(&IconDef::Item(item.clone())),
                     Node {
@@ -365,6 +438,7 @@ pub fn render_rich_text(
                         flex_shrink: 0.0,
                         ..default()
                     },
+                    visibility,
                     Pickable::IGNORE,
                     RichPart,
                     ChildOf(entity),
@@ -384,9 +458,45 @@ pub fn render_rich_text(
                     ))
                     .id()
             });
-            let mut span = commands.spawn((span_of(run), ChildOf(parent)));
-            if let RunKind::Key(action) = run.kind {
-                span.insert(RichKeySpan(action));
+            spawn_spans(&mut commands, &mut budget, parent, run);
+        }
+    }
+}
+
+/// Takes one unit from `budget`: whether a whole-unit run (a key, an icon)
+/// is shown.
+fn take_unit(budget: &mut Option<usize>) -> bool {
+    match budget {
+        None => true,
+        Some(0) => false,
+        Some(n) => {
+            *n -= 1;
+            true
+        }
+    }
+}
+
+/// Splits a run's rendered `text` at the reveal cursor: `(shown, hidden)`,
+/// each `None` when empty. A `Text` run spends one unit per `char`; a
+/// `Key` or `Icon` run is one unit and flips whole.
+fn split_revealed(
+    text: &str,
+    run: &RichRun,
+    budget: &mut Option<usize>,
+) -> (Option<String>, Option<String>) {
+    let some = |s: &str| (!s.is_empty()).then(|| s.to_owned());
+    match (&run.kind, budget) {
+        (_, None) => (some(text), None),
+        (RunKind::Text, Some(n)) => {
+            let at = text.char_indices().nth(*n).map_or(text.len(), |(i, _)| i);
+            *n -= text[..at].chars().count();
+            (some(&text[..at]), some(&text[at..]))
+        }
+        (_, budget @ Some(_)) => {
+            if take_unit(budget) {
+                (some(text), None)
+            } else {
+                (None, some(text))
             }
         }
     }

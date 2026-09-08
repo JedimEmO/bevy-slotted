@@ -425,7 +425,7 @@ pub fn on_tab_button_click(
 ///
 /// The tabs are those of the screen root the focus sits under, the innermost
 /// `tabs` node around the focus when there are several; with no focus, the
-/// tabs of the top of the stack. Both actions wrap.
+/// tabs of the stack's focus top. Both actions wrap.
 #[allow(clippy::too_many_arguments)]
 pub fn tab_actions(
     mut events: MessageReader<UiActionEvent>,
@@ -455,7 +455,7 @@ pub fn tab_actions(
         }
         let focused = focus.as_deref().and_then(InputFocus::get);
         // The innermost tabs around the focus, else the first tabs on the
-        // focused screen (or the top of the stack).
+        // focused screen (or the stack's focus top).
         let mut target = focused.and_then(|f| {
             let mut current = f;
             loop {
@@ -468,7 +468,7 @@ pub fn tab_actions(
         if target.is_none() {
             let root = focused
                 .and_then(|f| screen_root_of(f, &parents, &roots))
-                .or_else(|| stack.as_deref().and_then(|s| s.top().map(|e| e.root)));
+                .or_else(|| stack.as_deref().and_then(|s| s.focus_top().map(|e| e.root)));
             target = root.and_then(|root| {
                 tabs_nodes
                     .iter()

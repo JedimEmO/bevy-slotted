@@ -13,8 +13,10 @@
                  place: (anchor: "left", offset: (48.0, 0.0)), align: "start"),
         tags: {"test_id": "main_menu"},
         children: [
-            (type: "text", key: "slotted.menu.title", style: "display", tags: {"test_id": "title"}),
-            (type: "text", key: "slotted.menu.version", style: "caption", tags: {"test_id": "version"}),
+            (type: "text", key: "slotted.menu.title", style: "display", role: "menu.title",
+             tags: {"test_id": "title"}),
+            (type: "text", key: "slotted.menu.version", style: "caption", role: "menu.version",
+             tags: {"test_id": "version"}),
             (type: "anchor", id: "title_end"),
             (type: "panel", role: "invisible",
              layout: (direction: "column", gap: 1.0, min_width: 240, align: "stretch"),

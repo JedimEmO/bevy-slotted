@@ -152,8 +152,13 @@ fn a_confirm_style_rewrite_reaches_nested_ids_and_the_root() {
             args(&[("world", "Ravenholm")])
         ))
     );
-    // A button is not a text node, and an unknown id is nothing.
-    assert!(!def.set_text("accept", LocKey("x".to_owned()), LocArgs::new()));
+    // A button takes the key as its label (menus M3 contract 2.6), and an
+    // unknown id is nothing.
+    assert!(def.set_text("accept", LocKey("x".to_owned()), LocArgs::new()));
+    assert!(matches!(
+        def.root.find_mut("accept"),
+        Some(UiNodeDef::Button { opts, .. }) if opts.label == Some(LocKey("x".to_owned()))
+    ));
     assert!(!def.set_text("nobody", LocKey("x".to_owned()), LocArgs::new()));
 
     // A tag lands on a nested node and on the root; an anchor has none.

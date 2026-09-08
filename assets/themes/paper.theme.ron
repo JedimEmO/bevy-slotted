@@ -294,10 +294,13 @@
         "hint.label": Text(color: "$muted", size: "$caption"),
         "menu.title": Text(color: "$ink", size: "$display"),
         "menu.version": Text(color: "$muted", size: "$caption", font: "mono"),
-        "dialogue": Solid(fill: "$sheet", border: "$ink", radius: 0.0, elevation: "ink"),
+        // Menus M3: a hairline-ruled box on the sheet, no shadow and no
+        // scrim; the speaker is a bold mono caption (the fonts carry no
+        // small caps, so weight stands in), the portrait an ink-framed tile.
+        "dialogue": Solid(fill: "$sheet", border: "$rule", radius: 0.0),
         "dialogue.speaker": Text(color: "$ink", size: "$label", font: "mono", weight: 700),
         "dialogue.text": Text(color: "$ink", size: "$body"),
-        "dialogue.portrait": Solid(fill: "$sheet", border: "$ink", radius: 0.0),
+        "dialogue.portrait": Solid(fill: "#FFFCF4", border: "$ink", radius: 0.0),
 
         "invisible": Solid(fill: "#00000000"),
     },
