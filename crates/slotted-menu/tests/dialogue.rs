@@ -6,6 +6,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bevy::asset::AssetPlugin;
 use bevy::input::gamepad::GamepadButton;
@@ -775,11 +776,19 @@ fn a_modal_pushed_above_silences_accept_and_popping_it_restores() {
         Some(dialogue_root),
         "the modal took the focus top"
     );
+    // The typewriter (C) reveals the line on its own with time, so the
+    // proof that the runner ignored Accept is the node, not `revealed`: a
+    // revealed line that heard Accept would have moved on to `ask`.
+    h.advance(Duration::from_secs(1));
+    assert!(active(&h).unwrap().revealed, "the line typed out meanwhile");
     h.action(UiAction::Accept);
     h.settle();
     let a = active(&h).unwrap();
-    assert!(!a.revealed, "the runner ignored Accept under a modal");
-    assert_eq!(a.node, node("hello"));
+    assert_eq!(
+        a.node,
+        node("hello"),
+        "the runner ignored Accept under a modal"
+    );
     // The pause may have answered that Accept with its focused button; make
     // sure it is gone either way, then the runner listens again.
     if h.stack().contains(&kinds::pause()) {
@@ -797,8 +806,9 @@ fn a_modal_pushed_above_silences_accept_and_popping_it_restores() {
     );
     h.action(UiAction::Accept);
     h.settle();
-    assert!(
-        active(&h).unwrap().revealed,
+    assert_eq!(
+        current_node(&h),
+        Some(node("ask")),
         "Accept reaches the runner again"
     );
 }

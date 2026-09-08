@@ -9,6 +9,12 @@
 //! with the bar's screen's back label when its policy is `Pop`, and the tab
 //! actions when the screen holds a `tabs` node. Hidden in pointer mode
 //! unless the bar carries `tags: {"hint.always": "true"}`.
+//!
+//! A screen that owns its actions rather than a focused control (the
+//! dialogue, menus M3 contract 4.5) writes the verbs on the bar itself: a
+//! `hint.accept` tag on the bar is the `Accept` entry when no focused node
+//! contributed one, and `hint.secondary` / `hint.back` add a `Secondary` and
+//! a `Back` entry. A change to the bar's tags rebuilds it.
 
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
@@ -28,6 +34,12 @@ pub fn kind() -> WidgetKind {
 /// The tag on a focusable node that replaces the verb the bar would show
 /// for its role; the value is a localisation key.
 pub const ACCEPT_TAG: &str = "hint.accept";
+/// The tag on a bar that adds a `Secondary` entry; the value is a
+/// localisation key (menus M3 contract 4.5).
+pub const SECONDARY_TAG: &str = "hint.secondary";
+/// The tag on a bar that adds a `Back` entry; the value is a localisation
+/// key (menus M3 contract 4.5).
+pub const BACK_TAG: &str = "hint.back";
 /// The tag on a bar that keeps it visible in pointer mode.
 pub const ALWAYS_TAG: &str = "hint.always";
 /// The role of the glyph's text inside its `hint.glyph` pill; falls back to
@@ -142,10 +154,12 @@ fn has_tabs(
     tabs.iter().any(|tab| is_under(tab, entity, parents))
 }
 
-/// The entries for a bar under `root` (or none) while `focused` has focus.
+/// The entries for a bar under `root` (or none) while `focused` has focus,
+/// `bar_tags` being the bar's own tags.
 #[allow(clippy::too_many_arguments)]
 fn entries_for(
     root: Option<Entity>,
+    bar_tags: Option<&Tags>,
     focused: Option<Entity>,
     roots: &Query<&ScreenRoot>,
     nodes: &Query<(&SemanticRole, Option<&Tags>)>,
@@ -169,6 +183,19 @@ fn entries_for(
         }
         out.extend(verb);
     }
+    if let Some(tags) = bar_tags {
+        if out.is_empty()
+            && let Some(label) = tags.get(ACCEPT_TAG)
+        {
+            out.push(HintEntry::new(UiAction::Accept, label));
+        }
+        if let Some(label) = tags.get(SECONDARY_TAG) {
+            out.push(HintEntry::new(UiAction::Secondary, label));
+        }
+        if let Some(label) = tags.get(BACK_TAG) {
+            out.push(HintEntry::new(UiAction::Back, label));
+        }
+    }
     if let Some(root) = root
         && let Ok(screen) = roots.get(root)
     {
@@ -189,7 +216,7 @@ fn entries_for(
 
 /// `SlottedUiSet::Render`: rebuilds every bar's entries and children when
 /// focus, the input mode, the glyph set, the bindings, the stack or the
-/// theme changed, or a bar just spawned.
+/// theme changed, a bar just spawned, or a bar's tags changed.
 #[allow(clippy::too_many_arguments)]
 pub fn update_hint_bars(
     focus: Option<Res<InputFocus>>,
@@ -206,7 +233,7 @@ pub fn update_hint_bars(
         Ref<HintBar>,
         &mut HintEntries,
         &mut HintRendered,
-        Option<&Tags>,
+        Option<Ref<Tags>>,
     )>,
     roots: Query<&ScreenRoot>,
     nodes: Query<(&SemanticRole, Option<&Tags>)>,
@@ -216,7 +243,9 @@ pub fn update_hint_bars(
 ) {
     let theme_changed = active.as_ref().is_some_and(DetectChanges::is_changed)
         || themes.as_ref().is_some_and(DetectChanges::is_changed);
-    let any_added = bars.iter().any(|(_, bar, ..)| bar.is_added());
+    let any_added = bars
+        .iter()
+        .any(|(_, bar, _, _, tags)| bar.is_added() || tags.is_some_and(|t| t.is_changed()));
     if !(focus.as_ref().is_some_and(DetectChanges::is_changed)
         || mode.is_changed()
         || glyphs.is_changed()
@@ -236,10 +265,11 @@ pub fn update_hint_bars(
         .and_then(|theme| theme.material(&roles::HINT_GLYPH))
         .is_some_and(|m| matches!(m, Material::Text { .. }));
     let tokens = tokens.get();
-    for (bar, _, mut entries, mut rendered, tags) in &mut bars {
+    for (bar, _, mut entries, mut rendered, bar_tags) in &mut bars {
         let root = slotted_ui::screen_root_where(bar, &parents, |e| roots.contains(e));
-        let wanted = entries_for(root, focused, &roots, &nodes, &parents, &tabs);
-        let always = tags.and_then(|t| t.get(ALWAYS_TAG)) == Some("true");
+        let bar_tags = bar_tags.as_deref();
+        let wanted = entries_for(root, bar_tags, focused, &roots, &nodes, &parents, &tabs);
+        let always = bar_tags.and_then(|t| t.get(ALWAYS_TAG)) == Some("true");
         let visible = *mode != InputMode::Pointer || always;
         let glyph_texts: Vec<String> = wanted
             .iter()

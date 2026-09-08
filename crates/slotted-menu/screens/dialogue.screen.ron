@@ -1,6 +1,9 @@
 // The dialogue screen (menus M3 contract 4.1): an overlay that takes focus,
-// placed at the bottom. The runner rewrites `speaker` and `text` per node,
-// spawns the portrait into `portrait` and the option buttons into `choices`.
+// placed at the bottom. The screen rewrites `speaker` and `text` per node,
+// spawns the portrait into `portrait` (sized from `sizes.portrait`), the
+// option buttons into `choices`, shows `continue` once a line is revealed
+// and writes the hint verbs onto `hints`. A game's own template keeps those
+// `test_id`s to keep the behaviour; anything else is free.
 #![enable(implicit_some)]
 (
     kind: "slotted:dialogue",
@@ -20,7 +23,7 @@
                  layout: (width: 64, height: 64),
                  tags: {"test_id": "portrait"}),
                 (type: "text", key: "slotted.menu.dialogue.speaker", style: "label",
-                 role: "dialogue.speaker", tags: {"test_id": "speaker"}),
+                 role: "dialogue.speaker", wrap: false, tags: {"test_id": "speaker"}),
              ]),
             (type: "anchor", id: "header_end"),
             (type: "panel", role: "invisible",
@@ -28,7 +31,7 @@
              tags: {"test_id": "text_box"},
              children: [
                 (type: "rich_text", key: "slotted.menu.dialogue.speaker", style: "body",
-                 role: "dialogue.text", tags: {"test_id": "text"}),
+                 role: "dialogue.text", wrap: true, tags: {"test_id": "text"}),
              ]),
             (type: "anchor", id: "text_end"),
             (type: "panel", role: "invisible",

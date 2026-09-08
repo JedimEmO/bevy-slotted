@@ -1,6 +1,6 @@
 # Menus M3 contract: dialogue
 
-Status: v1.1, 2026-09-08 (v1.0 plus the "v1.1 (B)" notes). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
+Status: v1.2, 2026-09-09 (v1.0 plus the "v1.1 (B)" and "v1.2 (C)" notes). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
 section 5.3, and to the M0, M1 and M2 contracts whose vocabulary this uses without restating. Four
 packages: **A** (foundation changes in `slotted-ui` and `slotted-theme`), **B** (the dialogue
 model, the registry and asset loader, the runner) and **C** (the `slotted:dialogue` screen: template,
@@ -116,6 +116,11 @@ pub enum EndReason { Finished, Cancelled, Replaced }
 #[derive(Component)] pub struct DialogueOption { pub id: String, pub index: usize }   // on each option button
 pub const OPTION_TAG: &str = "dialogue.option";                          // also a tag on the button: locators find it
 pub fn open_history(commands: &mut Commands);                             // pushes a slotted:page of the transcript
+// v1.2 (C): additions, nothing above changed
+#[derive(Component)] pub struct DialogueChoicesPending { pub root: Entity, pub elapsed: Duration }  // on `choices` while the buttons wait for `choice_delay`
+pub fn option_test_id(id: &str) -> String;                                // "option.<id>", the button's test_id and what its nav links name
+pub fn transcript(history: &[HistoryLine]) -> String;                     // the history page's body markup
+pub fn on_option_activate(/* observer on Activate: an option button calls choose_dialogue */);
 ```
 
 ### 1.4 What the skeleton settles
@@ -312,7 +317,10 @@ The hint bar on the dialogue lists: while revealing, `Accept` "Skip"; revealed o
 `history`; `Back` "Leave" when `back_cancels`. The bar reads these through a `hint.accept` tag
 C rewrites per state, plus two new verbs `hint_bar.rs` learns: a `hint.secondary` and a
 `hint.back` tag on the bar (small edit in B's M2 file; keys `slotted.menu.dialogue.skip`,
-`continue`, `history`, `leave`).
+`continue`, `history`, `leave`). **v1.2 (C)**: all three tags live on the *bar* (the dialogue has
+no focused node on a line), `hint.accept` on the bar applies only when the focused node
+contributed no verb, and a change to a bar's tags rebuilds it; the "Continue" label is the
+existing `slotted.menu.dialogue.next` key (`.continue` is the caption with the glyph).
 
 ### 4.6 Tests (C)
 
