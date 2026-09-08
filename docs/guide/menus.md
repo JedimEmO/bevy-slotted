@@ -1,8 +1,9 @@
 # Menus
 
 The screens a game is made of that are not inventories: a main menu, a pause
-screen, settings that persist, a confirm dialog, a toast, a page of text, and
-the hint bar under all of them. `slotted-menu` ships every one of those as a
+screen, settings that persist, a confirm dialog, a toast, a page of text, a
+conversation ([dialogue.md](dialogue.md)), and the hint bar under all of
+them. `slotted-menu` ships every one of those as a
 screen template, and a game gets the lot by adding `SlottedPlugins::default()`
 and two resources. Nothing in the crate calls into game code; it speaks through
 messages, and a game answers the ones it cares about.
@@ -97,6 +98,7 @@ headless in the three themes with a gamepad walk reaching every button; that is
 | `slotted:settings` | modal, scrim, fade | `title`, `settings.tabs` (empty; the generated screen replaces it), `reset`, `done`, `hints` | `title_end` |
 | `slotted:confirm` | modal, scrim, fade | `title`, `message`, `cancel`, `accept`, `hints` | `message_end` |
 | `slotted:page` | page, slide left | `title`, `scroll`, `body`, `done`, `hints` | `title_end`, `body_end` |
+| `slotted:dialogue` | overlay that takes focus, no scrim, slide up, `back: ignore`; a panel placed at the bottom | `portrait`, `speaker`, `text`, `choices`, `hints`, `continue` | `header_end`, `text_end`, `choices_end`, `footer` ([dialogue.md](dialogue.md#the-screen)) |
 
 Every button carries a `menu` tag (`tags: {"menu": "play"}`) and the crate
 turns its `Activate` into a `MenuChoice` (below). Every string is a
@@ -243,8 +245,13 @@ changes:
   `Edit`, a key binding is `Rebind`, a slot is `Pick up`; a `hint.accept` tag
   on the node replaces the verb with that key;
 - `Back` with `Close` on a modal and `Back` on a page, when the screen's back
-  policy is `pop`;
-- `Previous tab` and `Next tab` when the screen holds a `tabs` node.
+  policy is `pop`; never on an overlay, which `Back` never pops;
+- `Previous tab` and `Next tab` when the screen holds a `tabs` node;
+- and what the bar's own tags say: `hint.accept` on the bar is the Accept
+  entry when the focused node contributed none, `hint.secondary` and
+  `hint.back` add those entries. The dialogue screen rewrites them per state
+  (`Skip`, `Continue`, `History`, `Leave`); a screen of yours may set them in
+  the file.
 
 Accept is always first. The glyph text is `key_glyph_text` for the player's
 input mode and the resolved `GlyphSet` ([input.md](input.md#glyph-sets)), so a
@@ -415,7 +422,9 @@ honest fallback there. The playground's settings scene (M4) will be this.
 `toasts()` (oldest first), `hint_entries(bar)`, `confirm_accept()` and
 `confirm_cancel()` (press the button on the confirm on top; a panic when the
 top is not a confirm), and `menu_choices()` (every `MenuChoice` since the last
-call). `stack_top()` is the kind of the top non-overlay screen.
+call). `stack_top()` is the kind of the top non-overlay screen, so a running
+dialogue is not it; `dialogue()` and its helpers are in
+[dialogue.md](dialogue.md#in-a-test).
 
 ```rust
 h.gamepad(GamepadButton::Start);

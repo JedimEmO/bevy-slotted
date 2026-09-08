@@ -62,7 +62,6 @@ ScreenTree(
                   },
                   widget: Some("slotted:button"),
                   visible: true,
-                  focused: true,
                 ),
                 TreeNode(
                   role: Button,
@@ -156,6 +155,141 @@ ScreenTree(
               },
               widget: Some("slotted:text"),
               visible: true,
+            ),
+          ],
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Screen,
+      screen: Some("slotted:dialogue"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Panel,
+          test_id: Some("dialogue"),
+          tags: {
+            "test_id": "dialogue",
+          },
+          widget: Some("slotted:panel"),
+          visible: true,
+          children: [
+            TreeNode(
+              role: Panel,
+              test_id: Some("header"),
+              tags: {
+                "test_id": "header",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Panel,
+                  test_id: Some("portrait"),
+                  tags: {
+                    "test_id": "portrait",
+                  },
+                  widget: Some("slotted:panel"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Text,
+                  label: Some("demo-elder"),
+                  test_id: Some("speaker"),
+                  tags: {
+                    "test_id": "speaker",
+                  },
+                  widget: Some("slotted:text"),
+                  visible: true,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("header_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("text_box"),
+              tags: {
+                "test_id": "text_box",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Text,
+                  label: Some("demo-greeting-hello"),
+                  test_id: Some("text"),
+                  tags: {
+                    "test_id": "text",
+                  },
+                  widget: Some("slotted:rich_text"),
+                  visible: true,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("text_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("choices"),
+              tags: {
+                "test_id": "choices",
+              },
+              widget: Some("slotted:panel"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("choices_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("footer"),
+              tags: {
+                "test_id": "footer",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Custom("hint_bar"),
+                  test_id: Some("hints"),
+                  tags: {
+                    "hint.accept": "slotted.menu.dialogue.next",
+                    "hint.secondary": "slotted.menu.dialogue.history",
+                    "test_id": "hints",
+                  },
+                  widget: Some("slotted:hint_bar"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Decor,
+                  widget: Some("slotted:spacer"),
+                  visible: false,
+                ),
+                TreeNode(
+                  role: Text,
+                  label: Some("slotted.menu.dialogue.continue"),
+                  test_id: Some("continue"),
+                  tags: {
+                    "test_id": "continue",
+                  },
+                  widget: Some("slotted:rich_text"),
+                  visible: true,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("footer"),
+              visible: false,
             ),
           ],
         ),

@@ -155,6 +155,32 @@ on screen oldest first, `hint_entries(bar)` a hint bar's entries,
 top, and `menu_choices()` drains every `MenuChoice` since the last call
 ([menus.md](menus.md#in-a-test)).
 
+`stack_top()` skips overlays by design, the way `ScreenStack::top()` does: a
+HUD layer or a running dialogue is never the top. `stack()` lists them, and
+the dialogue helpers below say which node runs.
+
+### Dialogue
+
+The same feature adds the dialogue runner's readers and drivers
+([dialogue.md](dialogue.md)):
+
+| Helper | Does |
+|---|---|
+| `start_dialogue("demo:greeting")` | Starts a registered dialogue and runs a frame, so the screen is up and the first node presented. An unknown id warns and starts nothing, as `start_dialogue` does. |
+| `dialogue()` | The running dialogue's id and node, `None` when none runs. |
+| `dialogue_revealed()` | Whether the current line is fully shown. |
+| `dialogue_text()` | What the `text` node shows right now: the spans painted with any alpha, so it grows as a line types. `text_of` on that node reads its own label, not the spans. |
+| `dialogue_options()` | The current choice's buttons in order, each `(id, enabled)`; empty on a line and before `choice_delay` has passed. |
+| `dialogue_advance()` | `Accept` and a frame. |
+| `dialogue_choose("yes")` | Activates the option button `option.<id>` and runs a frame. |
+| `dialogue_history()` | The transcript so far, `(speaker, text)` per line, narration with `None`. |
+| `dialogue_events()` | Drains every `DialogueNodeEntered`, `DialogueChoice` and `DialogueEnded` since the last call as one `DialogueEvent` enum, from a recorder plugin the builder adds. |
+
+`settle()` runs frames until nothing changes, which lets the typewriter finish
+a line; `step` or `advance` to watch one type. `crates/slotted-test/tests/dialogue.rs`
+drives a dialogue registered by hand and `examples/menus/tests/flow.rs` walks
+the example's conversation by gamepad.
+
 `assert_conserved()` checks that no item was created or destroyed since the
 harness opened, which is the assertion worth putting at the end of anything that
 moves stacks around.

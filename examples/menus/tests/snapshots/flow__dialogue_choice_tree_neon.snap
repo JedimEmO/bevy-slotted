@@ -1,0 +1,342 @@
+---
+source: examples/menus/tests/flow.rs
+expression: h.screen_tree()
+---
+ScreenTree(
+  roots: [
+    TreeNode(
+      role: Screen,
+      screen: Some("menus:main"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Panel,
+          test_id: Some("main_menu"),
+          tags: {
+            "test_id": "main_menu",
+          },
+          widget: Some("slotted:panel"),
+          visible: true,
+          children: [
+            TreeNode(
+              role: Text,
+              label: Some("demo.menus.title"),
+              test_id: Some("title"),
+              tags: {
+                "test_id": "title",
+              },
+              widget: Some("slotted:text"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Text,
+              label: Some("slotted.menu.version"),
+              test_id: Some("version"),
+              tags: {
+                "test_id": "version",
+              },
+              widget: Some("slotted:text"),
+              visible: true,
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("title_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("buttons"),
+              tags: {
+                "test_id": "buttons",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Button,
+                  label: Some("slotted.menu.play"),
+                  test_id: Some("play"),
+                  tags: {
+                    "menu": "play",
+                    "test_id": "play",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Button,
+                  label: Some("slotted.menu.settings"),
+                  test_id: Some("settings"),
+                  tags: {
+                    "menu": "settings",
+                    "test_id": "settings",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Button,
+                  label: Some("slotted.menu.quit"),
+                  test_id: Some("quit"),
+                  tags: {
+                    "menu": "quit",
+                    "test_id": "quit",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Anchor,
+                  anchor: Some("buttons_end"),
+                  visible: true,
+                  children: [
+                    TreeNode(
+                      role: Panel,
+                      test_id: Some("about_row"),
+                      tags: {
+                        "test_id": "about_row",
+                      },
+                      widget: Some("slotted:panel"),
+                      visible: true,
+                      children: [
+                        TreeNode(
+                          role: Button,
+                          label: Some("demo.menus.about"),
+                          test_id: Some("about"),
+                          tags: {
+                            "menu": "about",
+                            "test_id": "about",
+                          },
+                          widget: Some("slotted:button"),
+                          visible: true,
+                        ),
+                        TreeNode(
+                          role: Button,
+                          label: Some("demo.menus.talk"),
+                          test_id: Some("talk"),
+                          tags: {
+                            "menu": "talk",
+                            "test_id": "talk",
+                          },
+                          widget: Some("slotted:button"),
+                          visible: true,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Decor,
+              widget: Some("slotted:spacer"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Custom("hint_bar"),
+              test_id: Some("hints"),
+              tags: {
+                "test_id": "hints",
+              },
+              widget: Some("slotted:hint_bar"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("footer"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Text,
+              label: Some("demo.menus.footer"),
+              test_id: Some("footer_note"),
+              tags: {
+                "test_id": "footer_note",
+              },
+              widget: Some("slotted:text"),
+              visible: true,
+            ),
+          ],
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Screen,
+      screen: Some("slotted:dialogue"),
+      visible: true,
+      children: [
+        TreeNode(
+          role: Panel,
+          test_id: Some("dialogue"),
+          tags: {
+            "test_id": "dialogue",
+          },
+          widget: Some("slotted:panel"),
+          visible: true,
+          children: [
+            TreeNode(
+              role: Panel,
+              test_id: Some("header"),
+              tags: {
+                "test_id": "header",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Panel,
+                  test_id: Some("portrait"),
+                  tags: {
+                    "test_id": "portrait",
+                  },
+                  widget: Some("slotted:panel"),
+                  visible: false,
+                ),
+                TreeNode(
+                  role: Text,
+                  label: Some("demo-elder"),
+                  test_id: Some("speaker"),
+                  tags: {
+                    "test_id": "speaker",
+                  },
+                  widget: Some("slotted:text"),
+                  visible: false,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("header_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("text_box"),
+              tags: {
+                "test_id": "text_box",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Text,
+                  label: Some("demo-greeting-ask"),
+                  test_id: Some("text"),
+                  tags: {
+                    "test_id": "text",
+                  },
+                  widget: Some("slotted:rich_text"),
+                  visible: true,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("text_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("choices"),
+              tags: {
+                "test_id": "choices",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Button,
+                  label: Some("demo-yes"),
+                  test_id: Some("option.yes"),
+                  tags: {
+                    "dialogue.option": "yes",
+                    "nav.down": "option.no",
+                    "nav.up": "option.no",
+                    "test_id": "option.yes",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                  focused: true,
+                ),
+                TreeNode(
+                  role: Button,
+                  label: Some("demo-no"),
+                  test_id: Some("option.no"),
+                  tags: {
+                    "dialogue.option": "no",
+                    "nav.down": "option.yes",
+                    "nav.up": "option.yes",
+                    "test_id": "option.no",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Button,
+                  label: Some("demo-secret"),
+                  test_id: Some("option.secret"),
+                  tags: {
+                    "dialogue.option": "secret",
+                    "test_id": "option.secret",
+                  },
+                  widget: Some("slotted:button"),
+                  visible: true,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("choices_end"),
+              visible: false,
+            ),
+            TreeNode(
+              role: Panel,
+              test_id: Some("footer"),
+              tags: {
+                "test_id": "footer",
+              },
+              widget: Some("slotted:panel"),
+              visible: true,
+              children: [
+                TreeNode(
+                  role: Custom("hint_bar"),
+                  test_id: Some("hints"),
+                  tags: {
+                    "hint.secondary": "slotted.menu.dialogue.history",
+                    "test_id": "hints",
+                  },
+                  widget: Some("slotted:hint_bar"),
+                  visible: true,
+                ),
+                TreeNode(
+                  role: Decor,
+                  widget: Some("slotted:spacer"),
+                  visible: false,
+                ),
+                TreeNode(
+                  role: Text,
+                  label: Some("slotted.menu.dialogue.continue"),
+                  test_id: Some("continue"),
+                  tags: {
+                    "test_id": "continue",
+                  },
+                  widget: Some("slotted:rich_text"),
+                  visible: false,
+                ),
+              ],
+            ),
+            TreeNode(
+              role: Anchor,
+              anchor: Some("footer"),
+              visible: false,
+            ),
+          ],
+        ),
+      ],
+    ),
+    TreeNode(
+      role: Carried,
+      visible: true,
+    ),
+  ],
+)

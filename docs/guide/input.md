@@ -189,15 +189,18 @@ adds a policy and a visual on top:
   option. `TabIndex` alone does not make a node focusable for the ring.
 - A screen takes focus when it opens, on its `initial_focus` node or the first
   focusable in tree order ([screens.md](screens.md#focus-and-nav-links)), and
-  only when it is a `page` or a `modal` on top of the stack.
+  only when it is the topmost entry that takes focus: a `page`, a `modal`, or
+  an `overlay` with `focus: true` (the dialogue). A plain overlay never does.
 - Inside a container, Bevy's scoring picks the neighbour, among the
   focusable nodes of the *same screen*: a modal over a page never hands focus
   to a button underneath it, which Bevy's own `AutoDirectionalNavigator`
   would (it is z-agnostic). Between containers, `nav.up`, `nav.down`,
   `nav.left` and `nav.right` tags on a node name where focus goes next, and
   a manual `DirectionalNavigationMap` edge wins over both.
-- The stack keeps focus inside the top entry and restores each entry's last
-  focus when it regains the top.
+- The stack keeps focus inside that entry (`ScreenStack::focus_top()`) and
+  restores each entry's last focus when it regains the top; a focusable
+  overlay pushed over a page clears the page's focus the same frame, so the
+  next `Accept` reaches the overlay and not the button underneath.
 
 The focus ring is one entity, `FocusRing`, in its own z band above every
 screen, that follows the focused `Focusable`. It shows in `Keyboard` and

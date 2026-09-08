@@ -206,15 +206,15 @@ fn the_settings_screen_opens_in_every_theme_with_focus_on_the_first_tab() {
         assert_eq!(h.find_all(&by::control("tabs")).len(), 1, "{theme}");
         assert_eq!(h.find_all(&by::control("select")).len(), 2, "{theme}");
         assert_eq!(h.find_all(&by::control("slider")).len(), 4, "{theme}");
-        assert_eq!(h.find_all(&by::control("toggle")).len(), 4, "{theme}");
+        assert_eq!(h.find_all(&by::control("toggle")).len(), 5, "{theme}");
         assert_eq!(h.find_all(&by::control("radio_group")).len(), 1, "{theme}");
         assert_eq!(h.find_all(&by::control("key_binding")).len(), 4, "{theme}");
         assert_eq!(h.find_all(&by::control("text_field")).len(), 1, "{theme}");
-        assert_eq!(h.find_all(&by::control("scroll")).len(), 3, "{theme}");
+        assert_eq!(h.find_all(&by::control("scroll")).len(), 4, "{theme}");
         assert_eq!(h.find_all(&by::control("separator")).len(), 4, "{theme}");
         assert_eq!(h.find_all(&by::control("spacer")).len(), 1, "{theme}");
         assert_eq!(h.find_all(&by::test_id("footer_hint")).len(), 1, "{theme}");
-        for tab in ["display", "audio", "controls"] {
+        for tab in ["display", "audio", "controls", "demo"] {
             assert_eq!(
                 h.find_all(&by::anchor(&format!("settings.{tab}.end")))
                     .len(),
@@ -331,6 +331,16 @@ fn a_gamepad_reaches_every_control_on_every_tab_from_initial_focus_and_back() {
     press(&mut h, GamepadButton::DPadDown, "reset");
     press(&mut h, GamepadButton::DPadRight, "done");
     press(&mut h, GamepadButton::DPadLeft, "reset");
+
+    // Demo: from the footer the trigger switches the tab and leaves the
+    // focus where it is; Up reaches the page's one toggle, Down the footer.
+    press(&mut h, GamepadButton::RightTrigger, "reset");
+    assert_eq!(
+        h.value("settings.tab"),
+        Some(Value::Text("demo".to_owned()))
+    );
+    press(&mut h, GamepadButton::DPadUp, "demo.found_key");
+    press(&mut h, GamepadButton::DPadDown, "reset");
 
     // And back: the trigger wraps to the display tab (focus outside the
     // pages stays where it is), then Up walks the page to the tab bar.
@@ -536,7 +546,14 @@ fn a_key_binding_row_captures_and_the_tabs_bind_the_store() {
             .first_key(UiAction::TabNext),
         Some(KeyCode::KeyN)
     );
-    // The new key works: N is the next tab now.
+    // The new key works: N is the next tab now (the demo tab, then the
+    // wrap to the first).
+    h.key(KeyCode::KeyN);
+    h.settle();
+    assert_eq!(
+        h.value("settings.tab"),
+        Some(Value::Text("demo".to_owned()))
+    );
     h.key(KeyCode::KeyN);
     h.settle();
     assert_eq!(

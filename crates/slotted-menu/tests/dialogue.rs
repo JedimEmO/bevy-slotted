@@ -15,8 +15,9 @@ use pretty_assertions::assert_eq;
 use slotted_menu::{
     ActiveDialogue, Condition, Dialogue, DialogueAssets, DialogueChoice, DialogueConfig,
     DialogueEnded, DialogueError, DialogueId, DialogueNode, DialogueNodeEntered, DialogueScreen,
-    Dialogues, EndReason, HistoryLine, MenuConfig, MenuPlugin, NodeId, advance_dialogue,
-    choose_dialogue, end_dialogue, jump_dialogue, kinds, start_dialogue, start_dialogue_with,
+    Dialogues, EndReason, HistoryLine, MenuChoice, MenuConfig, MenuPlugin, NodeId,
+    advance_dialogue, choose_dialogue, end_dialogue, jump_dialogue, kinds, start_dialogue,
+    start_dialogue_with,
 };
 use slotted_test::prelude::*;
 use slotted_ui::{LocArgs, LocKey, UiAction, Value, ValueStore};
@@ -913,3 +914,54 @@ fn the_asset_loader_round_trips_and_apply_dialogue_assets_registers() {
 }
 
 // M3-TEST: C (the screen half, contract 4.6)
+
+// ---------------------------------------------------------------------------
+// M3-TEST: D
+// ---------------------------------------------------------------------------
+
+/// A game starting a dialogue from a `MenuChoice` (the menus example's Talk
+/// button), a frame after the choice (`PreUpdate`, so the order is not left
+/// to the set). The runner reads `UiActionEvent`s through a reader that
+/// persists across frames, so the frame it starts listening it must not see
+/// the previous frame's `Accept`, the one that activated the button, as
+/// fresh.
+fn talk_on_resume(mut choices: MessageReader<MenuChoice>, mut commands: Commands) {
+    for choice in choices.read() {
+        if choice.id == "resume" {
+            start_dialogue(&mut commands, DialogueId::new("demo:greeting"));
+        }
+    }
+}
+
+#[test]
+fn the_accept_that_started_the_dialogue_does_not_skip_its_first_line() {
+    let mut h = harness_with("glass", |app| {
+        app.add_systems(PreUpdate, talk_on_resume);
+    });
+    register_greeting(&mut h);
+    run(&mut h, |c| {
+        c.queue(|world: &mut World| {
+            let def = world
+                .resource::<slotted_ui::Screens>()
+                .get(&kinds::pause())
+                .expect("the pause template is registered")
+                .clone();
+            slotted_ui::push_screen(&mut world.commands(), def, None);
+        });
+    });
+    h.settle();
+    assert_eq!(h.stack(), vec![kinds::pause()]);
+    assert!(h.focused().is_some(), "the pause focuses Resume");
+    // A pad, since a keyboard Enter activates on its release, a frame
+    // later; not `settle()`, since the typewriter would finish the line
+    // inside it.
+    h.gamepad(GamepadButton::South);
+    h.step(2);
+    assert_eq!(h.stack(), vec![kinds::dialogue()]);
+    let a = active(&h).expect("Resume started the dialogue");
+    assert_eq!(a.node, node("hello"));
+    assert!(
+        !a.revealed,
+        "the Accept that pressed Resume did not reach the runner"
+    );
+}

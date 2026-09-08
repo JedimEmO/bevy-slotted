@@ -7,12 +7,17 @@
 //! resolves against `CARGO_MANIFEST_DIR`.
 #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
+use std::time::Duration;
+
 use bevy::input::gamepad::GamepadButton;
 use bevy::prelude::*;
 use menus::{MenusDemoPlugin, main_kind};
 use pretty_assertions::assert_eq;
-use slotted::menu::{MemorySettings, SettingsStorage, kinds};
-use slotted::ui::{SliderState, Value};
+use slotted::menu::{
+    DialogueChoice, DialogueEnded, DialogueNodeEntered, EndReason, MemorySettings, NodeId,
+    SettingsStorage, kinds,
+};
+use slotted::ui::{SliderState, UiAction, Value};
 use slotted_test::prelude::*;
 
 /// The example under one theme, with a memory settings store, the main menu
@@ -339,5 +344,310 @@ fn the_main_pause_and_confirm_trees_match_in_three_themes() {
         pad(&mut h, GamepadButton::South);
         assert_eq!(h.stack(), vec![kinds::pause(), kinds::confirm()]);
         assert_tree_snapshot!(format!("confirm_tree_{theme}"), h.screen_tree());
+    }
+}
+
+/// Waits for the greeting to land in `Dialogues` (the asset loads through
+/// the server) and returns.
+fn wait_for_dialogue(h: &mut UiHarness) {
+    for _ in 0..600 {
+        if h.world()
+            .resource::<slotted::menu::Dialogues>()
+            .get(&menus::greeting_id())
+            .is_some()
+        {
+            return;
+        }
+        h.step(1);
+    }
+    panic!("dialogue/greeting.dialogue.ron never registered");
+}
+
+/// Down to the injected Talk button (below About) and South, then a few
+/// frames rather than a settle: a settle would let the typewriter finish
+/// the first line, and the test wants to watch it type.
+fn talk(h: &mut UiHarness) {
+    for id in ["settings", "quit", "about", "talk"] {
+        pad(h, GamepadButton::DPadDown);
+        assert_eq!(h.focused(), Some(find(h, id)), "Down reaches {id}");
+    }
+    h.gamepad(GamepadButton::South);
+    h.step(3);
+}
+
+/// Talk on the title starts the elder's greeting as an overlay over the
+/// main menu: South skips the typewriter, South again continues to the
+/// choice, the d-pad skips the locked third answer, South on Yes earns the
+/// game's toast, South ends it and the title has its focus back.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn talk_walks_the_greeting_by_gamepad() {
+    let (mut h, _) = open_main();
+    let main = main_kind();
+    wait_for_dialogue(&mut h);
+    assert_eq!(h.dialogue(), None);
+    talk(&mut h);
+    assert_eq!(choices(&mut h), vec![("talk".to_owned(), main.clone())]);
+    assert_eq!(h.stack(), vec![main.clone(), kinds::dialogue()]);
+    assert_eq!(
+        h.stack_top(),
+        Some(main.clone()),
+        "an overlay is not the non-overlay top"
+    );
+    let hello = NodeId::new("hello");
+    assert_eq!(h.dialogue(), Some((menus::greeting_id(), hello.clone())));
+    assert_eq!(
+        h.dialogue_events(),
+        vec![DialogueEvent::Entered(DialogueNodeEntered {
+            dialogue: menus::greeting_id(),
+            node: hello.clone(),
+        })]
+    );
+    assert!(!h.dialogue_revealed());
+    let root = h.find(&by::screen(kinds::dialogue()));
+    assert_eq!(
+        h.text_of(h.find(&by::test_id("speaker").within(root)))
+            .as_deref(),
+        Some("Elder")
+    );
+    let portrait = h.find(&by::test_id("portrait").within(root));
+    assert_eq!(
+        h.world().get::<Visibility>(portrait),
+        Some(&Visibility::Inherited),
+        "the elder has a portrait"
+    );
+    assert!(
+        h.try_find(&by::test_id("talk")).is_some(),
+        "the title stays on the stack under the overlay"
+    );
+    assert_eq!(h.dialogue_options(), vec![]);
+
+    // The typewriter: some of the line after a moment, all of it on South.
+    h.advance(Duration::from_millis(300));
+    let partial = h.dialogue_text();
+    assert!(
+        !partial.is_empty() && partial.chars().count() < 40,
+        "typing: {partial:?}"
+    );
+    assert!(!h.dialogue_revealed());
+    h.gamepad(GamepadButton::South);
+    h.step(2);
+    assert!(h.dialogue_revealed());
+    let full = h.dialogue_text();
+    assert!(
+        full.starts_with("Ah, a visitor. Few come this far"),
+        "the whole line, markup rendered: {full:?}"
+    );
+    assert_eq!(h.dialogue(), Some((menus::greeting_id(), hello.clone())));
+    let hints = h.hint_entries(h.find(&by::test_id("hints").within(root)));
+    assert_eq!(
+        hints
+            .iter()
+            .map(|e| (e.action, e.label.0.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (UiAction::Accept, "slotted.menu.dialogue.next"),
+            (UiAction::Secondary, "slotted.menu.dialogue.history"),
+        ]
+    );
+
+    // South again: the choice. Its buttons show after `choice_delay`.
+    h.gamepad(GamepadButton::South);
+    h.step(2);
+    let ask = NodeId::new("ask");
+    assert_eq!(h.dialogue(), Some((menus::greeting_id(), ask.clone())));
+    assert_eq!(h.dialogue_text(), "Sit with the elder?");
+    assert_eq!(h.dialogue_options(), vec![], "not before `choice_delay`");
+    h.advance(Duration::from_millis(400));
+    h.settle();
+    assert_eq!(
+        h.dialogue_options(),
+        vec![
+            ("yes".to_owned(), true),
+            ("no".to_owned(), true),
+            ("secret".to_owned(), false),
+        ],
+        "the third answer waits for `demo.found_key`"
+    );
+    assert_eq!(h.value(menus::FOUND_KEY), Some(Value::Bool(false)));
+    let option = |h: &UiHarness, id: &str| {
+        h.find(&by::test_id(&slotted::menu::dialogue_screen::option_test_id(id)).within(root))
+    };
+    assert_eq!(h.focused(), Some(option(&h, "yes")));
+    pad(&mut h, GamepadButton::DPadDown);
+    assert_eq!(h.focused(), Some(option(&h, "no")));
+    pad(&mut h, GamepadButton::DPadDown);
+    assert_eq!(
+        h.focused(),
+        Some(option(&h, "yes")),
+        "the walk skips the locked answer and wraps"
+    );
+    assert!(h.toasts().is_empty());
+    assert_eq!(h.dialogue_events().len(), 1, "`ask` was entered");
+
+    // Yes: the game's toast, and the elder's next line.
+    h.gamepad(GamepadButton::South);
+    h.step(3);
+    let yes = NodeId::new("yes");
+    assert_eq!(
+        h.dialogue_events(),
+        vec![
+            DialogueEvent::Chosen(DialogueChoice {
+                dialogue: menus::greeting_id(),
+                node: ask.clone(),
+                option: "yes".to_owned(),
+                index: 0,
+            }),
+            DialogueEvent::Entered(DialogueNodeEntered {
+                dialogue: menus::greeting_id(),
+                node: yes.clone(),
+            }),
+        ]
+    );
+    assert_eq!(h.toasts().len(), 1, "the game answered `yes` with a toast");
+    assert_eq!(h.dialogue_options(), vec![]);
+    pad(&mut h, GamepadButton::South);
+    assert!(h.dialogue_revealed());
+    assert_eq!(
+        h.dialogue_text(),
+        "Good, Traveller. Then listen: the chest below was sealed long before the village had a name.",
+        "the Fluent argument came through"
+    );
+    assert_eq!(
+        h.dialogue_history(),
+        vec![
+            (
+                Some("Elder".to_owned()),
+                "Ah, a visitor. [i]Few[/i] come this far up the mountain. Will you sit a while and hear what the old stones remember?".to_owned()
+            ),
+            (
+                Some("Elder".to_owned()),
+                "Good, Traveller. Then listen: the chest below was sealed long before the village had a name.".to_owned()
+            ),
+        ],
+        "the transcript keeps the markup and skips the prompt"
+    );
+
+    // West opens the history page over the dialogue; East closes it.
+    pad(&mut h, GamepadButton::West);
+    assert_eq!(
+        h.stack(),
+        vec![main.clone(), kinds::dialogue(), kinds::page()]
+    );
+    let page = h.find(&by::screen(kinds::page()));
+    assert_eq!(
+        h.text_of(h.find(&by::test_id("title").within(page)))
+            .as_deref(),
+        Some("History")
+    );
+    assert_eq!(h.focused(), Some(h.find(&by::test_id("done").within(page))));
+    pad(&mut h, GamepadButton::East);
+    assert_eq!(h.stack(), vec![main.clone(), kinds::dialogue()]);
+    assert_eq!(h.dialogue(), Some((menus::greeting_id(), yes.clone())));
+
+    // South: `next: "bye"` is an end. The overlay closes and Talk has the
+    // focus again.
+    pad(&mut h, GamepadButton::South);
+    assert_eq!(h.dialogue(), None);
+    assert_eq!(h.stack(), vec![main.clone()]);
+    assert_eq!(
+        h.dialogue_events(),
+        vec![
+            DialogueEvent::Entered(DialogueNodeEntered {
+                dialogue: menus::greeting_id(),
+                node: NodeId::new("bye"),
+            }),
+            DialogueEvent::Ended(DialogueEnded {
+                dialogue: menus::greeting_id(),
+                node: NodeId::new("bye"),
+                reason: EndReason::Finished,
+            }),
+        ]
+    );
+    assert_eq!(h.focused(), Some(find(&h, "talk")), "focus is back on Talk");
+    assert_eq!(
+        choices(&mut h),
+        vec![],
+        "no `MenuChoice` came out of the dialogue"
+    );
+}
+
+/// The settings' Demo tab unlocks the third answer: with `demo.found_key`
+/// on, `secret` is enabled and `dialogue_choose` follows it to a narration
+/// line with no speaker and no portrait.
+#[test]
+fn the_found_key_toggle_unlocks_the_secret_answer() {
+    let (mut h, store) = open_main();
+    wait_for_dialogue(&mut h);
+    h.set_value(menus::FOUND_KEY, true);
+    h.settle();
+    assert_eq!(h.value(menus::FOUND_KEY), Some(Value::Bool(true)));
+    assert_eq!(
+        store
+            .get()
+            .and_then(|s| s.values.get(menus::FOUND_KEY).cloned()),
+        Some(Value::Bool(true)),
+        "a settings key, so the change was saved"
+    );
+    h.start_dialogue(menus::GREETING);
+    h.dialogue_advance();
+    h.dialogue_advance();
+    assert_eq!(h.dialogue().map(|(_, n)| n), Some(NodeId::new("ask")));
+    h.advance(Duration::from_millis(400));
+    h.settle();
+    assert_eq!(
+        h.dialogue_options(),
+        vec![
+            ("yes".to_owned(), true),
+            ("no".to_owned(), true),
+            ("secret".to_owned(), true),
+        ]
+    );
+    h.dialogue_choose("secret");
+    assert_eq!(h.dialogue().map(|(_, n)| n), Some(NodeId::new("secret")));
+    let root = h.find(&by::screen(kinds::dialogue()));
+    for id in ["speaker", "portrait"] {
+        assert_eq!(
+            h.world()
+                .get::<Visibility>(h.find(&by::test_id(id).within(root))),
+            Some(&Visibility::Hidden),
+            "narration hides the {id}"
+        );
+    }
+    h.dialogue_advance();
+    assert!(h.dialogue_revealed());
+    assert_eq!(
+        h.dialogue_history().last().map(|(s, _)| s.clone()),
+        Some(None),
+        "a narration line has no speaker"
+    );
+    assert!(h.toasts().is_empty(), "only `yes` earns a toast");
+    h.dialogue_advance();
+    assert_eq!(h.dialogue(), None);
+    assert!(matches!(
+        h.dialogue_events().last(),
+        Some(DialogueEvent::Ended(DialogueEnded {
+            reason: EndReason::Finished,
+            ..
+        }))
+    ));
+}
+
+/// The dialogue's say and choice trees over the title, per theme.
+#[test]
+fn the_dialogue_trees_match_in_three_themes() {
+    for theme in ["glass", "paper", "neon"] {
+        let (mut h, _) = open_main_in(theme);
+        wait_for_dialogue(&mut h);
+        h.start_dialogue(menus::GREETING);
+        h.dialogue_advance();
+        h.settle();
+        assert!(h.dialogue_revealed());
+        assert_tree_snapshot!(format!("dialogue_say_tree_{theme}"), h.screen_tree());
+        h.dialogue_advance();
+        h.advance(Duration::from_millis(400));
+        h.settle();
+        assert_eq!(h.dialogue_options().len(), 3);
+        assert_tree_snapshot!(format!("dialogue_choice_tree_{theme}"), h.screen_tree());
     }
 }

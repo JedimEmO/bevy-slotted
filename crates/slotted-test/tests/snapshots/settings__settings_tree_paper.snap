@@ -72,6 +72,14 @@ ScreenTree(
                       },
                       visible: true,
                     ),
+                    TreeNode(
+                      role: Tab,
+                      label: Some("demo.settings.tab.demo"),
+                      tags: {
+                        "tab": "demo",
+                      },
+                      visible: true,
+                    ),
                   ],
                 ),
                 TreeNode(
@@ -370,6 +378,48 @@ ScreenTree(
                         TreeNode(
                           role: Anchor,
                           anchor: Some("settings.controls.end"),
+                          visible: false,
+                        ),
+                      ],
+                    ),
+                    TreeNode(
+                      role: Custom("scrollbar"),
+                      visible: false,
+                    ),
+                  ],
+                ),
+                TreeNode(
+                  role: ScrollView,
+                  test_id: Some("settings.demo.page"),
+                  tags: {
+                    "test_id": "settings.demo.page",
+                  },
+                  widget: Some("slotted:scroll"),
+                  visible: false,
+                  children: [
+                    TreeNode(
+                      role: Panel,
+                      widget: Some("slotted:panel"),
+                      visible: false,
+                      children: [
+                        TreeNode(
+                          role: Anchor,
+                          anchor: Some("settings.demo.start"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: Toggle,
+                          label: Some("demo.settings.demo.found_key"),
+                          test_id: Some("demo.found_key"),
+                          tags: {
+                            "test_id": "demo.found_key",
+                          },
+                          widget: Some("slotted:toggle"),
+                          visible: false,
+                        ),
+                        TreeNode(
+                          role: Anchor,
+                          anchor: Some("settings.demo.end"),
                           visible: false,
                         ),
                       ],

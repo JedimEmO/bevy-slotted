@@ -97,6 +97,8 @@ pub use insta;
 
 /// Everything a test needs.
 pub mod prelude {
+    #[cfg(feature = "menu")]
+    pub use crate::menu::DialogueEvent;
     pub use crate::{
         Browser, ChestFixture, Locator, MenuFixture, Opened, PlayerFixture, ScreenTree,
         TestRegistries, TreeNode, UiHarness, UiHarnessBuilder, by,

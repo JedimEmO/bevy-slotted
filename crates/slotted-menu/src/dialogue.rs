@@ -732,14 +732,17 @@ pub fn dialogue_actions(
     config: Res<DialogueConfig>,
     mut commands: Commands,
 ) {
-    let Some(active) = active else {
+    // Not listening: drop this frame's events rather than leaving them in
+    // the reader, or the `Accept` that activated the button which started
+    // the dialogue is read as fresh the frame the screen takes focus and
+    // skips the first line's reveal.
+    let listening = active
+        .as_ref()
+        .is_some_and(|active| stack.focus_top().is_some_and(|top| top.root == active.root));
+    let Some(active) = active.filter(|_| listening) else {
+        events.clear();
         return;
     };
-    // A page or modal pushed above holds the focus; the runner goes quiet
-    // until it pops.
-    if stack.focus_top().is_none_or(|top| top.root != active.root) {
-        return;
-    }
     let on_line = matches!(active.current(), DialogueNode::Say { .. });
     for event in events.read() {
         if event.repeat || claims.is_claimed(event.action) {

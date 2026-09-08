@@ -382,6 +382,22 @@ fn a_disabled_button_is_inert_and_drawn_as_such() {
     let nope = find(&h, "nope");
     assert!(h.world().get::<InteractionDisabled>(nope).is_some());
     assert_eq!(role_of(&h, nope), "button.disabled");
+    let label = h
+        .world()
+        .get::<Children>(nope)
+        .and_then(|c| {
+            c.iter().find(|e| {
+                h.world()
+                    .get::<slotted_ui::widgets::controls::LabelRole>(*e)
+                    .is_some()
+            })
+        })
+        .expect("the button has a label");
+    assert_eq!(
+        role_of(&h, label),
+        "text.muted",
+        "a disabled label reads `<rest>.disabled` when the theme has it, else `text.muted`"
+    );
     h.set_focus(Some(nope));
     h.action(UiAction::Accept);
     h.click(nope);

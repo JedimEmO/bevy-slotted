@@ -241,6 +241,7 @@
         // Labels on an accent fill (`button.primary`, `tab.active`, ...):
         // the same size and font as at rest, only the colour flips.
         "control.label.inverse": Text(color: "$base", size: "$body", weight: 600),
+        "control.label.disabled": Text(color: "$muted", size: "$body"),
         "text.label.inverse": Text(color: "$base", size: "$label", weight: 600),
         "button.danger": Solid(fill: "$danger", border: "#FFFFFF33", radius: 8.0),
         // Menus M2: the primary and danger buttons keep their fill through

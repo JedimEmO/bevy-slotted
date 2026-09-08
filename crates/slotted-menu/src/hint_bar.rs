@@ -199,12 +199,17 @@ fn entries_for(
     if let Some(root) = root
         && let Ok(screen) = roots.get(root)
     {
+        // An overlay is never popped by `Back` whatever its policy says
+        // (menus M3: a `focus: true` overlay names its own `hint.back`).
         if screen.presentation.back == BackPolicy::Pop {
             let key = match screen.presentation.mode {
-                PresentationMode::Modal => "slotted.menu.close",
-                PresentationMode::Page | PresentationMode::Overlay => "slotted.menu.back",
+                PresentationMode::Modal => Some("slotted.menu.close"),
+                PresentationMode::Page => Some("slotted.menu.back"),
+                PresentationMode::Overlay => None,
             };
-            out.push(HintEntry::new(UiAction::Back, key));
+            if let Some(key) = key {
+                out.push(HintEntry::new(UiAction::Back, key));
+            }
         }
         if has_tabs(root, tabs, parents) {
             out.push(HintEntry::new(UiAction::TabPrev, "slotted.menu.prev_tab"));

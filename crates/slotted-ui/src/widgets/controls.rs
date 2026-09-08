@@ -110,9 +110,20 @@ pub fn inverse_of(rest: &Role) -> Role {
     Role::new(format!("{}.inverse", rest.as_str()))
 }
 
+/// The disabled role of a label's rest role: `<rest>.disabled`
+/// (`control.label.disabled`). [`invert_active_labels`] uses it under a
+/// `*.disabled` control when the active theme defines it and `text.muted`
+/// otherwise, so a disabled option reads as one and not only by its fill
+/// (menus M3, seen on the dialogue's locked choice).
+pub fn disabled_of(rest: &Role) -> Role {
+    Role::new(format!("{}.disabled", rest.as_str()))
+}
+
 /// `SlottedUiSet::Render`, after every `paint_*`: labels under an accent
 /// fill read `<rest>.inverse` (`control.label.inverse`) when the theme has
-/// it, else `text.inverse`; every other label reads its [`LabelRole`].
+/// it, else `text.inverse`; labels under a disabled control read
+/// `<rest>.disabled` when the theme has it, else `text.muted`; every other
+/// label reads its [`LabelRole`].
 pub fn invert_active_labels(
     controls: Query<(Ref<Themed>, &Children), Without<LabelRole>>,
     mut labels: Query<(&LabelRole, &mut Themed)>,
@@ -132,19 +143,28 @@ pub fn invert_active_labels(
             continue;
         }
         let inverse = is_accent_fill(&themed.0);
+        let disabled = themed.0.as_str().ends_with(".disabled");
+        // `Theme::material` walks parents, so `control.label.inverse` would
+        // "resolve" to `control.label`; only a direct entry counts as the
+        // theme having the dotted role.
+        let defined = |role: &Role| theme.is_some_and(|t| t.roles.contains_key(role));
         for child in children.iter() {
             let Ok((rest, mut label)) = labels.get_mut(child) else {
                 continue;
             };
             let wanted = if inverse {
                 let dotted = inverse_of(&rest.0);
-                // `Theme::material` walks parents, so `control.label.inverse`
-                // would "resolve" to `control.label`; only a direct entry
-                // counts as the theme having the dotted role.
-                if theme.is_some_and(|t| t.roles.contains_key(&dotted)) {
+                if defined(&dotted) {
                     dotted
                 } else {
                     roles::TEXT_INVERSE
+                }
+            } else if disabled {
+                let dotted = disabled_of(&rest.0);
+                if defined(&dotted) {
+                    dotted
+                } else {
+                    roles::TEXT_MUTED
                 }
             } else {
                 rest.0.clone()

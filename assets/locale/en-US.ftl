@@ -79,6 +79,8 @@ demo-settings-controls-tab_prev = Previous tab
 demo-settings-controls-tab_next = Next tab
 demo-settings-controls-player_name = Player name
 demo-settings-controls-player_name_hint = Your name
+demo-settings-tab-demo = Demo
+demo-settings-demo-found_key = Found the key (unlocks a dialogue option)
 demo-settings-footer = Press {"{key:back}"} to close, {"{key:tab_next}"} for the next tab
 demo-settings-reset = Reset
 demo-settings-done = Done
@@ -99,3 +101,17 @@ demo-menus-leave-message = The chest and everything in it stays where it is.
 demo-menus-leave-accept = Leave
 demo-menus-quick_stack = Quick stack: every stack with a match in the chest went there.
 demo-menus-footer = Built on slotted-menu. Esc pauses the game; Start does on a pad.
+demo-menus-talk = Talk
+demo-menus-thanks = The elder nods. Come back whenever you like.
+
+# The menus example's dialogue (assets/dialogue/greeting.dialogue.ron). A
+# `say` line is rich text, so `[b]`, `[i]` and `{key:..}` work here too, and
+# the typewriter counts a glyph as one unit.
+demo-elder = Elder
+demo-greeting-hello = Ah, a visitor. [i]Few[/i] come this far up the mountain. Will you sit a while and hear what the old stones remember?
+demo-greeting-ask = Sit with the elder?
+demo-yes = Yes, tell me
+demo-no = Not now
+demo-secret = I found the key
+demo-greeting-yes = Good, { $name }. Then listen: the chest below was sealed long before the village had a name.
+demo-greeting-secret = The elder says nothing, but the chest's lid stands open for the first time in years.

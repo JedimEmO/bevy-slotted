@@ -6,11 +6,90 @@ Entries the gap-closing round closed have been deleted rather than struck
 through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
 and summarised below. What is left here is open.
 
+## Menus M3, 2026-09-09
+
+The dialogue runner and screen (`docs/design/menus-m3-contract.md`,
+`docs/design/menus-m3-notes-{A,B,C,D}.md`). What the four packages deferred.
+
+- **The Lua bridge is M4's.** The three messages carry strings and a `usize`
+  and the five commands take strings, so each is a one-line binding. Where
+  the forwarding lives is M4's decision: `slotted-packs` does not depend on
+  `slotted-menu`, so it is either an optional dependency there or a bridge
+  in the facade.
+- **A dialogue shipped inside a mod pack waits for a `RegistryKind::Dialogues`.**
+  Today a pack's `.dialogue.ron` is not discovered; a game loads it through
+  `DialogueAssets` or registers it by hand.
+- **`IconDef` does not read its own map form.** A `.dialogue.ron` portrait
+  reads `(image: "..")` through a private `deserialize_icon` shim in
+  `DialogueNode::Say`, because `IconDef`'s derived `Deserialize` under RON's
+  typed reader wants `image("..")`. A custom `Deserialize` on `IconDef`
+  accepting both spellings (a `slotted-ui` change) would drop the shim.
+- **A value store change while a choice is up does not re-enable its
+  buttons.** The runner re-checks the condition on `choose`, so a stale
+  button is a no-op with a warning rather than a wrong jump; re-presenting
+  the column on a `ValueStore` change is a small addition.
+- **A `jump` to a choice while a modal sits above** spawns the buttons and
+  leaves focus alone; the modal's pop lands on nothing focused until the
+  player moves.
+- **The text box's `min_height` is a fixed 66 px** (three body lines at the
+  shipped themes' metrics). A `min_lines` on `rich_text` would make it
+  theme-proof.
+- **The hidden header keeps its height on a choice.** The portrait and the
+  speaker are `Visibility::Hidden`, not collapsed, so a choice shows an
+  empty band where the header was; the panel is anchored at the bottom and
+  grows upward with the buttons anyway. Collapsing the row (`Display::None`
+  when both are hidden) is a presenter change with the snapshots to match.
+- **The history page hides the dialogue** (`slotted:page` is a page). A modal
+  variant would keep the conversation visible underneath; a game can
+  register its own `slotted:page` kind with `mode: "modal"` today.
+- **The "Continue" hint and the `{key:accept} continue` caption both show**
+  on a revealed line in keyboard and gamepad mode, saying the same thing at
+  both ends of the footer. The contract asked for both; the caption alone
+  would do once the bar is there, or the bar alone in pointer mode.
+- **A `.ftl` argument in the history is baked in.** `HistoryLine.text` is
+  resolved when the node is entered, so a language switch does not rewrite
+  lines already said; that is the recorded transcript, by contract.
+- **`Secondary` to history has no runner-level test** in `tests/dialogue.rs`
+  (B ran while `open_history` was a `todo!()`); C's screen test covers it
+  end to end.
+- **The missing-text-role warning is per paint for plain `text`** (spawn,
+  theme change) and once per node for `rich_text`; a marker in
+  `slotted-theme` would make them match.
+- **A theme that defines `dialogue` but not `dialogue.speaker` paints the
+  speaker with the panel material**, because the dotted lookup finds
+  `dialogue` before `ThemedFallback` is consulted. Documented in `themes.md`;
+  a fallback that prefers a text material over a panel one is the fix.
+- **`DialogueEvent`s are ordered per frame, not per write.** The recorder
+  reads three message types through three readers, so within one frame the
+  order is chosen, entered, ended; a `Replaced` end lands after the new
+  dialogue's first node when both happen in one frame.
+- **A dialogue over the main menu overlaps the menu's panel.** The dialogue
+  is `90%` wide and centred at the bottom; the example's title panel sits at
+  the left and the two cross in the shots. Cosmetic; a game places its
+  title elsewhere or narrows the dialogue.
+- **Two injections at one anchor sit side by side** (the anchor is a row),
+  so the example's About and Talk buttons share one injection. Noted under
+  M2 as "an injected node sizes to its content"; a column anchor would fix
+  both.
+- **`examples/menus` loads the greeting through the asset server** in the
+  headless flow test too, and waits for it to register; a game whose test
+  wants no asset I/O registers from `include_str!` instead.
+- **The `ScreenStack` ordering of `route_choices` against the `menu` tag's
+  `Activate` observer is unspecified** within `SlottedUiSet::Input`: the
+  example's Talk starts its dialogue either the same frame or the next. The
+  runner's reader drain (D's fix) makes both orders behave.
+
 ## Menus M2, 2026-09-08
 
 The `slotted-menu` crate (`docs/design/menus-m2-contract.md`,
 `docs/design/menus-m2-notes-{A,B,C,D}.md`). What the four packages deferred,
-plus what the M2 review left open.
+plus what the M2 review left open. M3 closed and deleted four of the M2
+entries: the unused `menu.title` and `menu.version` roles (A's `role` on a
+text node, used by the main menu template), `set_text` not reaching a
+button label (A), `rich-text.md` not mentioning `GlyphSet` (D), and overlay
+screens' bars saying Back (D: the bar lists no stack Back on an overlay
+whatever its policy, since `pop_on_back` never pops one; a `focus: true`
+overlay names its own through the `hint.back` tag).
 
 - **A confirm answers `false` on a hot-reload respawn of `slotted:confirm`.**
   `respawn_screens` closes the old root (which triggers `ScreenClosed`, and
@@ -43,16 +122,9 @@ plus what the M2 review left open.
 - **The select row press is a no-op with the popup open**, unchanged from
   M1. A toggle wants the press to close and the click to be swallowed, which
   needs state that outlives the press.
-- **`docs/guide/rich-text.md` does not mention `GlyphSet`**; `input.md` does.
-- **`set_text` does not reach a button label.** A button's label is
-  `ButtonOpts::label`; the confirm dialog rewrites its buttons through
-  `confirm::set_button_label`. `ScreenDef::set_text` should grow the `Button`
-  arm.
 - **The hint bar reads the theme's material kind** to decide on brackets. A
   theme that wants a pill *and* brackets, or text without them, needs a
   token or a tag; none exists.
-- **Overlay screens' bars say Back for `BackPolicy::Pop`**, which
-  `pop_on_back` does not honour for an overlay. No template is an overlay.
 - **A hint bar on a screen under a modal keeps its Back entry** and loses
   its verb (the focus left it). Hiding a covered screen's bar, or freezing
   it, is a design call; the chest's confirm shot shows the pause's bar
@@ -75,11 +147,6 @@ plus what the M2 review left open.
 - **No per-action display names** for the conflict toast: `binding_moved`'s
   `action` is the data name (`tab_next`). `slotted.menu.action.<name>` keys
   would fix it.
-- **The `menu.title` and `menu.version` roles are unused.** A `text` node
-  takes a `TextRole` (`display`, `caption`), not a free role, so the main
-  menu's title paints `text.display` and the two roles B added sit in the
-  themes with nothing reading them. Either a `role` override on `text`, or
-  drop the roles.
 - **The main menu is a panel now**, placed at the left, so paper's ink reads
   on a dark scene; an invisible column looked right in glass and neon and
   unreadable in paper. A game whose scene suits bare text inherits and sets

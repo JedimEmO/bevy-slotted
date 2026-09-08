@@ -1219,6 +1219,38 @@ fn the_hint_bar_lists_the_tab_actions_on_a_screen_with_tabs() {
     assert_eq!(labels, vec!["Select", "Close", "Previous tab", "Next tab"]);
 }
 
+/// `pop_on_back` never pops an overlay, so its bar must not promise a Back
+/// whatever the file's `back` policy says (menus M3 closed the M2 follow-up).
+#[test]
+fn the_hint_bar_on_an_overlay_lists_no_back_even_with_a_pop_policy() {
+    const OVERLAY: &str = r#"
+#![enable(implicit_some)]
+(
+    kind: "test:overlay",
+    presentation: (mode: "overlay", back: "pop", focus: true),
+    root: (
+        type: "panel", role: "panel",
+        layout: (direction: "column", gap: 2.0, padding: 3.0, width: 480),
+        children: [
+            (type: "button", label: "x", tags: {"test_id": "x"}),
+            (type: "custom", kind: "slotted:hint_bar", tags: {"test_id": "hints"}),
+        ],
+    ),
+)
+"#;
+    let mut h = harness();
+    h.open(ScreenDef::from_ron(OVERLAY).unwrap());
+    h.settle();
+    h.set_input_mode(InputMode::Keyboard);
+    h.settle();
+    let bar = find(&h, "hints");
+    assert_eq!(
+        entries(&h, bar),
+        vec![(UiAction::Accept, "slotted.menu.select".to_owned())],
+        "Select for the focused button, and no Back"
+    );
+}
+
 #[test]
 fn the_semantic_roles_map_to_their_verbs() {
     use slotted_menu::hint_bar::verb_for;

@@ -129,6 +129,11 @@ shot-menus:
     cargo run -p menus -- --confirm --shot examples/menus/shots/menus-confirm.png
     cargo run -p menus -- --page --shot examples/menus/shots/menus-page.png
     cargo run -p menus -- --toast --shot examples/menus/shots/menus-toast.png
+    cargo run -p menus -- --dialogue --shot examples/menus/shots/menus-dialogue.png
+    cargo run -p menus -- --theme paper --dialogue --shot examples/menus/shots/menus-dialogue-paper.png
+    cargo run -p menus -- --theme neon --dialogue --shot examples/menus/shots/menus-dialogue-neon.png
+    cargo run -p menus -- --dialogue-choice --shot examples/menus/shots/menus-dialogue-choice.png
+    cargo run -p menus -- --dialogue-history --shot examples/menus/shots/menus-dialogue-history.png
 
 # The modded example in a window: three mods, loaded from disk, hot reloading.
 run-modded:

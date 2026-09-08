@@ -14,8 +14,13 @@
 //!    About button at the template's `buttons_end` anchor
 //!    ([`register_main_menu`]).
 //! 4. Systems that answer the `MenuChoice`s the crate leaves to the game:
-//!    `play`, `quit`, `about` ([`route_choices`]), and the confirms they
-//!    open ([`leave_or_exit`]).
+//!    `play`, `quit`, `about`, `talk` ([`route_choices`]), and the confirms
+//!    they open ([`leave_or_exit`]).
+//! 5. A conversation: `assets/dialogue/greeting.dialogue.ron` loaded through
+//!    `DialogueAssets` ([`load_dialogue`]), started by the injected Talk
+//!    button, whose `secret` option the settings screen's Demo tab unlocks,
+//!    and a system that answers the `yes` choice with a toast
+//!    ([`thank_on_yes`]).
 //!
 //! `src/main.rs` adds the 3D backdrop, a renderer and the screenshot flags;
 //! `tests/flow.rs` drives the same plugin through `slotted_test::UiHarness`
@@ -26,8 +31,8 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use slotted::ecs::MenuAction;
 use slotted::menu::{
-    ConfirmResult, ConfirmSpec, MenuChoice, PageSpec, ToastLevel, ToastSpec, confirm, kinds,
-    open_page, toast,
+    ConfirmResult, ConfirmSpec, DialogueAssets, DialogueChoice, DialogueId, MenuChoice, PageSpec,
+    ToastLevel, ToastSpec, confirm, kinds, open_page, start_dialogue, toast,
 };
 use slotted::prelude::*;
 use slotted::ui::{AnchorId, Injection, Injections, LocKey, Owner, ScreenStack, Tags, UiNodeDef};
@@ -35,7 +40,7 @@ use slotted_model::{ClickAction, ToolbarAction};
 
 pub use chest::{ChestDemoPlugin, assets_dir, load_registries};
 pub use showcase::menus::{QUIT_CONFIRM, confirm_quit, exit_on_quit_confirmed, menu_config};
-pub use showcase::settings::{SETTINGS, SettingsDemoPlugin};
+pub use showcase::settings::{FOUND_KEY, SETTINGS, SettingsDemoPlugin};
 
 /// The example's main menu kind.
 pub const MAIN: &str = "menus:main";
@@ -46,6 +51,17 @@ pub const MAIN_SCREEN: &str = include_str!("../screens/main.screen.ron");
 
 /// The confirm id of "leave the game and go back to the title".
 pub const LEAVE_CONFIRM: &str = "leave";
+
+/// The dialogue the Talk button starts.
+pub const GREETING: &str = "demo:greeting";
+
+/// Where it lives, relative to the asset root.
+pub const GREETING_PATH: &str = "dialogue/greeting.dialogue.ron";
+
+/// The dialogue the Talk button starts.
+pub fn greeting_id() -> DialogueId {
+    DialogueId::new(GREETING)
+}
 
 /// The example's main menu kind.
 pub fn main_kind() -> ScreenKind {
@@ -61,20 +77,22 @@ pub fn main_screen() -> ScreenDef {
     ScreenDef::from_ron(MAIN_SCREEN).expect("screens/main.screen.ron parses")
 }
 
-/// The About button a mod would add: an `Injection` at the template's
-/// `buttons_end` anchor, with a `menu` tag like the template's own buttons,
-/// so the crate turns its `Activate` into a `MenuChoice { id: "about" }`.
+/// The About and Talk buttons a mod would add: one `Injection` at the
+/// template's `buttons_end` anchor, each button with a `menu` tag like the
+/// template's own, so the crate turns its `Activate` into a `MenuChoice`
+/// (`about`, `talk`).
 ///
-/// An injected node sizes to its content, so the button sits in a
-/// full-width column panel to take the width of the buttons above it.
+/// An injected node sizes to its content, and two injections at one anchor
+/// sit side by side in the anchor's row, so both buttons go in one
+/// full-width column panel that takes the width of the buttons above it.
 pub fn about_injection() -> Injection {
-    let button = UiNodeDef::Button {
+    let button = |id: &str, label: &str| UiNodeDef::Button {
         widget: None,
         opts: slotted::ui::ButtonOpts {
-            label: Some(LocKey("demo.menus.about".to_owned())),
+            label: Some(LocKey(label.to_owned())),
             ..Default::default()
         },
-        tags: Tags::new().with("test_id", "about").with("menu", "about"),
+        tags: Tags::new().with("test_id", id).with("menu", id),
     };
     Injection {
         target: main_kind(),
@@ -83,12 +101,16 @@ pub fn about_injection() -> Injection {
             role: slotted::theme::Role::new_static("invisible"),
             layout: slotted::ui::Layout {
                 direction: slotted::ui::LayoutDirection::Column,
+                gap: 1.0,
                 width: Some(slotted::ui::Length::Percent(100.0)),
                 align: Some(slotted::ui::def::Align::Stretch),
                 ..Default::default()
             },
             tags: Tags::new().with("test_id", "about_row"),
-            children: vec![button],
+            children: vec![
+                button("about", "demo.menus.about"),
+                button("talk", "demo.menus.talk"),
+            ],
         },
         exclusion: false,
         owner: Owner::Game,
@@ -96,13 +118,39 @@ pub fn about_injection() -> Injection {
 }
 
 /// `Startup`: registers `menus:main` (unless something did) and the About
-/// injection.
+/// and Talk injection (unless something targets the main menu already).
 pub fn register_main_menu(mut screens: ResMut<Screens>, mut injections: ResMut<Injections>) {
     if screens.get(&main_kind()).is_none() {
         screens.register(main_screen());
     }
     if !injections.0.iter().any(|i| i.target == main_kind()) {
         injections.0.push(about_injection());
+    }
+}
+
+/// `Startup`: the conversation, through the asset server. `MenuPlugin`'s
+/// `apply_dialogue_assets` registers it in `Dialogues` when it lands, and
+/// again on every edit while the game runs.
+pub fn load_dialogue(mut dialogues: ResMut<DialogueAssets>, assets: Res<AssetServer>) {
+    dialogues.load(&assets, GREETING_PATH);
+}
+
+/// Starts the greeting; a warning and nothing else until the asset has
+/// loaded.
+pub fn talk(commands: &mut Commands) {
+    start_dialogue(commands, greeting_id());
+}
+
+/// `Update`: the game's answer to a `DialogueChoice`. `yes` earns a toast;
+/// everything else the dialogue itself follows through its `next`.
+pub fn thank_on_yes(mut choices: MessageReader<DialogueChoice>, mut commands: Commands) {
+    for choice in choices.read() {
+        if choice.dialogue == greeting_id() && choice.option == "yes" {
+            toast(
+                &mut commands,
+                ToastSpec::new("demo.menus.thanks").level(ToastLevel::Info),
+            );
+        }
     }
 }
 
@@ -137,10 +185,11 @@ pub fn confirm_leave(commands: &mut Commands) {
 }
 
 /// `Update`: the choices the crate leaves to the game. `play` on the main
-/// menu pops it and opens the chest; `about` opens the About page; `quit`
-/// on the main menu asks before exiting and on the pause asks before going
-/// back to the title. Everything else (`resume`, `settings`, `reset`,
-/// `accept`, `cancel`) the crate handled before the choice arrived.
+/// menu pops it and opens the chest; `about` opens the About page; `talk`
+/// starts the conversation over the title; `quit` on the main menu asks
+/// before exiting and on the pause asks before going back to the title.
+/// Everything else (`resume`, `settings`, `reset`, `accept`, `cancel`) the
+/// crate handled before the choice arrived.
 pub fn route_choices(
     mut choices: MessageReader<MenuChoice>,
     registries: Res<Registries>,
@@ -157,6 +206,7 @@ pub fn route_choices(
                 &mut commands,
                 PageSpec::new("demo.menus.about.title", "demo.menus.about.body"),
             ),
+            "talk" => talk(&mut commands),
             "quit" if choice.screen == kinds::pause() => confirm_leave(&mut commands),
             "quit" => confirm_quit(&mut commands),
             _ => {}
@@ -207,10 +257,16 @@ impl Plugin for MenusDemoPlugin {
         app.add_plugins((ChestDemoPlugin, SettingsDemoPlugin))
             .insert_resource(menu_config("demo.menus.title", env!("CARGO_PKG_VERSION")))
             .init_resource::<Injections>()
-            .add_systems(Startup, register_main_menu)
+            .add_systems(Startup, (register_main_menu, load_dialogue))
             .add_systems(
                 Update,
-                (route_choices, leave_or_exit, exit_on_quit_confirmed).in_set(SlottedUiSet::Input),
+                (
+                    route_choices,
+                    leave_or_exit,
+                    exit_on_quit_confirmed,
+                    thank_on_yes,
+                )
+                    .in_set(SlottedUiSet::Input),
             )
             .add_observer(toast_on_quick_stack);
     }

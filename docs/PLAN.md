@@ -1,6 +1,6 @@
 # bevy_slotted implementation plan
 
-Status: v2.3, 2026-09-08, Phases 0 to 7 complete; Menus M0 (input model, focus ring, screen stack, layout model), M1 (type scale, rich text, localisation arguments, value store, controls) and M2 (the `slotted-menu` crate: templates, pause, confirm, toast, page, hint bar, settings with persistence) landed. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
+Status: v2.4, 2026-09-09, Phases 0 to 7 complete; Menus M0 (input model, focus ring, screen stack, layout model), M1 (type scale, rich text, localisation arguments, value store, controls), M2 (the `slotted-menu` crate: templates, pause, confirm, toast, page, hint bar, settings with persistence) and M3 (the dialogue runner and screen) landed. Targets Bevy 0.19.1. Companion documents: `docs/moodboard.html` and `docs/research/*.md`.
 
 ## 1. Goal and non-goals
 
@@ -359,8 +359,11 @@ The game menus over the chest's scene: a main menu inheriting the
 `slotted:main_menu` template with an About button injected at `buttons_end`,
 Play opening the chest, Escape pausing, the pause's Settings opening the
 showcase `SettingsSpec` screen persisted under the temporary directory, Quit
-confirming, a toast on quick stack. Verifies: `slotted-menu`, the fallback
-chain, the harness's menu helpers. `tests/flow.rs` runs the flow by gamepad.
+confirming, a toast on quick stack, and a Talk button starting the elder's
+dialogue from `assets/dialogue/greeting.dialogue.ron`, its third answer
+unlocked by a settings toggle. Verifies: `slotted-menu`, the fallback chain,
+the harness's menu and dialogue helpers. `tests/flow.rs` runs the flow and
+the conversation by gamepad.
 
 ### 5.5 `web-playground`
 
@@ -449,8 +452,20 @@ generating the settings screen, its defaults and rules, persisted through
 the `SettingsStore` port (`FileSettings`, `MemorySettings`); a
 `Localization` fallback chain so every template string has English without
 an `.ftl`; and `examples/menus` walking the whole flow by gamepad headless.
-The settings demo is a spec now. M3 and M4 (the playground's settings scene,
-the wasm bridge in the page, what the proposal lists after) follow it.
+The settings demo is a spec now. M3 is done (2026-09-09, contract
+`docs/design/menus-m3-contract.md`, notes
+`docs/design/menus-m3-notes-{A,B,C,D}.md`): a data-driven dialogue runner in
+`slotted-menu` (`.dialogue.ron` assets with `say`, `choice` and `end` nodes,
+options gated by a value store `Condition`, the `DialogueNodeEntered` /
+`DialogueChoice` / `DialogueEnded` messages and the `start`, `advance`,
+`choose`, `jump`, `end` commands), the `slotted:dialogue` screen (an overlay
+that takes focus, a typewriter on `RichReveal` and virtual time, portraits,
+option buttons with a gamepad walk, a history page, hint entries per state)
+over three foundation changes (`focus: true` overlays and
+`ScreenStack::focus_top`, `RichReveal`, `role` on text nodes), the harness's
+dialogue helpers, and the menus example's Talk button. M4 (the Lua bridge
+for the dialogue and the menus, the playground's settings scene, what the
+proposal lists after) follows it.
 
 ## 7. Testing strategy
 

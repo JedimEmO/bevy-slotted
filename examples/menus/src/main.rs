@@ -7,6 +7,9 @@
 //! cargo run -p menus -- --confirm --shot shots/menus-confirm.png
 //! cargo run -p menus -- --page --shot shots/menus-page.png
 //! cargo run -p menus -- --toast --shot shots/menus-toast.png
+//! cargo run -p menus -- --dialogue --shot shots/menus-dialogue.png
+//! cargo run -p menus -- --dialogue-choice --shot shots/menus-dialogue-choice.png
+//! cargo run -p menus -- --dialogue-history --shot shots/menus-dialogue-history.png
 //! cargo run -p menus -- --theme paper --main --shot shots/menus-main-paper.png
 //! ```
 //!
@@ -15,8 +18,10 @@
 //! values persist under the system's temporary directory; Quit on the pause
 //! asks before going back to the title, Quit on the title asks before
 //! leaving; About is a text page a mod-style injection added to the
-//! template; the chest's Quick stack shows a toast. Everything works on a
-//! pad: Start pauses, the d-pad walks, South selects, East goes back.
+//! template; Talk starts a conversation with the elder (`Enter` skips and
+//! continues, `X` opens the history, the settings' Demo tab unlocks the
+//! third answer); the chest's Quick stack shows a toast. Everything works on
+//! a pad: Start pauses, the d-pad walks, South selects, East goes back.
 //!
 //! The scene and the screenshot plumbing are the chest example's. Everything
 //! else comes out of `lib.rs`, which the headless tests use unchanged.
@@ -28,7 +33,10 @@ use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::window::WindowResolution;
 use menus::MenusDemoPlugin;
 use showcase::backdrop::{BackdropPlugin as SceneBackdropPlugin, MainCamera};
-use slotted::menu::{MenuConfig, SettingsStorage, ToastLevel, ToastSpec, toast};
+use slotted::menu::{
+    ActiveDialogue, MenuConfig, SettingsStorage, ToastLevel, ToastSpec, advance_dialogue,
+    choose_dialogue, open_history, toast,
+};
 use slotted::prelude::*;
 use slotted::theme::blur::{BackdropPlugin, BackdropSource};
 
@@ -36,6 +44,9 @@ const WIDTH: f32 = 1600.0;
 const HEIGHT: f32 = 900.0;
 /// How long the shot mode lets the scene settle before capturing.
 const SHOT_AT: f32 = 2.0;
+/// The dialogue shots walk a few nodes first and the typewriter needs its
+/// time, so they capture later.
+const DIALOGUE_SHOT_AT: f32 = 3.0;
 
 /// What a `--shot` shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,6 +62,21 @@ enum Shot {
     Page,
     /// Two toasts over the main menu.
     Toast,
+    /// The elder's first line, revealed, over the main menu.
+    Dialogue,
+    /// The choice after it, with its three options (one locked).
+    DialogueChoice,
+    /// The history page after answering Yes.
+    DialogueHistory,
+}
+
+impl Shot {
+    fn at(self) -> f32 {
+        match self {
+            Self::Dialogue | Self::DialogueChoice | Self::DialogueHistory => DIALOGUE_SHOT_AT,
+            _ => SHOT_AT,
+        }
+    }
 }
 
 /// Command line. Absent flags mean "interactive, forever".
@@ -77,6 +103,12 @@ fn main() {
         Shot::Page
     } else if has("--toast") {
         Shot::Toast
+    } else if has("--dialogue-choice") {
+        Shot::DialogueChoice
+    } else if has("--dialogue-history") {
+        Shot::DialogueHistory
+    } else if has("--dialogue") {
+        Shot::Dialogue
     } else {
         Shot::Main
     };
@@ -154,11 +186,15 @@ fn open_main_once(mut commands: Commands, screens: Res<Screens>, mut opened: Loc
 }
 
 /// `--shot`: what the flag asked for, staged a second before the capture,
-/// on the keyboard so the focus ring shows.
+/// on the keyboard so the focus ring shows. The dialogue shots walk the
+/// conversation with the runner's own commands at fixed times: start, skip
+/// the typewriter, continue to the choice, answer Yes, open the history.
+#[allow(clippy::too_many_arguments)]
 fn stage_shot(
     cli: Res<Cli>,
     time: Res<Time>,
     stack: Res<ScreenStack>,
+    dialogue: Option<Res<ActiveDialogue>>,
     mut mode: ResMut<slotted::ui::InputMode>,
     mut commands: Commands,
     mut stage: Local<u8>,
@@ -167,6 +203,7 @@ fn stage_shot(
         return;
     }
     let t = time.elapsed_secs();
+    let running = dialogue.is_some();
     // The real mouse may sit over the window and flip the mode back to
     // pointer, which hides the ring and the hint bar; a shot is a keyboard
     // shot.
@@ -207,6 +244,44 @@ fn stage_shot(
                 slotted::menu::PageSpec::new("demo.menus.about.title", "demo.menus.about.body"),
             );
         }
+        // The dialogue: Talk once the asset has registered, then the runner's
+        // commands at fixed times, so the capture shows a revealed line.
+        (1, Shot::Dialogue | Shot::DialogueChoice | Shot::DialogueHistory) if t >= 1.0 => {
+            *stage = 2;
+            menus::talk(&mut commands);
+        }
+        (2, Shot::Dialogue | Shot::DialogueChoice | Shot::DialogueHistory) => {
+            // Not registered yet: the start warned and did nothing; retry.
+            *stage = if running { 3 } else { 1 };
+        }
+        (3, Shot::Dialogue) if t >= 1.5 => {
+            *stage = 9;
+            advance_dialogue(&mut commands);
+        }
+        (3, Shot::DialogueChoice | Shot::DialogueHistory) if t >= 1.4 => {
+            *stage = 4;
+            advance_dialogue(&mut commands);
+        }
+        (4, Shot::DialogueChoice) if t >= 1.7 => {
+            *stage = 9;
+            advance_dialogue(&mut commands);
+        }
+        (4, Shot::DialogueHistory) if t >= 1.6 => {
+            *stage = 5;
+            advance_dialogue(&mut commands);
+        }
+        (5, Shot::DialogueHistory) if t >= 1.9 => {
+            *stage = 6;
+            choose_dialogue(&mut commands, "yes");
+        }
+        (6, Shot::DialogueHistory) if t >= 2.2 => {
+            *stage = 7;
+            advance_dialogue(&mut commands);
+        }
+        (7, Shot::DialogueHistory) if t >= 2.5 => {
+            *stage = 9;
+            open_history(&mut commands);
+        }
         (1, Shot::Toast) => {
             *stage = 9;
             toast(
@@ -224,7 +299,8 @@ fn stage_shot(
     }
 }
 
-/// `--shot`: capture at [`SHOT_AT`] seconds, then leave.
+/// `--shot`: capture at [`SHOT_AT`] seconds (or [`DIALOGUE_SHOT_AT`]), then
+/// leave.
 fn shot_and_exit(
     mut commands: Commands,
     time: Res<Time>,
@@ -233,7 +309,8 @@ fn shot_and_exit(
     mut taken: Local<bool>,
 ) {
     let Some(path) = cli.shot.clone() else { return };
-    if time.elapsed_secs() < SHOT_AT {
+    let shot_at = cli.show.at();
+    if time.elapsed_secs() < shot_at {
         return;
     }
     if !*taken {
@@ -248,7 +325,7 @@ fn shot_and_exit(
         return;
     }
     // One extra half-second so the screenshot reaches the disk.
-    if time.elapsed_secs() > SHOT_AT + 0.5 {
+    if time.elapsed_secs() > shot_at + 0.5 {
         exit.write(AppExit::Success);
     }
 }

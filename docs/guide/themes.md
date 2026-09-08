@@ -69,7 +69,7 @@ how you opt into distinguishing it.
 State changes are role changes. The slot widget swaps `slot` for `slot.hover`,
 and only the changed node repaints.
 
-`roles::ALL` is the 101 well-known roles. A theme that covers them covers every
+`roles::ALL` is the 105 well-known roles. A theme that covers them covers every
 shipped widget.
 
 | Group | Roles |
@@ -78,6 +78,7 @@ shipped widget.
 | Slots | `slot`, `slot.hover`, `slot.focus`, `slot.carried`, `count` |
 | Text | `text`, `text.muted`, `text.display`, `text.heading`, `text.label`, `text.caption`, `text.key` (a `{key:..}` glyph), `text.icon` (an item name in a paragraph), `control.label` (a control's label), `text.inverse` (a label on an accent fill) |
 | Menus | `menu.title`, `menu.version`, `hint.bar`, `hint.glyph`, `hint.label`, `toast`, `toast.info`, `toast.success`, `toast.warning`, `toast.error`, `toast.text` |
+| Dialogue | `dialogue` (the panel), `dialogue.speaker`, `dialogue.text`, `dialogue.portrait` (the frame around the image) |
 | Buttons | `button`, `button.primary`, `button.danger`, `button.hover`, `button.focus`, `button.pressed`, `button.disabled` |
 | Toggles | `toggle`, `toggle.on`, `toggle.thumb`, `toggle.hover`, `toggle.focus`, `toggle.disabled`, `checkbox`, `checkbox.on` |
 | Sliders | `slider`, `slider.fill`, `slider.thumb`, `slider.text`, `slider.focus`, `slider.disabled` |
@@ -117,6 +118,23 @@ this means for a theme: an accent fill has to contrast with the inverse
 colour, not the normal one, so a translucent danger fill over a dark panel
 with a dark inverse label is unreadable. The three themes paint danger
 solid for that reason.
+
+A label under a disabled control dims the same way: a `*.disabled` role paints
+its label with `control.label.disabled` when the theme defines it, else with
+`text.muted`. The three themes define it; a dialogue's locked option is where
+it shows.
+
+A text node may name its own role (`role: "dialogue.speaker"` on a `text` or
+a `rich_text`, [screens.md](screens.md#text)) and is painted with it instead
+of its style's `text.*` role; a role the theme lacks falls back to the style's
+with one warning, through a `ThemedFallback` component beside `Themed`. One
+caveat that follows from the dotted fallback: a theme that defines `dialogue`
+but not `dialogue.speaker` paints the speaker with `dialogue`'s panel
+material, because the dotted lookup finds `dialogue` before the fallback is
+consulted. A theme that adds a group should define all of its text roles; the
+three shipped themes define all four dialogue roles (glass a translucent
+sheet with the speaker in the accent, neon a hard-edged panel, paper a
+hairline-ruled box with a bold mono speaker and no scrim).
 
 The hint bar reads the *kind* of `hint.glyph`: a `Text` material means "no
 pill, draw `[Enter]`" (paper); anything else is a pill with the glyph text in
@@ -173,13 +191,14 @@ elevation colours and rarity colours.
 | Token | Fields | Meaning |
 |---|---|---|
 | `spacing` | `xs`, `sm`, `md`, `lg`, `xl` | Logical pixels. `xs` icon to count, `sm` slot gap, `md` panel padding, `lg` between sections, `xl` between panels. A screen's `gap` and `padding` are multiples of `sm`. |
-| `sizes` | `slot_size`, `slot_gap`, `panel_width`, `card_width`, `card_height`, `chrome_height`, `control_height`, `control_height_compact` | Widget geometry in UI units. Every field is optional and defaults to the number the code used before it was a token: a 44 px slot, the spacing scale's `sm` step between slots, the item browser's 352 px panel of 75x94 cards above 190 px of chrome, and a 44 px control row (28 compact). See [Sizes and UI scale](#sizes-and-ui-scale). |
+| `sizes` | `slot_size`, `slot_gap`, `panel_width`, `card_width`, `card_height`, `chrome_height`, `control_height`, `control_height_compact`, `portrait` | Widget geometry in UI units. Every field is optional and defaults to the number the code used before it was a token: a 44 px slot, the spacing scale's `sm` step between slots, the item browser's 352 px panel of 75x94 cards above 190 px of chrome, a 44 px control row (28 compact), and a 64 px dialogue portrait. See [Sizes and UI scale](#sizes-and-ui-scale). |
 | `radii` | `sm`, `md`, `lg` | Slots and small buttons, buttons and tooltips, panels. |
 | `elevation` | a map of `(x, y, blur, spread, color)` | Named shadow levels, `low`, `mid` and `high` by convention. `x` defaults to 0; paper's ink shadows are `2px 2px 0`. |
 | `durations` | `fast`, `normal`, `slow`, `hover_delay` | Milliseconds. The first three are motion tiers before scaling: hover and press, fades, squashes and fly-to-slot, stagger. `hover_delay` is how long a slot is hovered before its compact tooltip appears; it defaults to 120 and is not scaled by `Motion`. |
 | `fonts` | a map of names to `(family, path, system)` | What a text role's `font` names. With `path` the file is loaded; with `system: true` the family goes to the OS font database; with neither, Bevy's default face is used and the family name documents which file completes the look. The three shipped themes use `path`, pointing at the OFL faces under `assets/fonts/`; see `assets/fonts/README.md`. |
 | `typography` | a map of names to `(size, font, weight, line_height)` | The type scale a `Text` material's `"$name"` size points at. See [Typography](#typography). |
 | `motion` | `easing` and a map of `MotionPreset` to `(duration, easing)` | Per-preset overrides of the duration tiers and the curve. |
+| `dialogue` | `chars_per_second`, `choice_delay` | The typewriter: glyphs per second of virtual time (40; `0` shows a line at once) and the milliseconds after a prompt before its options appear (150). Both are ignored under reduced motion ([dialogue.md](dialogue.md#the-typewriter)). |
 | `blur` | `radius`, `backdrop_divisor` | Read only with the `blur` feature. |
 | `palette` | a map of names to colours | The `$name` targets. |
 | `rarity` | a map of rarity names to colours | Tints item names in tooltips and browser cards. |

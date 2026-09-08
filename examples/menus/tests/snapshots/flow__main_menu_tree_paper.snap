@@ -111,6 +111,17 @@ ScreenTree(
                           widget: Some("slotted:button"),
                           visible: true,
                         ),
+                        TreeNode(
+                          role: Button,
+                          label: Some("demo.menus.talk"),
+                          test_id: Some("talk"),
+                          tags: {
+                            "menu": "talk",
+                            "test_id": "talk",
+                          },
+                          widget: Some("slotted:button"),
+                          visible: true,
+                        ),
                       ],
                     ),
                   ],

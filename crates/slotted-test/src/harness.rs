@@ -163,7 +163,10 @@ impl UiHarnessBuilder {
             p(&mut app);
         }
         #[cfg(feature = "menu")]
-        app.add_plugins(crate::menu::MenuChoiceRecorder);
+        app.add_plugins((
+            crate::menu::MenuChoiceRecorder,
+            crate::menu::DialogueRecorder,
+        ));
         if let Some(m) = self.motion {
             app.insert_resource(m);
         }

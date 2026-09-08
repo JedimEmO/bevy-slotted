@@ -1,0 +1,25 @@
+// The menus example's conversation (menus M3 contract 3.1). A `Dialogue` is a
+// list of nodes: `say` lines with a speaker and a portrait, a `choice` with
+// options, and `end`. The strings are Fluent keys in `locale/en-US.ftl`; the
+// `secret` option shows disabled until the value store's `demo.found_key`
+// holds, which the settings screen's Demo tab toggles. `DialogueAssets::load`
+// reads this file; `Dialogues::register(Dialogue::from_ron(..))` is the same
+// without the asset server. docs/guide/dialogue.md explains the format.
+#![enable(implicit_some)]
+(
+    id: "demo:greeting",
+    start: "hello",
+    nodes: {
+        "hello": say(speaker: "demo-elder", portrait: (image: "portraits/elder.png"),
+                     text: "demo-greeting-hello", next: "ask"),
+        "ask": choice(prompt: "demo-greeting-ask", options: [
+            (id: "yes", text: "demo-yes", next: "yes"),
+            (id: "no", text: "demo-no", next: "bye"),
+            (id: "secret", text: "demo-secret", next: "secret", enabled_if: "demo.found_key"),
+        ]),
+        "yes": say(speaker: "demo-elder", portrait: (image: "portraits/elder.png"),
+                   text: "demo-greeting-yes", args: {"name": "Traveller"}, next: "bye"),
+        "secret": say(text: "demo-greeting-secret", next: "bye"),
+        "bye": end,
+    },
+)

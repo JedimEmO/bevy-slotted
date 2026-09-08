@@ -220,6 +220,7 @@
         "text.inverse": Text(color: "$charcoal", size: "$label", weight: 700),
         "control.label": Text(color: "$text", size: "$body"),
         "control.label.inverse": Text(color: "$charcoal", size: "$body", weight: 700),
+        "control.label.disabled": Text(color: "#7A8190", size: "$body"),
         "text.label.inverse": Text(color: "$charcoal", size: "$label", weight: 700),
         "button.danger": CutCorners(fill: "$danger", border: "$danger", cut: 8.0),
         // Menus M2: primary and danger keep their fill through the states.

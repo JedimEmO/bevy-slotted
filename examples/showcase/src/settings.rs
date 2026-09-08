@@ -43,12 +43,30 @@ fn option(id: &str, label: &str) -> SelectOption {
     }
 }
 
-/// The demo's settings: three tabs, every M1 control, the same `settings.*`
-/// keys the M1 fixture bound.
+/// The demo's settings: three tabs with every M1 control, the same
+/// `settings.*` keys the M1 fixture bound, and a fourth tab for the switches
+/// the examples' demos read (menus M3: `demo.found_key`).
 pub fn spec() -> SettingsSpec {
-    controls_tab(audio_tab(display_tab(SettingsSpec::new(ScreenKind::new(
-        SETTINGS,
+    demo_tab(controls_tab(audio_tab(display_tab(SettingsSpec::new(
+        ScreenKind::new(SETTINGS),
     )))))
+}
+
+/// The key the menus example's dialogue gates its `secret` option on: a
+/// plain toggle here, a `Condition` in `assets/dialogue/greeting.dialogue.ron`.
+pub const FOUND_KEY: &str = "demo.found_key";
+
+/// Demo: what the examples' demos read from the store. A game would keep
+/// its own flags out of the settings screen; the example puts one here so
+/// the dialogue's gated option can be tried without playing for it.
+fn demo_tab(spec: SettingsSpec) -> SettingsSpec {
+    spec.tab("demo", "demo.settings.tab.demo")
+        .row(SettingsRow::Toggle {
+            key: FOUND_KEY.to_owned(),
+            label: key("demo.settings.demo.found_key"),
+            default: false,
+            style: ToggleStyle::Switch,
+        })
 }
 
 /// Display: one of each value control.
@@ -329,6 +347,7 @@ mod tests {
         assert_eq!(
             spec.keys(),
             vec![
+                "demo.found_key",
                 "settings.audio.device",
                 "settings.audio.effects",
                 "settings.audio.master",

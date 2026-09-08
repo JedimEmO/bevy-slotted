@@ -74,9 +74,11 @@ demo-settings-footer = Press {"{key:back}"} to close, {"{key:tab_next}"} for the
 | `Pointer` | `Enter` | `Esc` | `Up` |
 
 Pointer mode shows the keyboard binding, because a mouse has none and a footer
-that says "Press  to go back" helps nobody. Gamepad buttons use Xbox-style
-names (`A`, `B`, `X`, `Y`, `LB`, `RT`, `L3`, `Start`); an unbound action shows
-its own name. The span re-renders when the mode flips and when `UiBindings`
+that says "Press  to go back" helps nobody. Gamepad buttons are named for the
+resolved `GlyphSet` ([input.md](input.md#glyph-sets)): Xbox-style by default
+(`A`, `B`, `X`, `Y`, `LB`, `RT`, `L3`, `Start`), `Cross`, `Circle`, `L1` and
+`Options` on a PlayStation pad, and the Nintendo names on a Switch one; an
+unbound action shows its own name. The span re-renders when the mode flips and when `UiBindings`
 changes, so a `key_binding` row that rebinds `Accept` updates every footer on
 the screen the same frame. `key_glyph(KeyCode)` and `button_glyph(button)` are
 public for anything else that wants the same spelling.
@@ -89,6 +91,20 @@ the node is a single-line row instead of a `Text`: text fragments and
 `ImageNode` icons sit side by side as flex items, each icon a square of the
 base style's line height. Inline gives up wrapping, which is the price of a
 real picture in a sentence; use it for a hint bar, not a paragraph.
+
+## Reveal
+
+`RichReveal` on a `rich_text` node shows the first `n` units of the paragraph:
+`RichReveal(Some(n))`, or `RichReveal::ALL` (the same as no component). A unit
+is one `char` of a text run, and a `{key:..}` or `{icon:..}` run is one unit,
+shown whole or not at all; `RichReveal::units(&runs)` counts what a full
+reveal needs. The reveal is painted, not laid out: every run is spawned in
+full, and the unrevealed rest of a run is a second span in the same font with
+a transparent colour (an inline icon is `Visibility::Hidden`, still laid out),
+so the paragraph keeps its line breaks and its height while it types. A
+change to the component re-renders the spans without re-parsing the markup.
+The dialogue's typewriter ([dialogue.md](dialogue.md#the-typewriter)) writes
+it every frame; anything else that wants a line to appear gradually can too.
 
 ## Styling
 
@@ -105,5 +121,6 @@ spans would need the cut to land inside a run and keep the tail's styles.
 
 `text_of(root)` on a wrapped node is the semantic label; the rendered runs are
 the `TextSpan` children, and `RichRuns` on the root holds the parsed runs for
-inspection. The settings demo's tests read the footer's spans to assert that
+inspection. A revealed prefix is the spans whose `TextColor` has any alpha,
+which is what `UiHarness::dialogue_text()` concatenates. The settings demo's tests read the footer's spans to assert that
 `{key:back}` says `Esc` on a keyboard and `B` on a pad.

@@ -7,6 +7,137 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Menus M3: dialogue
+
+`docs/design/menus-proposal.md` section 5.3, made binding by
+`docs/design/menus-m3-contract.md`. A data-driven dialogue runner and the
+`slotted:dialogue` screen: a `.dialogue.ron` of `say`, `choice` and `end`
+nodes, lines typed out on virtual time with a speaker and a portrait,
+options gated by the value store, a history page, and three messages telling
+the game what happened. The runner never evaluates more than "is this key
+truthy"; what a choice does is the game's business.
+
+#### Added
+
+- **`slotted_menu::dialogue`**: `DialogueId` and `NodeId` (`serde(transparent)`
+  newtypes over `String`, `new`), `Dialogue { id, start, nodes }` (an
+  `Asset`; `from_ron`, `validate`, `node`), `DialogueNode::{Say, Choice,
+  End}`, `ChoiceOption { id, text, next, enabled_if }`, `Condition { key,
+  negate }` (`parse` of `key` and `!key`, `holds` against a `ValueStore`:
+  a `Bool` is itself, a number non-zero, text non-empty, a missing key
+  false), `DialogueError::{Ron, MissingNode, MissingStart, EmptyChoice,
+  DuplicateOption, BadCondition}`; `Dialogues` (`register`, `get`, `ids`),
+  `DialogueLoader` for `*.dialogue.ron`, `DialogueAssets::load`,
+  `apply_dialogue_assets` (registers on `Added` and `Modified`, a running
+  dialogue keeps its `Arc`), `DialogueConfig { kind, back_cancels: false,
+  history: true }`; `ActiveDialogue { dialogue, node, root, revealed,
+  history }` with `current` and `options(Option<&ValueStore>)`,
+  `HistoryLine { speaker, text }`; the commands `start_dialogue(id)`
+  (warns when unknown; ends a running one `Replaced`), `start_dialogue_with(
+  Arc<Dialogue>)`, `advance_dialogue` (reveal, then `next`), `choose_dialogue(
+  id)` (a disabled option is a no-op with a warning), `jump_dialogue(node)`,
+  `end_dialogue`; the messages `DialogueNodeEntered { dialogue, node }`,
+  `DialogueChoice { dialogue, node, option, index }`, `DialogueEnded {
+  dialogue, node, reason }` with `EndReason::{Finished, Cancelled,
+  Replaced}`; `dialogue_actions` (`Navigate`, before `pop_on_back` and
+  `pause_on_menu`: `Accept` advances a line, `Back` cancels when
+  `back_cancels`, `Secondary` opens the history, all only while the dialogue
+  is the focus top) and `on_dialogue_closed` (a screen closed from outside
+  cancels). `kinds::dialogue()`; `MenuPlugin` registers the loader, the
+  resources, the messages and the template.
+- **`slotted_menu::dialogue_screen`** and the `slotted:dialogue` template
+  (an overlay with `focus: true`, no scrim, `slide_up`, `back: ignore`, a
+  panel placed at the bottom; ids `portrait`, `speaker`, `text`, `choices`,
+  `hints`, `continue`; anchors `header_end`, `text_end`, `choices_end`,
+  `footer`): `DialogueScreen`, `DialogueLine { elapsed, units, total }`,
+  `DialogueChoices`, `DialogueChoicesPending { root, elapsed }`,
+  `DialogueOption { id, index }`, `OPTION_TAG` (`dialogue.option`),
+  `option_test_id(id)` (`option.<id>`), `present_dialogue_node` (speaker,
+  portrait through `IconImages`, the line as `RichText` with `RichReveal(
+  Some(0))`, or the prompt and one `button` per option with `nav.up` /
+  `nav.down` links over the enabled ones, focus on the first enabled),
+  `typewriter` (virtual time, `chars_per_second`; jumps to the end when the
+  runner is marked revealed; `choice_delay` before the buttons; reduced
+  motion or `0` shows everything at once), `on_option_activate`,
+  `open_history` (a `slotted:page` titled `History` whose body is
+  `transcript(&history)`, `[b]speaker[/b]` over each line), and the hint
+  entries per state through the bar's tags. Strings
+  `slotted.menu.dialogue.{speaker, continue, skip, next, history, leave}`.
+- **The hint bar's own tags**: `hint.accept` on the bar is the Accept entry
+  when the focused node contributed none, `hint.secondary` and `hint.back`
+  add those entries (`hint_bar::{SECONDARY_TAG, BACK_TAG}`); a change to a
+  bar's tags rebuilds it.
+- **`slotted-ui`**: `Presentation.focus: Option<bool>` (RON `focus: true`;
+  default is the mode's) and `Presentation::takes_focus`,
+  `ScreenStack::focus_top` (the topmost entry that takes focus, which
+  `restore_focus`, `enforce_focus_scope`, `focus_on_spawn` and the tabs
+  fallback now use; `top`, `pop_screen`, `pop_on_back` and `pause_on_menu`
+  keep meaning the top non-overlay entry), `close_stacked(commands, root)`
+  and the `CloseStacked` command (one entry by root, wherever it sits).
+  `RichReveal(Option<usize>)` with `ALL` and `units(&runs)`: a unit is a
+  `char` of a text run or a whole `{key:..}` / `{icon:..}` run; the
+  unrevealed rest is a transparent span in the same font (an inline icon
+  `Visibility::Hidden`), so a paragraph never reflows while it reveals;
+  `render_rich_text` re-renders on a change or a removal without
+  re-parsing. `role: Option<Role>` on `UiNodeDef::Text` and `RichText`
+  (`TextOpts.role`, `RichText.role`): the paint role instead of the style's,
+  a missing one falling back with one warning. `ScreenDef::set_text`
+  reaches a `Button`'s label (`confirm::set_button_label` is a call to it).
+- **`slotted-theme`**: `ThemedFallback(Role)` beside `Themed` (`apply_theme`
+  paints the fallback's material with one warning per paint when the theme
+  lacks the role), `Tokens.dialogue: DialogueTokens { chars_per_second: 40,
+  choice_delay: 150 }`, `Sizes.portrait` (64), and the roles `dialogue`,
+  `dialogue.speaker`, `dialogue.text`, `dialogue.portrait` (`roles::ALL` is
+  105) with materials in the three themes. The themes also define
+  `control.label.disabled`.
+- **A disabled control's label dims**: `invert_active_labels` paints the
+  label under a `*.disabled` role with `<rest>.disabled`
+  (`control.label.disabled`) when the theme defines it, else `text.muted`
+  (`controls::disabled_of`); before, a locked dialogue option read exactly
+  like an open one.
+- **`slotted-test`** (the `menu` feature): `UiHarness::{start_dialogue,
+  dialogue, dialogue_revealed, dialogue_text, dialogue_options,
+  dialogue_advance, dialogue_choose, dialogue_history, dialogue_events}`,
+  `DialogueEvent::{Entered, Chosen, Ended}` (in the prelude), the
+  `DialogueRecorder` plugin and `DialogueEventLog` the builder adds beside
+  `MenuChoiceRecorder`.
+- **`examples/menus`**: a Talk button injected beside About (one injection
+  carrying both, since two at one anchor sit side by side) starting
+  `demo:greeting` from `assets/dialogue/greeting.dialogue.ron`, loaded
+  through `DialogueAssets`; the elder's portrait under `assets/portraits/`;
+  the `yes` answer earns a toast; the `secret` answer unlocks when the
+  settings' Demo tab's `demo.found_key` toggle is on. `--shot` with
+  `--dialogue`, `--dialogue-choice`, `--dialogue-history`; five reference
+  shots; `tests/flow.rs` walks the conversation by gamepad. `menus::{
+  GREETING, GREETING_PATH, greeting_id, load_dialogue, talk, thank_on_yes,
+  FOUND_KEY}`. `just shot-menus` extended.
+- **`showcase::settings`**: a fourth tab, `demo`, with the
+  `demo.found_key` toggle (`FOUND_KEY`).
+- **`docs/guide/dialogue.md`**, and the M3 sections of `menus.md`,
+  `screens.md`, `rich-text.md` (`RichReveal`, and the glyph set), `themes.md`,
+  `input.md` and `testing.md`.
+
+#### Changed
+
+- **The main menu template names its roles**: `menu.title` and
+  `menu.version` are `role:`s on its two text nodes rather than unused
+  entries in the theme.
+- **`render_rich_text`** takes `Option<Ref<RichReveal>>` and
+  `RemovedComponents<RichReveal>` beside `Ref<RichText>`.
+- **`enforce_focus_scope` and `restore_focus` scope to `focus_top()`**, so a
+  `focus: true` overlay pushed over a page clears the page's focus the same
+  frame and gets it back when a modal above it pops; a plain overlay is
+  skipped both ways as before.
+- **A hint bar on an overlay lists no Back entry** whatever the screen's
+  `back` policy, since `pop_on_back` never pops an overlay; the `hint.back`
+  tag is how an overlay names one.
+- **`dialogue_actions` drains its reader while it is not listening**, so the
+  `Accept` that activated the button which started a dialogue is not read
+  as fresh the frame the screen takes focus (it revealed the first line
+  before anyone saw it type).
+- **`crates/slotted-ui/tests/foundation_m2.rs`** expects `set_text` to
+  rewrite a button label, which it pinned as not happening.
+
 ### Menus M2: the `slotted-menu` crate
 
 `docs/design/menus-proposal.md` section 5, made binding by

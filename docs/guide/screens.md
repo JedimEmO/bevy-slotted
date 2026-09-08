@@ -54,7 +54,8 @@ presentation: (mode: "modal", scrim: true, transition: "slide_up", back: "pop"),
 
 | Field | Values | Default | |
 |---|---|---|---|
-| `mode` | `page`, `modal`, `overlay` | `page` | A `page` hides every stack entry below it and takes focus. A `modal` keeps the entries below visible, draws a scrim, traps focus and takes it. An `overlay` takes no focus, blocks no input and is not counted by `Back`. |
+| `mode` | `page`, `modal`, `overlay` | `page` | A `page` hides every stack entry below it and takes focus. A `modal` keeps the entries below visible, draws a scrim, traps focus and takes it. An `overlay` blocks no input and is not counted by `Back`, and takes no focus unless `focus: true`. |
+| `focus` | bool | `true` for `page` and `modal`, `false` for `overlay` | Whether the screen takes focus when it is the topmost entry that does. A `focus: true` overlay (the dialogue) holds the focus over the page under it and gives it back when it closes; a modal pushed above takes it and returns it on pop. `Back` still never pops an overlay. |
 | `scrim` | bool | `true` for `modal`, else `false` | Draw the themed `scrim` role under the screen. |
 | `transition` | `fade`, `slide_up`, `slide_left`, `none` | `fade` | The arrival motion, on the theme's motion tokens. Reduced motion collapses all of them to a fade. |
 | `back` | `pop`, `ignore` | `pop` | What an unclaimed `Back` does to this screen when it is on top. |
@@ -64,8 +65,9 @@ presentation: (mode: "modal", scrim: true, transition: "slide_up", back: "pop"),
 `initial_focus` names the node (by its `test_id`) that takes focus when the
 screen opens: the node itself when it is focusable, else its first focusable
 descendant, so naming a grid focuses its first slot. Without it, the first
-focusable node in tree order takes focus. Only a `page` or a `modal` takes
-focus, and only when it is the top of the stack.
+focusable node in tree order takes focus. A screen takes focus only when it
+is the topmost entry whose presentation takes it (`ScreenStack::focus_top()`:
+a `page`, a `modal`, or an `overlay` with `focus: true`).
 
 Inside a container Bevy's directional navigator picks the neighbour. Between
 containers, four reserved tags say where focus goes:
@@ -177,6 +179,7 @@ where only the visible rows exist as entities. For a list of thousands.
 | `wrap` | bool | `true` | Wrap at the node's width. `false` is one line, however wide. |
 | `align` | `left`, `center`, `right` | `left` | Line alignment. |
 | `max_lines` | integer | none | Truncate with `…` once the laid-out paragraph passes this many lines. |
+| `role` | string | none | Paint this theme role instead of the style's: `role: "menu.title"` on a `title`-styled text. A role the theme lacks falls back to the style's with one warning. |
 
 A `text` node is plain: markup tags in the string are shown as written. For
 bold runs and key glyphs use `rich_text`.
@@ -192,6 +195,7 @@ A paragraph in the [rich-text markup](rich-text.md): `[b]`, `[i]`, `[color=..]`,
 | `style` | string | `body` | The base style, as for `text`. |
 | `args`, `wrap`, `align` | | as for `text` | `max_lines` is accepted but ignored on a `rich_text`. |
 | `inline` | bool | `false` | A single-line row whose `{icon:..}` runs are real images beside the text rather than item names in it. |
+| `role` | string | none | As for `text`: the base paint for every span, `dialogue.text` say, falling back to the style's role. |
 
 ```ron
 (type: "rich_text", key: "settings.footer", style: "caption",
@@ -646,9 +650,10 @@ fn resume(mut commands: Commands) {
 | `push_screen(commands, def, menu) -> Entity` | Resolves `def` through `Screens`, spawns it, records the entry, applies its presentation. |
 | `replace_screen(commands, def, menu) -> Entity` | Pops the top non-overlay entry, then pushes. |
 | `pop_screen(commands)` | Closes the top non-overlay entry and its menu. |
+| `close_stacked(commands, root)` | Closes one entry by its root wherever it sits, an overlay under a modal say, leaving the rest alone. A root the stack does not hold closes like `close_screen`. |
 | `pop_to(commands, &kind)` | Pops until `kind` is on top, overlays included. A no-op when `kind` is not open. |
 | `clear_screens(commands)` | Pops everything. |
-| `ScreenStack::top()`, `top_any()`, `is_open(&kind)`, `kinds()`, `entries()` | What is open. `top()` skips overlays. |
+| `ScreenStack::top()`, `top_any()`, `focus_top()`, `is_open(&kind)`, `kinds()`, `entries()` | What is open. `top()` skips overlays; `focus_top()` is the topmost entry that takes focus. |
 | `StackChanged { kinds }` | A message written after every change, bottom to top. |
 
 An unclaimed `Back` action (Escape, or East on a pad) pops the top entry when
