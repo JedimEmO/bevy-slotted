@@ -1,6 +1,6 @@
 # Menus M3 contract: dialogue
 
-Status: v1.2, 2026-09-09 (v1.0 plus the "v1.1 (B)" and "v1.2 (C)" notes). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
+Status: v1.3, 2026-09-09 (v1.0 plus the "v1.1 (B)", "v1.2 (C)" and "v1.3 (review)" notes; the review round is `docs/design/menus-m3-notes-review.md`). Bevy 0.19.1. Companion to `docs/design/menus-proposal.md` (v0.3)
 section 5.3, and to the M0, M1 and M2 contracts whose vocabulary this uses without restating. Four
 packages: **A** (foundation changes in `slotted-ui` and `slotted-theme`), **B** (the dialogue
 model, the registry and asset loader, the runner) and **C** (the `slotted:dialogue` screen: template,
@@ -90,6 +90,7 @@ pub struct ActiveDialogue {
     pub dialogue: Arc<Dialogue>, pub node: NodeId, pub root: Entity,   // the screen root
     pub revealed: bool,                                                  // the current say line is fully shown
     pub history: Vec<HistoryLine>,
+    pub entered: u64,   // v1.3 (review): entries so far, counting a re-entry of the current node, so a `jump` back re-presents
 }
 pub struct HistoryLine { pub speaker: Option<String>, pub text: String }   // resolved markup, recorded when a say node is entered
 impl ActiveDialogue { pub fn current(&self) -> &DialogueNode; pub fn options(&self, values: Option<&ValueStore>) -> Vec<(usize, &ChoiceOption, bool /* enabled */)>; }   // v1.1 (B): `Option`, as the skeleton had it; no store = every option enabled

@@ -27,7 +27,22 @@ The dialogue runner and screen (`docs/design/menus-m3-contract.md`,
 - **A value store change while a choice is up does not re-enable its
   buttons.** The runner re-checks the condition on `choose`, so a stale
   button is a no-op with a warning rather than a wrong jump; re-presenting
-  the column on a `ValueStore` change is a small addition.
+  the column on a `ValueStore` change is a small addition. The game's own
+  way out is `jump_dialogue` back to the choice, which the review round
+  made rebuild the column.
+- **A choice whose every option is gated off strands the player.** Nothing
+  is focusable, and with the default config (`back_cancels` false, the
+  template's `back: "ignore"`) no key leaves the screen. The review round
+  made the presenter log an error naming the dialogue and node, since it is
+  a data mistake, and a game can still set the value and `jump` back; a
+  runner-level escape (letting `Back` cancel a choice with no live option)
+  is the fuller fix.
+- **A hot reload of `slotted:dialogue` cancels the conversation.**
+  `respawn_screens` closes the open root, `on_dialogue_closed` reads that as
+  the screen going away and ends the run with `Cancelled`, and the respawned
+  root has no `DialogueScreen`. The same shape as the M2 confirm entry
+  below; re-pointing `ActiveDialogue.root` at the new root, or skipping the
+  close observers on a respawn, would fix both.
 - **A `jump` to a choice while a modal sits above** spawns the buttons and
   leaves focus alone; the modal's pop lands on nothing focused until the
   player moves.

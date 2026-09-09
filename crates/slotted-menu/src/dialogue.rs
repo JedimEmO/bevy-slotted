@@ -439,6 +439,11 @@ pub struct ActiveDialogue {
     pub revealed: bool,
     /// Everything said so far, in order.
     pub history: Vec<HistoryLine>,
+    /// How many nodes have been entered, counting re-entries. The screen
+    /// watches it, so a [`jump_dialogue`] back to the node already showing
+    /// rebuilds the line and its options instead of being mistaken for no
+    /// change at all.
+    pub entered: u64,
 }
 
 impl ActiveDialogue {
@@ -489,13 +494,23 @@ fn finish(world: &mut World, reason: EndReason) {
 
 /// Enters `node` of the running dialogue (contract 3.2). The caller has
 /// checked that the node exists.
+///
+/// A node that is missing anyway ends the run rather than returning: leaving
+/// [`ActiveDialogue`] pointing at a node the dialogue does not hold would
+/// panic [`ActiveDialogue::current`] on the next frame. `from_ron` rejects a
+/// dangling reference, so this only answers a [`Dialogue`] built in code.
 fn enter(world: &mut World, node: NodeId) {
     let Some(active) = world.get_resource::<ActiveDialogue>() else {
         return;
     };
     let dialogue = Arc::clone(&active.dialogue);
     let Some(def) = dialogue.node(&node) else {
-        tracing::warn!(dialogue = %dialogue.id, node = %node, "dialogue: no such node");
+        tracing::warn!(
+            dialogue = %dialogue.id,
+            node = %node,
+            "dialogue: no such node; ending the run"
+        );
+        finish(world, EndReason::Cancelled);
         return;
     };
     let entered = DialogueNodeEntered {
@@ -522,16 +537,20 @@ fn enter(world: &mut World, node: NodeId) {
             active.node = node;
             active.revealed = false;
             active.history.push(line);
+            active.entered += 1;
             world.write_message(entered);
         }
         DialogueNode::Choice { .. } => {
             let mut active = world.resource_mut::<ActiveDialogue>();
             active.node = node;
             active.revealed = true;
+            active.entered += 1;
             world.write_message(entered);
         }
         DialogueNode::End => {
-            world.resource_mut::<ActiveDialogue>().node = node;
+            let mut active = world.resource_mut::<ActiveDialogue>();
+            active.node = node;
+            active.entered += 1;
             world.write_message(entered);
             finish(world, EndReason::Finished);
         }
@@ -548,6 +567,14 @@ fn follow(world: &mut World, next: Option<NodeId>) {
 
 /// The body of [`start_dialogue_with`], on the world.
 fn start_with(world: &mut World, dialogue: Arc<Dialogue>) {
+    // `from_ron` validates, but `Dialogues::register` and this function both
+    // take a `Dialogue` a game may have built by hand, whose fields are
+    // public. Checking here means a broken conversation never opens a screen
+    // at all, rather than opening one and closing it a frame later.
+    if let Err(error) = dialogue.validate() {
+        tracing::warn!(dialogue = %dialogue.id, %error, "dialogue: refusing to start");
+        return;
+    }
     if world.contains_resource::<ActiveDialogue>() {
         finish(world, EndReason::Replaced);
     }
@@ -580,6 +607,7 @@ fn start_with(world: &mut World, dialogue: Arc<Dialogue>) {
         root,
         revealed: false,
         history: Vec::new(),
+        entered: 0,
     });
     enter(world, start);
 }

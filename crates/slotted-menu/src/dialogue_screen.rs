@@ -26,7 +26,7 @@ use slotted_ui::{
     active_tokens,
 };
 
-use crate::dialogue::{ActiveDialogue, DialogueConfig, DialogueNode, HistoryLine, NodeId};
+use crate::dialogue::{ActiveDialogue, DialogueConfig, DialogueNode, HistoryLine};
 use crate::hint_bar::{self, HintBar};
 
 /// On the dialogue screen's root.
@@ -76,13 +76,13 @@ pub fn option_test_id(id: &str) -> String {
     format!("option.{id}")
 }
 
-/// What the screen last drew, on the root: the node and how long the
-/// history was, so a re-entry of the same node (a `jump` back) presents
-/// again while a reveal flip does not.
+/// What the screen last drew, on the root: which entry of the run it was.
+/// `ActiveDialogue::entered` counts every entry including a re-entry of the
+/// node already showing, so a `jump` back re-presents while a reveal flip,
+/// which changes no entry, does not.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 struct Presented {
-    node: NodeId,
-    lines: usize,
+    entered: u64,
 }
 
 /// The `test_id`s of the template nodes the screen rewrites.
@@ -339,6 +339,20 @@ fn spawn_choices(world: &mut World, root: Entity) {
         }
     }
     set_visible(world, column, true);
+    // Every option gated off leaves nothing to focus and, with the default
+    // config (`back_cancels` false, the template's `back: "ignore"`), nothing
+    // the player can press: a data mistake, so it is reported as one. The
+    // game can still recover by setting the value its conditions read and
+    // calling `jump_dialogue` back to this node.
+    if first.is_none()
+        && let Some(active) = world.get_resource::<ActiveDialogue>()
+    {
+        tracing::error!(
+            dialogue = %active.dialogue.id,
+            node = %active.node,
+            "dialogue: every option of this choice is disabled; nothing is focusable"
+        );
+    }
     // Focus goes to the first enabled option while the dialogue holds the
     // focus top; under a modal the modal's pop restores what it finds.
     let on_top = world
@@ -411,7 +425,7 @@ fn present(world: &mut World) {
     }
     let fresh = world
         .get::<Presented>(root)
-        .is_none_or(|p| p.node != active.node || p.lines != active.history.len());
+        .is_none_or(|p| p.entered != active.entered);
     if fresh {
         let tokens = active_tokens(world);
         let reduced = world.get_resource::<Motion>().is_some_and(|m| m.reduced);
@@ -471,8 +485,7 @@ fn present(world: &mut World) {
             DialogueNode::End => {}
         }
         world.entity_mut(root).insert(Presented {
-            node: active.node.clone(),
-            lines: active.history.len(),
+            entered: active.entered,
         });
     }
     sync_state(world, root);

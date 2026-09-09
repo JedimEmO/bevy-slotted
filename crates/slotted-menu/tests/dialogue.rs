@@ -4,6 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp, dead_code)]
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -963,5 +964,67 @@ fn the_accept_that_started_the_dialogue_does_not_skip_its_first_line() {
     assert!(
         !a.revealed,
         "the Accept that pressed Resume did not reach the runner"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// M3-TEST: review round
+// ---------------------------------------------------------------------------
+
+/// A `Dialogue` built in code, not through `from_ron`, whose `start` names
+/// no node: the panic `ActiveDialogue::current` would raise the next frame
+/// is what `start_with`'s validation prevents.
+#[test]
+fn a_dialogue_whose_start_is_missing_never_opens_a_screen() {
+    let mut h = harness();
+    let broken = Dialogue {
+        id: DialogueId::new("demo:broken"),
+        start: node("nowhere"),
+        nodes: BTreeMap::new(),
+    };
+    run(&mut h, move |c| start_dialogue_with(c, Arc::new(broken)));
+    h.settle();
+    assert!(active(&h).is_none(), "nothing runs");
+    assert!(h.stack().is_empty(), "and no screen was pushed");
+}
+
+/// A jump back to the choice already showing rebuilds its buttons, so a
+/// game that sets the value a condition reads can re-ask and see the option
+/// unlock. Before the entry counter, neither the node nor the history
+/// length changed and the screen skipped the rewrite.
+#[test]
+fn a_jump_back_to_the_current_choice_rebuilds_its_options() {
+    let mut h = harness();
+    run(&mut h, move |c| {
+        start_dialogue_with(c, Arc::new(greeting()));
+    });
+    h.settle();
+    run(&mut h, |c| jump_dialogue(c, node("ask")));
+    h.settle();
+    h.advance(Duration::from_millis(400));
+    let locked = h.find(&by::test_id("option.secret"));
+    assert!(
+        h.world()
+            .get::<slotted_ui::ButtonState>(locked)
+            .is_some_and(|b| b.disabled),
+        "the secret answer is locked while the flag is unset"
+    );
+    let entered = active(&h).expect("running").entered;
+
+    h.set_value("found_key", true);
+    run(&mut h, |c| jump_dialogue(c, node("ask")));
+    h.settle();
+    h.advance(Duration::from_millis(400));
+    assert_eq!(
+        active(&h).expect("running").entered,
+        entered + 1,
+        "the re-entry counted"
+    );
+    let unlocked = h.find(&by::test_id("option.secret"));
+    assert!(
+        !h.world()
+            .get::<slotted_ui::ButtonState>(unlocked)
+            .is_some_and(|b| b.disabled),
+        "and the rebuilt button is live"
     );
 }
