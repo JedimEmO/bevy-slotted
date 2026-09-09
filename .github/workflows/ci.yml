@@ -116,11 +116,24 @@ jobs:
           mkdir -p "$HOME/snap/chromium/common"
           node examples/web-playground/tests/smoke.mjs --browser "${{ steps.chrome.outputs.chrome-path }}"
 
+      # `always()`, not the default: a red smoke run is exactly when the
+      # module and the page it died on are worth keeping.
       - name: Upload the playground
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: web-playground
           path: dist/web-playground
+
+      # The screenshot the smoke driver takes of the page as it gave up, plus
+      # anything else it left in dist/smoke.
+      - name: Upload the smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-playground-smoke
+          path: dist/smoke
+          if-no-files-found: warn
 
   browser:
     name: Test (headless Chrome)

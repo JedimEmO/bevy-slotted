@@ -29,6 +29,8 @@ const URL_ = opt('--url', 'http://127.0.0.1:8080/web-playground/smoke.html');
 const CONFINED = join(homedir(), 'snap/chromium/common');
 const SHOT = opt('--shot', join(CONFINED, 'slotted-smoke.png'));
 const PROFILE = join(CONFINED, 'slotted-smoke-profile');
+// Inside the repo, so CI can upload it after a failure.
+const ARTIFACTS = opt('--artifacts', 'dist/smoke');
 const BROWSER = opt('--browser', '/snap/bin/chromium');
 // Wide enough that the item browser's 352 px panel fits in the strip beside
 // the chest; below about 1600 the panel docks but is squeezed to one column.
@@ -887,13 +889,51 @@ async function main() {
   }
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
   writeFileSync(SHOT, Buffer.from(shot.data, 'base64'));
+  // A copy inside the workspace as well, because CI's artifact upload cannot
+  // reach the browser's confined home directory and a failing run is exactly
+  // when the picture is worth having.
+  let workspaceShot = '';
+  try {
+    mkdirSync(ARTIFACTS, { recursive: true });
+    workspaceShot = join(ARTIFACTS, 'smoke.png');
+    writeFileSync(workspaceShot, Buffer.from(shot.data, 'base64'));
+  } catch {
+    workspaceShot = '';
+  }
 
+  const failed = !wait && title !== 'smoke: pass';
   console.log(report);
   if (pageResult) console.log(`\n${pageResult}`);
+  // On wasm a Lua error aborts the module (ADR 0004), and the smoke page has
+  // no restart machinery, so every check after a trap fails with nothing to
+  // say. These answer the question the check list cannot: how far the page
+  // got, and whether the module was still alive at the end.
+  if (failed) {
+    const probe = async (expr) => {
+      try {
+        const value = await evaluate(expr);
+        return value === undefined || value === null ? '(none)' : String(value);
+      } catch (error) {
+        return `(unreadable: ${error})`;
+      }
+    };
+    const diagnosis = [
+      `title=${title || '(never set)'}`,
+      `last stage reached: ${await probe('window.__smokeStage')}`,
+      `stage timeline: ${await probe('(window.__smokeStages || []).join(" -> ")')}`,
+      `wasm exports still callable: ${await probe('typeof window.list_mods === "function"')}`,
+      `playground module present: ${await probe('!!window.slottedPlayground')}`,
+      `restarts: ${await probe('window.slottedPlayground && window.slottedPlayground.state.restarts')}`,
+      `last lua error: ${await probe('window.slottedPlayground && window.slottedPlayground.state.luaError')}`,
+      `wasm heap MiB: ${await probe('Math.round((performance.memory ? performance.memory.usedJSHeapSize : 0) / 1048576)')}`,
+    ];
+    console.log(`\n--- diagnosis ---\n${diagnosis.join('\n')}`);
+  }
   if (cdp.logs.length) console.log(`\n--- browser console ---\n${cdp.logs.join('\n')}`);
   console.log(`\nscreenshot: ${SHOT}`);
+  if (workspaceShot) console.log(`screenshot (workspace copy): ${workspaceShot}`);
   chrome.kill();
-  process.exit(wait || title === 'smoke: pass' ? 0 : 1);
+  process.exit(failed ? 1 : 0);
 }
 
 main().catch((error) => {

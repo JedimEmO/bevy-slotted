@@ -41,6 +41,17 @@ const sameMods = (list) =>
   list.length === EXPECTED_MODS.length && list.every((m, i) => m.id === EXPECTED_MODS[i]);
 const results = [];
 const check = (name, ok, detail = '') => results.push({ name, ok, detail });
+
+// Where the page has got to. On wasm a Lua error aborts the whole module
+// (ADR 0004) and this page has no restart machinery, so a trap leaves every
+// later check failing with nothing to say. The driver reads this after a
+// failure to report the stage the module died in rather than only the
+// checks that never got to run.
+const stage = (name) => {
+  window.__smokeStage = name;
+  window.__smokeStages = (window.__smokeStages ?? []).concat(`${name} @${Math.round(performance.now())}ms`);
+};
+stage('boot');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function drainUntil(marker, ms) {
@@ -85,9 +96,11 @@ async function main() {
     if (!String(error).includes('control flow')) throw error;
   }
 
+  stage('list-mods');
   const mods = JSON.parse(list_mods());
   check('list_mods names the bundled demo mods', sameMods(mods), JSON.stringify(mods.map((m) => m.id)));
 
+  stage('get-mod-file');
   const control = get_mod_file('copper_chest', 'control.lua');
   check('get_mod_file returns the bundled chunk', control.includes('slotted.on("slot_click"'), `${control.length} bytes`);
 
@@ -102,6 +115,7 @@ async function main() {
       'slotted.on("slot_click", function(ev)\n  slotted.info("edited slot %d", ev.slot)\nend)\n',
   );
 
+  stage('reload-logs');
   const { found, seen } = await drainUntil(MARKER, 8000);
   check('the reloaded control chunk logged through the console queue', found, seen.slice(-8).join('\n'));
 
@@ -112,6 +126,7 @@ async function main() {
   // A chunk that will not compile. The mod must keep answering with the last
   // good chunk, and the page must be told why.
   reload_mod('copper_chest', '', 'slotted.on("slot_click", function(ev)\n');
+  stage('compile-error');
   const broken = await drainFor(3000);
   check(
     'a compile error is reported and does not take the module down',
@@ -140,6 +155,7 @@ async function main() {
   drain_console();
   reload_mod('copper_chest', ORIGINAL_DATA(), chunkLogging('smoke: first of two'));
   reload_mod('copper_chest', '', chunkLogging('smoke: second of two'));
+  stage('two-queued-reloads');
   const both = await drainFor(8000);
   const firstAt = both.findIndex((line) => line.includes('smoke: first of two'));
   const secondAt = both.findIndex((line) => line.includes('smoke: second of two'));
@@ -151,11 +167,13 @@ async function main() {
 
   // The overlay export is reachable and the game survives being told to draw
   // it, which is the only thing this page can assert about a hidden canvas.
+  stage('canvas-console');
   set_canvas_console(true);
   await sleep(500);
   set_canvas_console(false);
   drain_console();
   reload_mod('copper_chest', '', ORIGINAL_CONTROL());
+  stage('reload-after-canvas-console');
   const alive = await drainUntil('reloaded', 8000);
   check('the game still reloads after all of that', alive.found, alive.seen.slice(-4).join('\n'));
 
@@ -171,6 +189,7 @@ async function main() {
   // Everything is rendered before the trigger, because after it nothing in
   // this module runs again.
   // ---------------------------------------------------------------------
+  stage('runaway-abort');
   render('running the abort check…');
 
   const aborted = await new Promise((resolve) => {
