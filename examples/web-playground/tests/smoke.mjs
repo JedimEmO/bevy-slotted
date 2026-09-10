@@ -94,6 +94,9 @@ class Cdp {
     this.waiting = new Map();
     this.logs = [];
     this.errors = [];
+    // Console lines carry the browser's own timestamp, printed relative to
+    // the first one, so a stalled frame reads as a gap between two lines.
+    this.started = null;
     socket.addEventListener('message', (event) => {
       const message = JSON.parse(event.data);
       if (message.id && this.waiting.has(message.id)) {
@@ -104,7 +107,9 @@ class Cdp {
       }
       if (message.method === 'Runtime.consoleAPICalled') {
         const text = message.params.args.map((a) => a.value ?? a.description).join(' ');
-        this.logs.push(text);
+        this.started ??= message.params.timestamp;
+        const at = Math.round(message.params.timestamp - this.started);
+        this.logs.push(`@${at}ms ${text}`);
         if (message.params.type === 'error') this.errors.push(text);
       }
       if (message.method === 'Runtime.exceptionThrown') {
@@ -1058,9 +1063,10 @@ async function main() {
   if (wait) {
     await sleep(Number(wait));
   } else {
-    // smoke.html's own ceilings add up to about 100 s on a machine where
-    // every wait runs to its limit; this is the driver giving up after that.
-    const deadline = Date.now() + 150_000;
+    // smoke.html's own ceilings add up to about four minutes on a machine
+    // where every wait runs to its limit; this is the driver giving up
+    // after that.
+    const deadline = Date.now() + 300_000;
     while (Date.now() < deadline) {
       title = (await evaluate('document.title')) ?? '';
       if (title === 'smoke: pass' || title === 'smoke: fail') break;

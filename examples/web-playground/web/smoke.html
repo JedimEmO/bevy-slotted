@@ -86,10 +86,16 @@ const nextFrames = (n) =>
     const step = (left) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
     step(n);
   });
-// How long the last check waits for the trap. The chunk runs on the next
-// frame the app gets to; see the note above the check for why a frame can be
-// a long time coming.
-const ABORT_WAIT_MS = 40000;
+// How long a check waits for a reload's line, and the last check for the
+// trap. A reload's chunks run within a frame of each other; what takes the
+// time is the frames after, which redraw the reopened chest. On a machine
+// with only SwiftShader for a GPU, and few cores to run it on, the renderer
+// can sit for tens of seconds inside one WebGL `bufferSubData` waiting for
+// the backlog to drain (profiled 2026-09-10 at 11 s of a 17 s block with
+// Chrome held to 1.5 cores; docs/FOLLOWUPS.md "Showcase refresh"). A pass
+// returns the moment the line arrives, so a fast machine pays nothing.
+const RELOAD_WAIT_MS = 90000;
+const ABORT_WAIT_MS = 60000;
 
 async function drainUntil(marker, ms) {
   const deadline = Date.now() + ms;
@@ -201,7 +207,12 @@ async function main() {
   reload_mod('copper_chest', ORIGINAL_DATA(), chunkLogging('smoke: first of two'));
   reload_mod('copper_chest', '', chunkLogging('smoke: second of two'));
   stage('two-queued-reloads');
-  const both = await drainFor(8000);
+  // Until the second line rather than for a fixed time: the chunks run
+  // within a frame of each other, but the frames that redraw the reopened
+  // chest can block the page for tens of seconds on a software GPU (the
+  // note at RELOAD_WAIT_MS), and the order is what is asserted, not the
+  // speed.
+  const both = (await drainUntil('smoke: second of two', RELOAD_WAIT_MS)).seen;
   const firstAt = both.findIndex((line) => line.includes('smoke: first of two'));
   const secondAt = both.findIndex((line) => line.includes('smoke: second of two'));
   check(
@@ -230,7 +241,7 @@ async function main() {
   drain_console();
   reload_mod('copper_chest', '', ORIGINAL_CONTROL());
   stage('reload-after-canvas-console');
-  const alive = await drainUntil('reloaded', 40000);
+  const alive = await drainUntil('reloaded', RELOAD_WAIT_MS);
   check('the game still reloads after all of that', alive.found, alive.seen.slice(-4).join('\n'));
 
   // ---------------------------------------------------------------------

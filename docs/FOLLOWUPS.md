@@ -53,6 +53,18 @@ built.
   they were on inside it (pause, settings, the About page, the choice node)
   is not in the snapshot. The contract accepts this; a `menus` field on the
   snapshot with the stack's kinds and the dialogue's node would close it.
+- **A reload can block the renderer for tens of seconds on a software
+  GPU.** The wasm smoke went red on CI twice with a 22 s and a 60 s
+  main-thread task in the stage after a data reload. It reproduces locally
+  with Chrome held to 1.5 cores (`systemd-run --scope -p CPUQuota=150%`)
+  and a sampling profile puts 11 s of a 17 s block inside one WebGL
+  `bufferSubData`: ANGLE waiting for SwiftShader to drain the frames that
+  redraw the reopened chest and the new icon atlas. The pre-refresh module
+  shows the same block, so the refresh only moved it past the driver's
+  wait; the waits now have a ceiling that covers it. What would remove it
+  is drawing less after a reload: the whole screen is respawned and the
+  atlas re-uploaded whether or not anything an item draws with changed.
+  `examples/web-playground/web/smoke.html` has the numbers.
 
 ## Menus M3, 2026-09-09
 
