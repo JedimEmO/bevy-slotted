@@ -26,6 +26,7 @@ import init, {
   reload_mod,
   drain_console,
   set_canvas_console,
+  set_scene,
 } from './web_playground.js';
 
 const MARKER = 'smoke: the edited control chunk ran';
@@ -131,6 +132,14 @@ async function main() {
   } catch (error) {
     if (!String(error).includes('control flow')) throw error;
   }
+
+  // The Mods scene: the playground as it was, the Lua chest and no item
+  // browser. The page boots on the Chest scene, which since the showcase
+  // refresh docks the browser, and a data reload with the browser docked
+  // rebuilds every item card; on a runner with nothing but SwiftShader that
+  // one frame was measured at 60 s. This page is about the exports, and the
+  // Chest scene has the lap and index.html to prove it.
+  set_scene('mods');
 
   stage('list-mods');
   const mods = JSON.parse(list_mods());

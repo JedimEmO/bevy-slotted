@@ -50,7 +50,7 @@ pub fn path_of(name: &str) -> Option<String> {
         .then(|| format!("themes/{name}.theme.ron"))
 }
 
-/// Loads `name` and replaces [`ActiveTheme`](slotted::prelude::ActiveTheme).
+/// Loads `name` and replaces [`ActiveTheme`].
 ///
 /// Repainting the open screen is the theme system's own job: the materials and
 /// tokens are resolved per frame from whatever handle this resource holds, so
