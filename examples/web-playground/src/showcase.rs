@@ -61,11 +61,11 @@ pub trait SceneHandler: Send + Sync + 'static {
 
     /// Whether the item browser docks beside this scene's `demo:chest`.
     ///
-    /// True for exactly one scene, Browser. It is asked on every entry rather
+    /// True for exactly one scene, Chest. It is asked on every entry rather
     /// than left to the scene's own `enter`, because the answer is a
     /// registration in a resource that outlives the scene that made it: the
-    /// Browser scene used to register the `demo:chest` handler and nothing
-    /// took it away again, so the Multiplayer scene, which opens two
+    /// old Browser scene used to register the `demo:chest` handler and
+    /// nothing took it away again, so the Multiplayer scene, which opens two
     /// `demo:chest` screens of its own, docked a panel over each of them for
     /// anyone who had visited Browser first.
     fn docks_the_item_browser(&self) -> bool {

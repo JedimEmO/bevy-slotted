@@ -223,7 +223,7 @@ pub fn set_theme(name: &str) -> Result<(), JsValue> {
 /// Puts a query into the item browser's search field, the same way a category
 /// chip does: the field shows it and a visitor can carry on typing from there.
 ///
-/// Outside the Browser scene it does nothing rather than failing. The page
+/// Outside the Chest scene it does nothing rather than failing. The page
 /// keeps the last scene in its URL and offers the search chips as a control
 /// block, so a chip pressed a frame after a switch is ordinary and not an
 /// error.
@@ -337,11 +337,78 @@ pub fn replay_status() -> JsValue {
     JsValue::from_str(&Bus::global().replay_status())
 }
 
-/// What a stubbed export used to throw. Every scene is real now, so nothing
-/// throws it any more; the constant stays because `web/playground.js` and
-/// `smoke.html` test for the prefix and a page built against the stubs must
-/// keep working against the finished module.
+/// What a stubbed export throws. `web/playground.js` and `smoke.html` test
+/// for the prefix and render a stub as a disabled control, so a page built
+/// against the stubs keeps working against the finished module.
 pub const NOT_YET_PREFIX: &str = "not yet: ";
+
+fn not_yet(what: &str) -> JsValue {
+    js_sys::TypeError::new(&format!("{NOT_YET_PREFIX}{what}")).into()
+}
+
+// ---------------------------------------------------------------------------
+// Showcase refresh stubs (docs/design/showcase-refresh-contract.md section
+// 5). Package A replaces each body; the signatures are the contract's.
+// ---------------------------------------------------------------------------
+
+/// Pushes the named menu screen: `title`, `pause` or `settings`. Menus only.
+///
+/// # Errors
+///
+/// Anything but those three names; and `not yet:` until the scene lands.
+#[wasm_bindgen]
+pub fn menu_open(which: &str) -> Result<(), JsValue> {
+    let _ = which;
+    Err(not_yet("the Menus scene is a stub"))
+}
+
+/// The saved settings as RON, for the page to keep in `localStorage`. Empty
+/// when nothing was saved.
+///
+/// # Errors
+///
+/// `not yet:` until the Menus scene lands.
+#[wasm_bindgen]
+pub fn settings_ron() -> Result<String, JsValue> {
+    Err(not_yet("the Menus scene is a stub"))
+}
+
+/// Puts a [`settings_ron`] value back, or resets the saved settings when
+/// `ron` is empty. Called once at boot with whatever `localStorage` held.
+///
+/// # Errors
+///
+/// The text is neither empty nor saved settings; and `not yet:` until the
+/// Menus scene lands.
+#[wasm_bindgen]
+pub fn restore_settings(ron: &str) -> Result<(), JsValue> {
+    let _ = ron;
+    Err(not_yet("the Menus scene is a stub"))
+}
+
+/// Starts the smith's conversation again. Dialogue only; a no-op with a
+/// console line while one is running.
+///
+/// # Errors
+///
+/// `not yet:` until the Dialogue scene lands.
+#[wasm_bindgen]
+pub fn talk_again() -> Result<(), JsValue> {
+    Err(not_yet("the Dialogue scene is a stub"))
+}
+
+/// Writes one declared settings key into the value store. `json` is a JSON
+/// bool, number or string.
+///
+/// # Errors
+///
+/// A key the settings spec does not declare, a value of the wrong shape; and
+/// `not yet:` until the Dialogue scene lands.
+#[wasm_bindgen]
+pub fn set_value(key: &str, json: &str) -> Result<(), JsValue> {
+    let _ = (key, json);
+    Err(not_yet("the Dialogue scene is a stub"))
+}
 
 fn not_a_scene(id: &str) -> JsValue {
     js_sys::TypeError::new(&format!("`{id}` is not a showcase scene")).into()

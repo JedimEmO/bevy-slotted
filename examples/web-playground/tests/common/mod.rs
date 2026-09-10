@@ -26,7 +26,7 @@ pub fn mods_dir() -> std::path::PathBuf {
 /// `mod_layout_with_base` rather than `mod_layout`: the base namespaces `demo`
 /// and `machine` are loaded as mods with synthetic manifests, which is exactly
 /// what the playground's `build.rs` bakes into the browser bundle, and without
-/// them the Chest, Browser and Machine scenes have no items to put in a chest.
+/// them the Chest and Machine scenes have no items to put in a chest.
 pub fn harness() -> UiHarness {
     let mut harness = UiHarness::builder()
         // The same two plugins `build_app` adds on top of the facade: the

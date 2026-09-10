@@ -1,12 +1,12 @@
-//! Scenes 1 and 2: the moodboard chest, with and without the item browser.
+//! Scene 1: the moodboard chest with the item browser docked beside it.
 //!
-//! `docs/design/showcase-contract.md` section 3.1. Both open `demo:chest` over
-//! [`showcase::chest`]'s inventories, which is the same chest
-//! `examples/chest` shows in a window and the same one its headless tests
-//! drive. The only difference between the two scenes is whether the browser is
-//! docked beside it, and that is one line: the browser attaches to screen kinds
-//! a [`slotted::browser::ScreenHandler`] claims, so the Chest
-//! scene takes the claim away and the Browser scene puts it back.
+//! `docs/design/showcase-contract.md` section 3.1, amended by
+//! `docs/design/showcase-refresh-contract.md` section 4.1: the Browser scene
+//! folded into this one. It opens `demo:chest` over [`showcase::chest`]'s
+//! inventories, which is the same chest `examples/chest` shows in a window
+//! and the same one its headless tests drive. The browser attaches to screen
+//! kinds a [`slotted::browser::ScreenHandler`] claims; this scene makes the
+//! claim and every other scene that opens a `demo:chest` takes it away.
 
 use std::sync::Arc;
 
@@ -18,23 +18,10 @@ use crate::bus::Bus;
 use crate::scenes;
 use crate::showcase::SceneHandler;
 
-/// Scene 1: the chest on its own.
+/// Scene 1: the chest with the item and recipe browser docked beside it.
 pub struct ChestScene;
 
 impl SceneHandler for ChestScene {
-    fn enter(&self, world: &mut World) {
-        open(world);
-    }
-
-    fn leave(&self, world: &mut World) {
-        scenes::teardown(world);
-    }
-}
-
-/// Scene 2: the same chest with the item and recipe browser docked beside it.
-pub struct BrowserScene;
-
-impl SceneHandler for BrowserScene {
     fn enter(&self, world: &mut World) {
         open(world);
     }
@@ -60,9 +47,9 @@ impl SceneHandler for BrowserScene {
 /// It is called from [`apply_scene_switch`](crate::showcase::apply_scene_switch)
 /// for every scene, from that scene's
 /// [`docks_the_item_browser`](crate::showcase::SceneHandler::docks_the_item_browser),
-/// rather than from the two `enter` implementations that care. A registration
-/// outlives the scene that made it, and three of the eight scenes open a
-/// `demo:chest` without wanting a panel on it.
+/// rather than from the one `enter` that cares. A registration outlives the
+/// scene that made it, and other scenes open a `demo:chest` without wanting a
+/// panel on it.
 pub fn set_browser_attached(world: &mut World, attached: bool) {
     let Some(mut handlers) = world.get_resource_mut::<ScreenHandlers>() else {
         return;
@@ -76,7 +63,7 @@ pub fn set_browser_attached(world: &mut World, attached: bool) {
 }
 
 /// Spawns the three inventories, opens the menu and spawns the screen.
-fn open(world: &mut World) {
+pub fn open(world: &mut World) {
     let Some(registries) = scenes::registries(world) else {
         world.resource::<Bus>().log(
             "error",
@@ -101,12 +88,12 @@ fn open(world: &mut World) {
 /// what was searched and a visitor can carry on typing from it. Nothing here
 /// touches the text editor directly.
 ///
-/// Outside the Browser scene this does nothing, deliberately. The page keeps
+/// Outside the Chest scene this does nothing, deliberately. The page keeps
 /// the last scene in its URL and offers the search chips as a control block, so
 /// a chip pressed a frame after a switch is an ordinary thing to happen and not
 /// worth an error line. There is no browser panel to search when no handler
 /// claimed the open screen, and writing the message anyway would leave a query
-/// waiting to surprise whoever opens the Browser scene next.
+/// waiting to surprise whoever opens the Chest scene next.
 pub fn search(world: &mut World, query: &str) {
     let attached = world
         .get_resource::<ScreenHandlers>()

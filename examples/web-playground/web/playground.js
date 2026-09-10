@@ -39,14 +39,15 @@ const NOT_YET_PREFIX = 'not yet: ';
 
 /**
  * The rail before the module is up, and the rail if it never comes up: the
- * same eight entries `list_scenes` returns, copy and all
+ * same nine entries `list_scenes` returns, copy and all
  * (`examples/showcase/src/lib.rs` is the source; keep the two in step).
  */
 const FALLBACK_SCENES = [
-  { id: 'chest', title: 'Chest', caption: 'The Minecraft interaction model with a modern skin. Seven click modes, a sweep, a phantom preview and a tooltip, all over one list of slots.', tries: ['Left-click a stack, then right-click to split it', 'Hold right and drag across empty slots', 'Hover an item and hold Shift'], ready: true },
-  { id: 'browser', title: 'Browser', caption: 'Every item and recipe in the game, docked beside any screen. Search has a grammar, and a recipe knows whether it can be transferred.', tries: ['Type #ingots, then -iron', 'Press R over a card', 'Press A to bookmark it'], ready: true },
+  { id: 'chest', title: 'Chest', caption: 'The Minecraft interaction model with a modern skin, and the item and recipe browser docked beside it. Seven click modes, a sweep, a phantom preview, a tooltip, and a search with a grammar.', tries: ['Left-click a stack, then right-click to split it', 'Hold right and drag across empty slots', 'Type #ingots in the browser, then press R over a card'], ready: true },
   { id: 'machine', title: 'Machine', caption: 'A furnace with a tank, an energy bar and two side tabs, driven by menu properties the simulation writes. The Sort button was injected by a mod that has never seen this screen.', tries: ['Put coal in the fuel slot and watch the arrow', 'Open the redstone tab', 'Press Sort'], ready: true },
-  { id: 'themes', title: 'Themes', caption: 'One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open screen in place.', tries: ['Switch to paper', 'Switch to neon', 'Open the Machine scene and switch again'], ready: true },
+  { id: 'menus', title: 'Menus', caption: 'A title screen, a pause, settings that persist, a confirm and a toast, and the game is a chest behind them. Every screen sits on one stack, and the keyboard walks all of it.', tries: ['Press Play, then Esc twice', 'Change a setting, reload the page, open Settings again', 'Walk a menu with the arrow keys and Enter'], ready: false },
+  { id: 'dialogue', title: 'Dialogue', caption: 'A conversation with the smith at the furnace, from one RON file. Lines type out, a choice can be gated on a value, and the history page is the transcript.', tries: ['Press Enter to skip the typing, then choose', 'Turn on "found the key" on the right and ask again', 'Press X for the history'], ready: false },
+  { id: 'themes', title: 'Themes', caption: 'One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open settings screen in place: tabs, sliders, selects, toggles and rich text.', tries: ['Switch to paper', 'Switch to neon', 'Open the Chest scene and switch again'], ready: true },
   { id: 'mods', title: 'Mods', caption: 'Four Lua mods, editable here, hot-reloaded into the running game. The chest keeps its contents across a reload, and a crash restarts the runtime.', tries: ['Edit control.lua and press Run', 'Open Tests and run them', 'Type error("boom") and watch the restart'], ready: true },
   { id: 'hud', title: 'HUD', caption: 'Layers anchored to the screen edges, registered from Rust or from a mod, and a position editor a player can use.', tries: ['Press the edit button and drag the hotbar', 'Drag the clock', 'Reload the page and find them where you left them'], ready: true },
   { id: 'multiplayer', title: 'Multiplayer', caption: 'Two clients and a server in this tab, joined by a lossy loopback link. The left client predicts; the server corrects; both share one chest.', tries: ['Click a stack on the left and watch the right', 'Raise the loss slider and click again', 'Read the message log'], ready: true },
@@ -565,7 +566,7 @@ function appendLines(lines) {
       continue;
     }
     if (line.who === 'test') appendTestLine(line);
-    if (state.sceneId === 'browser' && /transfer/i.test(line.text)) {
+    if (state.sceneId === 'chest' && /transfer/i.test(line.text)) {
       el('browser-readout').textContent = line.text;
     }
     const row = document.createElement('div');
@@ -647,7 +648,6 @@ function isNotYet(error) {
 /** The control panel for each scene, and the element its note lives in. */
 const PANELS = {
   chest: 'controls-chest',
-  browser: 'controls-browser',
   machine: 'controls-machine',
   themes: 'controls-themes',
   mods: 'controls-mods',
@@ -656,7 +656,7 @@ const PANELS = {
   testing: 'controls-testing',
 };
 const NOTES = {
-  browser: 'browser-soon',
+  chest: 'browser-soon',
   machine: 'machine-soon',
   themes: 'themes-soon',
   hud: 'hud-soon',
@@ -817,9 +817,13 @@ function writeSceneQuery() {
   history.replaceState(null, '', url);
 }
 
+/** Scene ids that used to be in the rail, and what an old link opens now. */
+const RENAMED_SCENES = { browser: 'chest' };
+
 function readSceneQuery() {
   const params = new URL(location.href).searchParams;
-  const scene = state.scenes.find((s) => s.id === params.get('scene'));
+  const wanted = params.get('scene');
+  const scene = state.scenes.find((s) => s.id === (RENAMED_SCENES[wanted] ?? wanted));
   if (scene) state.sceneId = scene.id;
   const theme = params.get('theme');
   if (THEMES.includes(theme)) state.theme = theme;
@@ -1145,7 +1149,7 @@ function enterTesting() {
 
 /** What each scene does the moment it becomes the one on screen. */
 const ENTER = {
-  browser: () => {
+  chest: () => {
     el('browser-readout').textContent = 'nothing yet';
   },
   machine: () => setRedstone(false),
@@ -1280,8 +1284,8 @@ async function main() {
       event.preventDefault();
       run();
     }
-    // Alt+1..8 switches scenes; plain digits stay the game's hotbar keys.
-    if (event.altKey && /^[1-8]$/.test(event.key)) {
+    // Alt+1..9 switches scenes; plain digits stay the game's hotbar keys.
+    if (event.altKey && /^[1-9]$/.test(event.key)) {
       const scene = state.scenes[Number(event.key) - 1];
       if (scene) {
         event.preventDefault();

@@ -12,7 +12,7 @@
 <body>
 <header class="bar">
   <h1 class="disp">slotted<span class="dim"> / showcase</span></h1>
-  <p class="blurb">The whole stack in one tab: one Bevy app, one wasm module, eight scenes. Pick one on the left; the controls for it are on the right.</p>
+  <p class="blurb">The whole stack in one tab: one Bevy app, one wasm module, nine scenes. Pick one on the left; the controls for it are on the right.</p>
   <span class="spacer"></span>
   <span id="status" class="status">booting…</span>
 </header>
@@ -48,10 +48,17 @@
     </div>
 
     <div id="controls-chest" class="panel ctl" hidden>
-      <div class="ctl-head"><span class="eyebrow">chest</span></div>
+      <div class="ctl-head"><span class="eyebrow">chest</span><span class="soon-note" id="browser-soon"></span></div>
       <div class="ctl-body">
-        <p class="muted">This scene has no page controls on purpose. Everything it
-        shows is in the canvas, under the pointer.</p>
+        <p class="muted">The chest is under the pointer; the browser beside it has
+        a search grammar, not a substring match. Press a chip to type a query
+        into its field.</p>
+        <div id="browser-chips" class="chips"></div>
+        <p class="muted">Over a card: <kbd>R</kbd> opens its recipes, <kbd>A</kbd>
+        bookmarks it, <kbd>Enter</kbd> tries the transfer.</p>
+        <div class="readout"><span class="eyebrow">last transfer</span>
+          <p id="browser-readout" class="mono-line">nothing yet</p>
+        </div>
         <dl class="hint-list">
           <dt>Sweep</dt><dd>Hold the left button and drag across slots to split a
           carried stack evenly between them. Hold the right button instead and
@@ -62,20 +69,6 @@
           <dt>Tooltip</dt><dd>Rest on an item for the theme&rsquo;s hover delay, then
           hold <kbd>Shift</kbd> for the long form.</dd>
         </dl>
-      </div>
-    </div>
-
-    <div id="controls-browser" class="panel ctl" hidden>
-      <div class="ctl-head"><span class="eyebrow">browser</span><span class="soon-note" id="browser-soon"></span></div>
-      <div class="ctl-body">
-        <p class="muted">Search is a grammar, not a substring match. Press a chip to
-        type it into the browser&rsquo;s field.</p>
-        <div id="browser-chips" class="chips"></div>
-        <p class="muted">Over a card: <kbd>R</kbd> opens its recipes, <kbd>A</kbd>
-        bookmarks it, <kbd>Enter</kbd> tries the transfer.</p>
-        <div class="readout"><span class="eyebrow">last transfer</span>
-          <p id="browser-readout" class="mono-line">nothing yet</p>
-        </div>
       </div>
     </div>
 

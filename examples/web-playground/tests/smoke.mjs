@@ -7,7 +7,7 @@
 //
 // `--scene` opens one showcase scene through its `?scene=` link, asserts the
 // head strip matches the scene table, and captures it. `--showcase` does that
-// for all eight in one browser, and also switches to each one through the rail
+// for all nine in one browser, and also switches to each one through the rail
 // so both routes into a scene are covered.
 //
 // No dependencies: Node 22's global WebSocket is the whole CDP client. The
@@ -142,7 +142,7 @@ async function open(url) {
 }
 
 /**
- * The eight scenes, in rail order, with the titles the page must show.
+ * The nine scenes, in rail order, with the titles the page must show.
  *
  * `examples/showcase/src/lib.rs` is the source of the copy; this list is the
  * independent copy that makes the assertion mean something. The caption and
@@ -152,8 +152,9 @@ async function open(url) {
  */
 const SCENES = [
   { id: 'chest', title: 'Chest' },
-  { id: 'browser', title: 'Browser' },
   { id: 'machine', title: 'Machine' },
+  { id: 'menus', title: 'Menus' },
+  { id: 'dialogue', title: 'Dialogue' },
   { id: 'themes', title: 'Themes' },
   { id: 'mods', title: 'Mods' },
   { id: 'hud', title: 'HUD' },
@@ -361,7 +362,7 @@ async function drive(cdp, sessionId, rawEvaluate, id) {
     );
   }
 
-  if (id === 'browser') {
+  if (id === 'chest') {
     // The chips type a whole query into the game's own search field.
     await evaluate("window.slottedPlayground.browser_search('#c:ingots')");
     await sleep(1200);
@@ -645,7 +646,7 @@ async function cycleTwice(evaluate) {
   return {
     bad: ok ? 0 : 1,
     lines: [
-      `${ok ? 'PASS' : 'FAIL'}  two laps of all eight scenes leave the world the size it was`,
+      `${ok ? 'PASS' : 'FAIL'}  two laps of all nine scenes leave the world the size it was`,
       ...(ok ? [] : [`      the snapshot was ${first} bytes after one lap and ${second} after two`]),
     ],
   };
@@ -675,7 +676,7 @@ async function main() {
   };
 
   // The showcase modes. `--scene <id>` is one scene; `--showcase` is all
-  // eight in one browser, which is what `just shot-showcase` runs.
+  // nine in one browser, which is what `just shot-showcase` runs.
   const one = opt('--scene', null);
   const all = args.includes('--showcase');
   if (one || all) {
@@ -695,7 +696,17 @@ async function main() {
       // A profile with site data switched off has nothing to clear.
     }
 
-    const wanted = all ? SCENES.map((s) => s.id) : [one];
+    // A scene the module reports as not ready is a stub the page greys out
+    // (docs/design/showcase-refresh-contract.md); the lap says so and moves on
+    // rather than photographing an empty canvas for the docs.
+    const stubs = new Set(
+      (await evaluate('window.slottedPlayground.state.scenes.filter((s) => !s.ready).map((s) => s.id)')) ?? [],
+    );
+    const wanted = (all ? SCENES.map((s) => s.id) : [one]).filter((id) => {
+      if (!stubs.has(id)) return true;
+      console.log(`SKIP  ${id}: the module says the scene is a stub`);
+      return false;
+    });
     const lines = [];
     let bad = 0;
 
@@ -730,7 +741,7 @@ async function main() {
       // The other way in: press the next scene's rail entry and check the
       // head followed. Over the whole loop every scene is reached both ways.
       if (all) {
-        const next = SCENES[(index + 1) % SCENES.length].id;
+        const next = wanted[(index + 1) % wanted.length];
         await evaluate(`document.querySelector('[data-scene="${next}"]').click()`);
         await sleep(1200);
         const rail = await check(evaluate, next, 'rail');

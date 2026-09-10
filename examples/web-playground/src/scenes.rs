@@ -1,4 +1,4 @@
-//! The eight showcase scenes, and the two things they all need.
+//! The nine showcase scenes, and the two things they all need.
 //!
 //! `docs/design/showcase-contract.md` section 2. A scene is a set of entities
 //! and resources toggled inside the one app: [`crate::showcase`] owns the
@@ -28,8 +28,9 @@ use crate::showcase::{Scene, SceneRegistry};
 /// Registers every scene. Called by `ShowcasePlugin`.
 pub fn register_all(registry: &mut SceneRegistry) {
     registry.register(Scene::Chest, chest::ChestScene);
-    registry.register(Scene::Browser, chest::BrowserScene);
     registry.register(Scene::Machine, machine::MachineScene);
+    // Menus and Dialogue: docs/design/showcase-refresh-contract.md. Not
+    // registered until package A lands them; the page greys them out.
     registry.register(Scene::Themes, themes::ThemesScene);
     registry.register(Scene::Mods, mods::ModsScene);
     registry.register(Scene::Hud, hud::HudScene);

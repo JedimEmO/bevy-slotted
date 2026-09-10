@@ -19,16 +19,19 @@ pub mod mods;
 pub mod screens;
 pub mod settings;
 
-/// One of the eight scenes, in rail order.
+/// One of the nine scenes, in rail order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Scene {
-    /// The moodboard chest: seven click modes, sweeps, phantoms, tooltips.
+    /// The moodboard chest with the item and recipe browser docked beside
+    /// it: seven click modes, sweeps, phantoms, tooltips, a search grammar.
     Chest,
-    /// The item and recipe browser docked beside the chest.
-    Browser,
     /// The furnace: tanks, bars, side tabs, the simulation, the injected Sort.
     Machine,
-    /// The theme switcher over whichever scene is open.
+    /// The title, pause, settings, confirm and toast over the chest.
+    Menus,
+    /// A conversation with the smith over the furnace.
+    Dialogue,
+    /// The theme switcher over the settings screen.
     Themes,
     /// The editable Lua mods with hot reload and restart. Today's playground.
     Mods,
@@ -42,10 +45,11 @@ pub enum Scene {
 
 impl Scene {
     /// Every scene, in the order the rail shows them.
-    pub const ALL: [Scene; 8] = [
+    pub const ALL: [Scene; 9] = [
         Scene::Chest,
-        Scene::Browser,
         Scene::Machine,
+        Scene::Menus,
+        Scene::Dialogue,
         Scene::Themes,
         Scene::Mods,
         Scene::Hud,
@@ -61,8 +65,9 @@ impl Scene {
     pub const fn id(self) -> &'static str {
         match self {
             Scene::Chest => "chest",
-            Scene::Browser => "browser",
             Scene::Machine => "machine",
+            Scene::Menus => "menus",
+            Scene::Dialogue => "dialogue",
             Scene::Themes => "themes",
             Scene::Mods => "mods",
             Scene::Hud => "hud",
@@ -103,26 +108,15 @@ pub struct SceneDef {
 }
 
 /// The table, in rail order. `Scene as usize` indexes it.
-pub const SCENES: [SceneDef; 8] = [
+pub const SCENES: [SceneDef; 9] = [
     SceneDef {
         scene: Scene::Chest,
         title: "Chest",
-        caption: "The Minecraft interaction model with a modern skin. Seven click modes, a sweep, a phantom preview and a tooltip, all over one list of slots.",
+        caption: "The Minecraft interaction model with a modern skin, and the item and recipe browser docked beside it. Seven click modes, a sweep, a phantom preview, a tooltip, and a search with a grammar.",
         tries: [
             "Left-click a stack, then right-click to split it",
             "Hold right and drag across empty slots",
-            "Hover an item and hold Shift",
-        ],
-        ready: true,
-    },
-    SceneDef {
-        scene: Scene::Browser,
-        title: "Browser",
-        caption: "Every item and recipe in the game, docked beside any screen. Search has a grammar, and a recipe knows whether it can be transferred.",
-        tries: [
-            "Type #ingots, then -iron",
-            "Press R over a card",
-            "Press A to bookmark it",
+            "Type #ingots in the browser, then press R over a card",
         ],
         ready: true,
     },
@@ -138,13 +132,35 @@ pub const SCENES: [SceneDef; 8] = [
         ready: true,
     },
     SceneDef {
+        scene: Scene::Menus,
+        title: "Menus",
+        caption: "A title screen, a pause, settings that persist, a confirm and a toast, and the game is a chest behind them. Every screen sits on one stack, and the keyboard walks all of it.",
+        tries: [
+            "Press Play, then Esc twice",
+            "Change a setting, reload the page, open Settings again",
+            "Walk a menu with the arrow keys and Enter",
+        ],
+        ready: false,
+    },
+    SceneDef {
+        scene: Scene::Dialogue,
+        title: "Dialogue",
+        caption: "A conversation with the smith at the furnace, from one RON file. Lines type out, a choice can be gated on a value, and the history page is the transcript.",
+        tries: [
+            "Press Enter to skip the typing, then choose",
+            "Turn on \"found the key\" on the right and ask again",
+            "Press X for the history",
+        ],
+        ready: false,
+    },
+    SceneDef {
         scene: Scene::Themes,
         title: "Themes",
-        caption: "One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open screen in place.",
+        caption: "One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open settings screen in place: tabs, sliders, selects, toggles and rich text.",
         tries: [
             "Switch to paper",
             "Switch to neon",
-            "Open the Machine scene and switch again",
+            "Open the Chest scene and switch again",
         ],
         ready: true,
     },
@@ -210,8 +226,14 @@ mod tests {
 
     #[test]
     fn every_scene_is_ready() {
+        // The showcase refresh (docs/design/showcase-refresh-contract.md)
+        // ships Menus and Dialogue as stubs; package A flips them.
         let ready: Vec<Scene> = Scene::ALL.into_iter().filter(|s| s.ready()).collect();
-        assert_eq!(ready, Scene::ALL);
+        let expected: Vec<Scene> = Scene::ALL
+            .into_iter()
+            .filter(|s| !matches!(s, Scene::Menus | Scene::Dialogue))
+            .collect();
+        assert_eq!(ready, expected);
         assert!(Scene::DEFAULT.ready());
     }
 }

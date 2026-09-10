@@ -45,21 +45,14 @@ fn chest_scene_opens_and_a_split_conserves() {
         after <= before,
         "a pick-up and a split created nothing: {after} where there were {before}"
     );
-
-    // The browser is denied on this scene: no panel docks beside the chest.
-    assert_eq!(
-        browser_panels(&mut harness),
-        0,
-        "the Chest scene shows the chest and nothing else"
-    );
 }
 
-/// The panel docks, and a search narrows what it lists.
+/// The panel docks beside the chest, and a search narrows what it lists.
 #[test]
-fn browser_scene_docks_and_search_narrows() {
+fn chest_scene_docks_the_browser_and_search_narrows() {
     let (mut harness, bus) = showcase_world();
-    switch_to(&mut harness, &bus, Scene::Browser);
-    assert_eq!(active(&harness), Scene::Browser);
+    switch_to(&mut harness, &bus, Scene::Chest);
+    assert_eq!(active(&harness), Scene::Chest);
     assert_eq!(browser_panels(&mut harness), 1, "the panel docked");
 
     let mut browser = harness.browser();
@@ -242,13 +235,17 @@ fn testing_scene_runs_lua_tests_and_loads_the_recording() {
 // The whole set
 // ---------------------------------------------------------------------------
 
-/// Cycle all eight in rail order and back to the first. After each switch,
+/// Cycle every real scene in rail order and back to the first. After each switch,
 /// nothing of the previous scene is left on the canvas: the count of screens
 /// and menus is the count that scene opens, never that plus a leftover.
 #[test]
 fn every_scene_enters_and_leaves_cleanly() {
     let (mut harness, bus) = showcase_world();
-    for scene in Scene::ALL.into_iter().chain([Scene::Chest]) {
+    for scene in Scene::ALL
+        .into_iter()
+        .filter(|scene| scene.ready())
+        .chain([Scene::Chest])
+    {
         switch_to(&mut harness, &bus, scene);
         assert_eq!(active(&harness), scene);
         let screens = open_screens(&mut harness);
@@ -271,14 +268,20 @@ fn every_scene_enters_and_leaves_cleanly() {
 }
 
 /// `Scene::ready` (what the page greys out) and the registry (what the world
-/// can switch to) name the same scenes, and the bridge JSON lists all eight in
+/// can switch to) name the same scenes, and the bridge JSON lists all nine in
 /// rail order with the copy the contract fixed.
 #[test]
 fn list_scenes_matches_the_page_and_the_registry() {
     let registry = SceneRegistry::with_all_scenes();
     let ready: Vec<Scene> = Scene::ALL.into_iter().filter(|s| s.ready()).collect();
     assert_eq!(registry.registered(), ready);
-    assert_eq!(ready, Scene::ALL, "every scene is real");
+    // docs/design/showcase-refresh-contract.md: Menus and Dialogue are stubs
+    // until package A lands them.
+    let real: Vec<Scene> = Scene::ALL
+        .into_iter()
+        .filter(|s| !matches!(s, Scene::Menus | Scene::Dialogue))
+        .collect();
+    assert_eq!(ready, real, "every scene but the two stubs is real");
 
     let json = web_playground::showcase::scenes_json();
     let mut at = 0;
@@ -553,7 +556,7 @@ fn a_snapshot_from_before_the_scene_field_still_reads() {
 #[test]
 fn a_search_chip_narrows_the_browser_and_fills_its_field() {
     let (mut harness, bus) = showcase_world();
-    switch_to(&mut harness, &bus, Scene::Browser);
+    switch_to(&mut harness, &bus, Scene::Chest);
     harness.browser().wait_for_index();
     let everything = harness.browser().visible_entries().len();
 
@@ -582,12 +585,12 @@ fn a_search_chip_narrows_the_browser_and_fills_its_field() {
     );
 }
 
-/// A search chip pressed outside the Browser scene does nothing and is not an
-/// error, and leaves no query waiting for whoever opens the Browser next.
+/// A search chip pressed outside the Chest scene does nothing and is not an
+/// error, and leaves no query waiting for whoever opens the Chest next.
 #[test]
-fn a_search_chip_outside_the_browser_scene_is_a_no_op() {
+fn a_search_chip_outside_the_chest_scene_is_a_no_op() {
     let (mut harness, bus) = showcase_world();
-    switch_to(&mut harness, &bus, Scene::Chest);
+    switch_to(&mut harness, &bus, Scene::Multiplayer);
     let _ = bus.drain_console();
 
     command(
@@ -601,7 +604,7 @@ fn a_search_chip_outside_the_browser_scene_is_a_no_op() {
         "a chip pressed on the wrong scene is not a failure"
     );
 
-    switch_to(&mut harness, &bus, Scene::Browser);
+    switch_to(&mut harness, &bus, Scene::Chest);
     harness.browser().wait_for_index();
     let field = harness.find(&by::test_id("browser.search"));
     assert_eq!(
@@ -611,7 +614,7 @@ fn a_search_chip_outside_the_browser_scene_is_a_no_op() {
             .map(|text| text.value().to_string())
             .as_deref(),
         Some(""),
-        "no query was left waiting for the Browser scene"
+        "no query was left waiting for the Chest scene"
     );
 }
 
@@ -663,24 +666,24 @@ fn an_empty_hud_layout_resets_rather_than_failing_to_parse() {
     assert!(harness.hud_layer("hud_clock:clock").is_some());
 }
 
-/// The panel the Browser scene docks does not follow the visitor out of it.
+/// The panel the Chest scene docks does not follow the visitor out of it.
 ///
 /// The browser attaches to screen kinds a `ScreenHandler` claims, and a claim
-/// lives in a resource that outlives the scene that made it. Three scenes open
-/// a `demo:chest`: Chest and Multiplayer want no panel on it, Browser does. So
-/// the claim has to be re-decided on every entry rather than made once. It was
+/// lives in a resource that outlives the scene that made it. Several scenes
+/// open a `demo:chest`: Multiplayer wants no panel on it, Chest does. So the
+/// claim has to be re-decided on every entry rather than made once. It was
 /// not, and the Multiplayer scene docked a panel over each of its two clients
-/// for any visitor who had opened Browser first -- which is every visitor
+/// for any visitor who had opened the browser first -- which is every visitor
 /// walking the rail in order.
 #[test]
 fn the_browser_panel_does_not_follow_the_visitor_into_the_next_scene() {
     let (mut harness, bus) = showcase_world();
 
-    switch_to(&mut harness, &bus, Scene::Browser);
+    switch_to(&mut harness, &bus, Scene::Chest);
     assert_eq!(
         browser_panels(&mut harness),
         1,
-        "the Browser scene is the one that docks a panel"
+        "the Chest scene is the one that docks a panel"
     );
 
     switch_to(&mut harness, &bus, Scene::Multiplayer);
@@ -690,20 +693,13 @@ fn the_browser_panel_does_not_follow_the_visitor_into_the_next_scene() {
         "a panel docked over one of the two multiplayer clients"
     );
 
+    // And it comes back when it is asked for, so the denial is a decision and
+    // not a handler that was lost on the way.
     switch_to(&mut harness, &bus, Scene::Chest);
     assert_eq!(
         browser_panels(&mut harness),
-        0,
-        "a panel docked beside the chest in the scene that is about the chest"
-    );
-
-    // And it comes back when it is asked for, so the denial is a decision and
-    // not a handler that was lost on the way.
-    switch_to(&mut harness, &bus, Scene::Browser);
-    assert_eq!(
-        browser_panels(&mut harness),
         1,
-        "the panel did not come back on a second visit to the Browser scene"
+        "the panel did not come back on a second visit to the Chest scene"
     );
 }
 

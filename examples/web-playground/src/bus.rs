@@ -71,7 +71,7 @@ pub enum Request {
         name: String,
     },
     /// Put a query into the item browser's search field, the way a category
-    /// chip does. Browser scene only; a no-op anywhere else.
+    /// chip does. Chest scene only; a no-op anywhere else.
     BrowserSearch {
         /// The query, in the browser's search grammar.
         query: String,
