@@ -25,7 +25,15 @@ const opt = (name, fallback) => {
   return at >= 0 ? args[at + 1] : fallback;
 };
 
-const URL_ = opt('--url', 'http://127.0.0.1:8080/web-playground/smoke.html');
+// `?overlay` asks smoke.html to also show the in-canvas console once. Not on
+// CI: under SwiftShader on a runner that one overlay costs the page tens of
+// seconds a frame (see the note in smoke.html), and `--no-overlay` skips it
+// anywhere else.
+const overlay = !process.env.CI && !args.includes('--no-overlay');
+const URL_ = opt(
+  '--url',
+  `http://127.0.0.1:8080/web-playground/smoke.html${overlay ? '?overlay' : ''}`,
+);
 const CONFINED = join(homedir(), 'snap/chromium/common');
 const SHOT = opt('--shot', join(CONFINED, 'slotted-smoke.png'));
 const PROFILE = join(CONFINED, 'slotted-smoke-profile');

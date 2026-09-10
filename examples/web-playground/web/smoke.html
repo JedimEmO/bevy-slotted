@@ -205,16 +205,22 @@ async function main() {
   // it, which is the only thing this page can assert about a hidden canvas.
   // The overlay stays up for a few animation frames rather than a number of
   // milliseconds, so it is drawn at least once however slow the machine is.
-  stage('canvas-console');
-  set_canvas_console(true);
-  await nextFrames(3);
-  set_canvas_console(false);
+  //
+  // Only with `?overlay` in the URL, which `tests/smoke.mjs` adds outside CI.
+  // The first frame that draws the overlay's text costs about a second here
+  // whatever the CPU throttle, and on a runner with nothing but SwiftShader
+  // the frames around it were measured at 7 to 22 s each, which is more
+  // than the check is worth; the reload after it is kept, because that is
+  // what proves the page can still be driven.
+  if (new URLSearchParams(location.search).has('overlay')) {
+    stage('canvas-console');
+    set_canvas_console(true);
+    await nextFrames(3);
+    set_canvas_console(false);
+  }
   drain_console();
   reload_mod('copper_chest', '', ORIGINAL_CONTROL());
   stage('reload-after-canvas-console');
-  // Generous, because on a software-rendered CI runner the frames that carry
-  // the overlay have been seen to take tens of seconds. A pass returns as
-  // soon as the line arrives, so a fast machine pays nothing for the ceiling.
   const alive = await drainUntil('reloaded', 40000);
   check('the game still reloads after all of that', alive.found, alive.seen.slice(-4).join('\n'));
 
