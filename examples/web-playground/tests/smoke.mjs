@@ -411,18 +411,14 @@ async function pose(cdp, sessionId, rawEvaluate, id) {
       return typeof w.current_screen === 'function' ? w.current_screen() === 'demo:chest' : null;
     })()`, 15_000);
     if (posed.played === false && (await topScreen(evaluate)) === null) await sleep(2500);
-    // Esc pops the chest; Esc with nothing open pauses.
-    await key(cdp, sessionId, 'Escape');
-    await key(cdp, sessionId, 'Escape');
+    // The picture is the pause over the chest (contract section 6): the
+    // page's own way in, because Esc would pop the chest first. `drive`
+    // walks the Esc route afterwards, from this state.
+    await evaluate("window.slottedPlayground.menu_open('pause')");
     posed.paused = await waitFor(evaluate, `(() => {
       const w = window.slottedPlayground.state.wasm;
       return typeof w.current_screen === 'function' && w.current_screen() === 'slotted:pause';
     })()`, 8000);
-    if (!posed.paused) {
-      // The page's own way in, which is the picture even when the keyboard
-      // route did not get there; `drive` says which route it was.
-      await evaluate("window.slottedPlayground.menu_open('pause')");
-    }
     await sleep(2000);
   }
 
@@ -525,17 +521,32 @@ async function drive(cdp, sessionId, rawEvaluate, id, posed = {}) {
       // throw is the export refusing, which is a failure.
       add(stubOrFail(id, 'the menus are driven', 'settings_ron', posed.stub));
     } else {
-      const top = await topScreen(evaluate);
-      if (top === null) {
+      if ((await topScreen(evaluate)) === null) {
         add(skip(id, 'Play then Esc twice leaves the pause on top', 'the module has no current_screen export to read the stack with'));
       } else {
+        // From the pose's pause over the chest: Esc resumes, Esc pops the
+        // chest, and Esc with nothing open pauses, which is the first "what
+        // to try" walked from where the picture left off.
+        const top = async (want, ms = 8000) => waitFor(evaluate, `(() => {
+          const w = window.slottedPlayground.state.wasm;
+          return typeof w.current_screen === 'function' && w.current_screen() === ${JSON.stringify(want)};
+        })()`, ms);
+        await focusCanvas(evaluate);
+        await key(cdp, sessionId, 'Escape');
+        const resumed = await top('demo:chest');
+        await key(cdp, sessionId, 'Escape');
+        const closed = await top('');
+        await key(cdp, sessionId, 'Escape');
+        const paused = await top('slotted:pause');
         add(
           verdict(
             id,
             'Play then Esc twice leaves the pause on top',
-            posed.played === true && posed.paused === true,
-            `after Play the top was ${posed.played ? 'demo:chest' : 'not demo:chest'}; after Esc, Esc it is ${top}` +
-              (posed.paused ? '' : ' and the pose fell back to menu_open'),
+            posed.played === true && posed.paused === true && resumed && closed && paused,
+            `after Play the top was ${posed.played ? 'demo:chest' : 'not demo:chest'}; the pose ` +
+              `${posed.paused ? 'paused over it' : 'did not reach the pause'}; then Esc ` +
+              `${resumed ? 'resumed' : 'did not resume'}, Esc ${closed ? 'closed the chest' : 'left something open'}, ` +
+              `Esc ${paused ? 'paused' : 'did not pause'} (top is ${await topScreen(evaluate)})`,
           ),
         );
       }
