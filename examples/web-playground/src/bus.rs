@@ -22,7 +22,7 @@ use bevy::prelude::Resource;
 pub const CONSOLE_CAPACITY: usize = 400;
 
 /// Something the page asked the world to do.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Request {
     /// New text for one file, before the reload that reads it.
     Write {
@@ -101,6 +101,24 @@ pub enum Request {
     },
     /// Play or pause the loaded recording.
     ReplayPlay(bool),
+    /// Push one of the Menus scene's screens by name
+    /// (docs/design/showcase-refresh-contract.md section 5). Menus only.
+    MenuOpen(crate::showcase::MenuScreen),
+    /// Put the saved settings the page kept in `localStorage` back, or reset
+    /// them when the text is empty.
+    RestoreSettings {
+        /// A `slotted_menu::SavedSettings` as RON.
+        ron: String,
+    },
+    /// Start the smith's conversation again. Dialogue only.
+    TalkAgain,
+    /// Write one declared settings key into the value store.
+    SetValue {
+        /// A key `showcase::settings::spec` declares.
+        key: String,
+        /// The value, already of the kind the key's default has.
+        value: slotted::ui::Value,
+    },
 }
 
 /// One line the console shows.
@@ -167,6 +185,14 @@ struct Inner {
     /// Same push-pull arrangement again: the export is a free function and
     /// cannot reach into the `World` to ask.
     replay_status: String,
+    /// The kind of the screen on top of the stack, for `current_screen`;
+    /// empty when nothing is open. Published by the world once a frame.
+    screen: String,
+    /// The saved settings as RON, for `settings_ron`. The
+    /// [`PageSettings`](crate::settings_store::PageSettings) store writes it
+    /// on every save and reads it back as the load, so the bus is the one
+    /// copy and the page's `localStorage` mirrors it.
+    settings: String,
 }
 
 /// The shared queue, held by the page side and by the world alike.
@@ -266,6 +292,29 @@ impl Bus {
         }
     }
 
+    /// Publishes the kind of the screen on top of the stack, or an empty
+    /// string when nothing is open.
+    pub fn set_screen(&self, kind: impl Into<String>) {
+        self.lock().screen = kind.into();
+    }
+
+    /// The kind of the screen the world last said was on top, or an empty
+    /// string before the first frame and while nothing is open.
+    pub fn screen(&self) -> String {
+        self.lock().screen.clone()
+    }
+
+    /// Publishes the saved settings as RON; an empty string means nothing is
+    /// saved.
+    pub fn set_settings(&self, ron: impl Into<String>) {
+        self.lock().settings = ron.into();
+    }
+
+    /// The saved settings as RON, or an empty string when nothing was saved.
+    pub fn settings(&self) -> String {
+        self.lock().settings.clone()
+    }
+
     /// Takes the lines written since the last call.
     pub fn drain_console(&self) -> Vec<Line> {
         self.lock().pending.drain(..).collect()
@@ -309,7 +358,7 @@ mod tests {
                 Request::Write { path, .. } | Request::Restore { state: path } => path,
                 Request::SetTheme { name } => name,
                 Request::BrowserSearch { query } => query,
-                Request::RestoreHud { ron } => ron,
+                Request::RestoreHud { ron } | Request::RestoreSettings { ron } => ron,
                 Request::CanvasConsole(on)
                 | Request::Redstone(on)
                 | Request::HudEdit(on)
@@ -318,6 +367,9 @@ mod tests {
                 Request::NetConfig { latency_ms, .. } => latency_ms.to_string(),
                 Request::ReplayLoad => "load".to_owned(),
                 Request::ReplaySeek { frame } => frame.to_string(),
+                Request::MenuOpen(which) => which.id().to_owned(),
+                Request::TalkAgain => "talk".to_owned(),
+                Request::SetValue { key, .. } => key,
             })
             .collect();
         assert_eq!(ids, ["a", "b"]);
@@ -340,7 +392,7 @@ mod tests {
                 Request::Write { path, .. } | Request::Restore { state: path } => path,
                 Request::SetTheme { name } => name,
                 Request::BrowserSearch { query } => query,
-                Request::RestoreHud { ron } => ron,
+                Request::RestoreHud { ron } | Request::RestoreSettings { ron } => ron,
                 Request::CanvasConsole(on)
                 | Request::Redstone(on)
                 | Request::HudEdit(on)
@@ -349,6 +401,9 @@ mod tests {
                 Request::NetConfig { latency_ms, .. } => latency_ms.to_string(),
                 Request::ReplayLoad => "load".to_owned(),
                 Request::ReplaySeek { frame } => frame.to_string(),
+                Request::MenuOpen(which) => which.id().to_owned(),
+                Request::TalkAgain => "talk".to_owned(),
+                Request::SetValue { key, .. } => key,
             })
             .collect();
         assert_eq!(ids, ["a", "b", "c"]);
@@ -361,6 +416,20 @@ mod tests {
         bus.set_snapshot("(inventories:[])");
         bus.set_snapshot("(inventories:[(len:9,slots:[])])");
         assert_eq!(bus.snapshot(), "(inventories:[(len:9,slots:[])])");
+    }
+
+    #[test]
+    fn the_settings_slot_is_empty_until_a_save_and_holds_the_last_one() {
+        let bus = Bus::new();
+        assert_eq!(bus.settings(), "");
+        bus.set_settings("(values:{})");
+        bus.set_settings("(values:{\"settings.ui_scale\":Float(1.25)})");
+        assert_eq!(
+            bus.settings(),
+            "(values:{\"settings.ui_scale\":Float(1.25)})"
+        );
+        bus.set_settings("");
+        assert_eq!(bus.settings(), "", "a reset empties it again");
     }
 
     #[test]

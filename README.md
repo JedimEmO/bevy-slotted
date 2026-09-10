@@ -148,7 +148,7 @@ it, which is the trade [ADR 0004](docs/adr/0004-web-runtime-luaur.md) makes.
 | [`chest`](examples/chest) | `just run-chest` | The moodboard screen over a 3D scene: tooltips with a live 3D item, motion, the action rail, the item browser. `--theme paper` and `--theme neon` swap the skin. |
 | [`machine`](examples/machine) | `just run-machine` | A furnace with a tank, an energy bar, progress arrows and side tabs, plus a Lua mod injecting a sort button. |
 | [`modded`](examples/modded) | `just run-modded` | Three mods loaded from `mods/` with hot reload and a script console. |
-| [`web-playground`](examples/web-playground) | `just playground && just serve` | The showcase: one wasm module, eight scenes, everything above in a browser tab. [Live](https://jedimemo.github.io/bevy-slotted/), or see [the guide](docs/guide/showcase.md). |
+| [`web-playground`](examples/web-playground) | `just playground && just serve` | The showcase: one wasm module, nine scenes, everything above and the menus in a browser tab. [Live](https://jedimemo.github.io/bevy-slotted/), or see [the guide](docs/guide/showcase.md). |
 
 <p align="center">
   <img src="examples/chest/shots/chest.png" alt="The chest screen" width="32%">
@@ -174,10 +174,11 @@ of `glass` (the default), `paper` or `neon`.
 
 <https://jedimemo.github.io/bevy-slotted/>
 
-One Bevy app, one wasm module, one page, eight scenes: the chest's interaction
-model, the item browser, a machine driven by menu properties, the three themes,
-the editable Lua mods, HUD layers, two networked clients over a lossy link, and
-the test runner with a replayed recording. The rail on the left switches
+One Bevy app, one wasm module, one page, nine scenes: the chest's interaction
+model with the item browser beside it, a machine driven by menu properties, a
+title, pause and settings on one screen stack, a dialogue over the furnace, the
+three themes, the editable Lua mods, HUD layers, two networked clients over a
+lossy link, and the test runner with a replayed recording. The rail on the left switches
 scenes, the controls for the open one are on the right, and `?scene=<id>` links
 straight to any of them.
 
@@ -188,7 +189,7 @@ straight to any of them.
 
 [`docs/guide/showcase.md`](docs/guide/showcase.md) says what each scene
 demonstrates and which crate it exercises. `just playground && just serve` runs
-it locally; `just shot-showcase` recaptures the eight screenshots under
+it locally; `just shot-showcase` recaptures the nine screenshots under
 `examples/web-playground/shots/`.
 
 ## Documentation
@@ -228,7 +229,7 @@ just shot-showcase  # one screenshot per showcase scene
 just test-mods    # run every demo mod's tests/*.lua headless
 ```
 
-The playground is the showcase: eight scenes over one wasm module, with the
+The playground is the showcase: nine scenes over one wasm module, with the
 four demo mods' Lua editable beside the canvas on the Mods scene. Edit
 `control.lua`, press Run, and the mod reloads while the chest keeps its
 contents. `just playground` needs

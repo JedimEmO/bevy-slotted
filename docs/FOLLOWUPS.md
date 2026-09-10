@@ -6,6 +6,54 @@ Entries the gap-closing round closed have been deleted rather than struck
 through; what closed them is recorded in `docs/design/gaps-notes-{A,B,C}.md`
 and summarised below. What is left here is open.
 
+## Showcase refresh, 2026-09-10
+
+The nine-scene refresh (`docs/design/showcase-refresh-contract.md`) put the
+Menus and Dialogue scenes on the page and gave Themes a canvas. What package
+A left open is here; `docs/design/showcase-refresh-notes-A.md` says what it
+built.
+
+- **The smith's portrait lives in the shared `assets/portraits/`, not under
+  the playground.** The contract's ownership table names
+  `examples/web-playground/assets/**`, but nothing serves that directory:
+  `xtask playground` copies the workspace `assets/` beside `index.html` and
+  Bevy's web reader fetches `assets/<path>` from there, and the playground's
+  `build.rs` bakes text only (`include_str!`). A playground-local asset
+  directory needs either a second `copy_dir` in `tools/xtask/src/wasm.rs` or
+  a bytes table in the bundle; until one exists, a showcase image goes in
+  `assets/`.
+- **`Back` under a focus overlay pops the screen underneath.**
+  `slotted_ui::pop_on_back` pops `ScreenStack::top()`, the topmost
+  non-overlay entry, and a dialogue is an overlay with focus, so one `Esc`
+  mid-conversation pops the furnace (or, in `examples/menus`, the title) out
+  from under the smith. The Dialogue scene claims `Back` while its dialogue
+  is the focus top (`scenes::dialogue::shield_furnace_from_back`); the
+  library should decide it once, either by `pop_on_back` honouring
+  `focus_top()` or by `DialogueConfig` growing a "Back is swallowed" policy
+  beside `back_cancels`. Menus M4.
+- **`ChestBinding` outlives the scene that filled it.** `E` reopens
+  whichever chest `track_open_screens` saw last, over inventory entities a
+  scene switch has despawned. The Menus scene clears the binding on enter
+  and on the way back to its title; the other scenes do not, so `E` in the
+  Machine scene after a visit to Chest opens a chest over nothing. A
+  `ChestBinding` that watches its inventories for despawn, or a clear in
+  `scenes::teardown`, closes it.
+- **The transcript pane shows rich-text markup raw.** `log_transcript`
+  writes the resolved line, `[b]`, `[i]` and `{key:..}` included; the
+  smith's lines carry none, so nothing shows today. A plain-text projection
+  of a rich string belongs in `slotted-ui` beside the parser, for this and
+  for AccessKit labels.
+- **`menu_open("title")` pops back rather than pushing.** The contract says
+  "push the named screen"; a title pushed over a pause over a chest is a
+  stack the keyboard cannot reach, so Title pops everything above the title
+  (or closes the chest and pushes one), and Pause and Settings push. If the
+  page ever wants the literal push, it is one arm in `scenes::menus::open`.
+- **Restart in the Menus and Dialogue scenes lands on the scene's first
+  frame.** `snapshot.scene` brings a visitor back to the scene; the stack
+  they were on inside it (pause, settings, the About page, the choice node)
+  is not in the snapshot. The contract accepts this; a `menus` field on the
+  snapshot with the stack's kinds and the dialogue's node would close it.
+
 ## Menus M3, 2026-09-09
 
 The dialogue runner and screen (`docs/design/menus-m3-contract.md`,

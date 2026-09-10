@@ -212,3 +212,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .test-results .fail .mark{color:var(--bad)}
 .test-results .fail{color:var(--bad)}
 .replay{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+
+/* dialogue: the transcript is the message log's shape with two speakers */
+.dialogue-log{min-height:140px}
+.dialogue-log .peer{min-width:3.5em}

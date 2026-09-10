@@ -309,6 +309,25 @@ async function drag(cdp, sessionId, from, to) {
   await sleep(400);
 }
 
+/**
+ * One key, down and up, to whatever has the focus. Bevy hears the keyboard
+ * through the canvas, so callers focus it first (`focusCanvas`).
+ *
+ * `windowsVirtualKeyCode` is what Chromium turns into the DOM `keyCode`, and
+ * winit reads `code`; both are sent so the event is the one a real press is.
+ */
+const VIRTUAL_KEYS = { Enter: 13, Escape: 27, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, x: 88 };
+async function key(cdp, sessionId, name, code = name) {
+  const base = { key: name, code, windowsVirtualKeyCode: VIRTUAL_KEYS[name] ?? 0 };
+  const text = name.length === 1 ? { text: name } : name === 'Enter' ? { text: '\r' } : {};
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...text }, sessionId);
+  await sleep(40);
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }, sessionId);
+  await sleep(250);
+}
+
+const focusCanvas = (evaluate) => evaluate("document.getElementById('slotted-canvas').focus()");
+
 async function click(cdp, sessionId, at) {
   await mouse(cdp, sessionId, 'mouseMoved', at, { buttons: 0 });
   await sleep(120);
@@ -326,13 +345,114 @@ function verdict(id, what, ok, detail = '') {
   };
 }
 
+/** An assertion that could not run, which is not a failure. */
+function skip(id, what, why) {
+  return { bad: 0, lines: [`SKIP  ${id}: ${what}`, `      ${why}`] };
+}
+
+/**
+ * Whether the raw export `name` is still the skeleton's stub, and if so what
+ * it said. The page's own wrappers swallow `not yet:` and grey a control
+ * (docs/design/showcase-refresh-contract.md section 9), which is right for
+ * a visitor and useless here, so the probe goes past them to the module.
+ *
+ * Answers '' for an export that ran, `not yet: ...` for a stub, `missing`
+ * for a name the module has no export for, and any other error's text.
+ */
+async function stubbed(evaluate, name, ...callArgs) {
+  return evaluate(`(() => {
+    const w = window.slottedPlayground.state.wasm;
+    if (!w || typeof w[${JSON.stringify(name)}] !== 'function') return 'missing';
+    try { w[${JSON.stringify(name)}](...${JSON.stringify(callArgs)}); return ''; }
+    catch (e) { return String(e && e.message ? e.message : e); }
+  })()`);
+}
+
+/** A `stubbed` answer as a verdict: `not yet:` and a missing export skip, anything else fails. */
+function stubOrFail(id, what, name, said) {
+  return /not yet:/.test(said) || said === 'missing'
+    ? skip(id, what, `the module said "${said}"`)
+    : verdict(id, what, false, `${name} threw "${said}"`);
+}
+
+/** The id of the screen on top of the stack, or null when the module has no `current_screen`. */
+async function topScreen(evaluate) {
+  const top = await evaluate(`(() => {
+    const w = window.slottedPlayground.state.wasm;
+    return w && typeof w.current_screen === 'function' ? w.current_screen() : null;
+  })()`);
+  return typeof top === 'string' ? top : null;
+}
+
+/** A scene visit may take this long before the driver gives up on a wait. */
+const SCENE_WAIT_MS = 30_000;
+
+/**
+ * Puts a scene into the pose its screenshot wants, before the shot is taken.
+ *
+ * The contract wants the Menus picture to be the pause over the chest and the
+ * Dialogue picture to be the choice node, neither of which is what `enter`
+ * leaves on screen. `drive` starts from the pose, so what happened here is
+ * handed on. A stub export answers `not yet:` and the pose does nothing.
+ */
+async function pose(cdp, sessionId, rawEvaluate, id) {
+  const evaluate = (expression) => tryEvaluate(rawEvaluate, expression);
+  const posed = { id, stub: '', played: null, paused: null, smith: false, prompt: false };
+
+  if (id === 'menus') {
+    posed.stub = await stubbed(evaluate, 'settings_ron');
+    if (posed.stub) return posed;
+    // Play is the title's first button and holds the focus ring when the
+    // screen opens, so Enter is a click on it.
+    await focusCanvas(evaluate);
+    await key(cdp, sessionId, 'Enter');
+    posed.played = await waitFor(evaluate, `(() => {
+      const w = window.slottedPlayground.state.wasm;
+      return typeof w.current_screen === 'function' ? w.current_screen() === 'demo:chest' : null;
+    })()`, 15_000);
+    if (posed.played === false && (await topScreen(evaluate)) === null) await sleep(2500);
+    // Esc pops the chest; Esc with nothing open pauses.
+    await key(cdp, sessionId, 'Escape');
+    await key(cdp, sessionId, 'Escape');
+    posed.paused = await waitFor(evaluate, `(() => {
+      const w = window.slottedPlayground.state.wasm;
+      return typeof w.current_screen === 'function' && w.current_screen() === 'slotted:pause';
+    })()`, 8000);
+    if (!posed.paused) {
+      // The page's own way in, which is the picture even when the keyboard
+      // route did not get there; `drive` says which route it was.
+      await evaluate("window.slottedPlayground.menu_open('pause')");
+    }
+    await sleep(2000);
+  }
+
+  if (id === 'dialogue') {
+    // Probed through `set_value` with the switch's starting value rather than
+    // `talk_again`, which would answer the running conversation with a line.
+    posed.stub = await stubbed(evaluate, 'set_value', 'demo.found_key', 'false');
+    if (posed.stub) return posed;
+    // The first line types out; the transcript pane gets it as it is entered.
+    posed.smith = await waitFor(evaluate, "/smith/i.test(document.getElementById('dialogue-log').textContent)", SCENE_WAIT_MS);
+    // Enter skips the typing, then advances. The choice node is the second
+    // smith line in the transcript; press until it shows, a few times at most.
+    await focusCanvas(evaluate);
+    for (let press = 0; press < 4 && !posed.prompt; press += 1) {
+      await key(cdp, sessionId, 'Enter');
+      posed.prompt = await waitFor(evaluate, "document.querySelectorAll('#dialogue-log .row').length >= 2", 2500);
+    }
+    await sleep(2000);
+  }
+
+  return posed;
+}
+
 /**
  * Presses the scene's controls and asserts the game answered.
  *
  * A scene with nothing scriptable answers with no assertions rather than a
  * failure; the page-side check has already run by the time this is called.
  */
-async function drive(cdp, sessionId, rawEvaluate, id) {
+async function drive(cdp, sessionId, rawEvaluate, id, posed = {}) {
   const evaluate = (expression) => tryEvaluate(rawEvaluate, expression);
   const out = [];
   const add = (v) => out.push(v);
@@ -393,6 +513,152 @@ async function drive(cdp, sessionId, rawEvaluate, id) {
     add(
       verdict(id, 'the redstone toggle answers in both directions', on === 'true' && off === 'true', `on=${on} off=${off}`),
     );
+  }
+
+  if (id === 'menus') {
+    // Everything here goes through what the page can see: the stack's top
+    // through `current_screen`, the control block's readout, `settings_ron`,
+    // and `localStorage`. A stub export is the Rust not having landed, which
+    // the contract makes a skip and not a failure.
+    if (posed.stub) {
+      // A stub or an absent export is the Rust not having landed; any other
+      // throw is the export refusing, which is a failure.
+      add(stubOrFail(id, 'the menus are driven', 'settings_ron', posed.stub));
+    } else {
+      const top = await topScreen(evaluate);
+      if (top === null) {
+        add(skip(id, 'Play then Esc twice leaves the pause on top', 'the module has no current_screen export to read the stack with'));
+      } else {
+        add(
+          verdict(
+            id,
+            'Play then Esc twice leaves the pause on top',
+            posed.played === true && posed.paused === true,
+            `after Play the top was ${posed.played ? 'demo:chest' : 'not demo:chest'}; after Esc, Esc it is ${top}` +
+              (posed.paused ? '' : ' and the pose fell back to menu_open'),
+          ),
+        );
+      }
+
+      // Settings from the page, then the first slider with the keyboard. The
+      // display tab opens first with a select on its first row and the UI
+      // scale slider on the second; each arrow that lands on either writes a
+      // save, and the assertion is that one reached the page.
+      await evaluate("document.getElementById('menu-settings').click()");
+      const settings = await waitFor(evaluate, `(() => {
+        const w = window.slottedPlayground.state.wasm;
+        return typeof w.current_screen === 'function' ? w.current_screen() === 'demo:settings' : true;
+      })()`, 10_000);
+      add(verdict(id, 'the Settings button opens demo:settings', settings, `the top is ${await topScreen(evaluate)}`));
+      await focusCanvas(evaluate);
+      for (const name of ['ArrowDown', 'ArrowRight', 'ArrowRight', 'ArrowDown', 'ArrowRight']) {
+        await key(cdp, sessionId, name);
+      }
+      const saved = await waitFor(evaluate, "window.slottedPlayground.settings_ron().length > 0", 10_000);
+      const before = String(await evaluate('window.slottedPlayground.settings_ron()'));
+      add(verdict(id, 'moving a control with the keyboard writes a save the page can read', saved, `settings_ron is ${before.length} bytes`));
+
+      // The page copies the save into localStorage on its one-second poll,
+      // and says so in the readout.
+      const stored = await waitFor(evaluate, `localStorage.getItem('slotted.settings') === ${JSON.stringify(before)}`, 5000);
+      const readout = await evaluate("document.getElementById('settings-stored').textContent");
+      add(verdict(id, 'the save reaches localStorage and the readout says how big it is', stored && /bytes/.test(readout), `readout: ${readout}`));
+
+      // The third "what to try", done for real: reload, and read it back.
+      await cdp.send('Page.navigate', { url: await evaluate('location.href') }, sessionId);
+      await ready(evaluate);
+      const cameBack = await waitFor(evaluate, `window.slottedPlayground.settings_ron() === ${JSON.stringify(before)}`, SCENE_WAIT_MS);
+      const after = String(await evaluate('window.slottedPlayground.settings_ron()'));
+      add(
+        verdict(
+          id,
+          'after a reload settings_ron reads back what was saved',
+          saved && cameBack,
+          `${before.length} bytes before, ${after.length} after: ${after.slice(0, 120)}`,
+        ),
+      );
+      await sleep(2000);
+
+      // Reset clears the key and the store, and the page says so.
+      await evaluate("document.getElementById('settings-reset').click()");
+      const cleared = await waitFor(evaluate, `(() => {
+        const gone = localStorage.getItem('slotted.settings') === null;
+        return gone && /nothing saved/.test(document.getElementById('settings-stored').textContent);
+      })()`, 5000);
+      add(verdict(id, 'Reset forgets the saved settings', cleared, `readout: ${await evaluate("document.getElementById('settings-stored').textContent")}`));
+    }
+  }
+
+  if (id === 'dialogue') {
+    if (posed.stub) {
+      // A stub or an absent export is the Rust not having landed; any other
+      // throw is the export refusing, which is a failure.
+      add(stubOrFail(id, 'the dialogue is driven', 'set_value', posed.stub));
+    } else {
+      const lines = () => evaluate("[...document.querySelectorAll('#dialogue-log .row')].map((r) => r.textContent)");
+      add(verdict(id, "the smith's first line reaches the transcript pane", posed.smith, `transcript: ${JSON.stringify(await lines())}`));
+      add(
+        verdict(
+          id,
+          'Enter skips the typing and Enter again reaches the prompt',
+          posed.prompt,
+          `the transcript holds ${(await lines()).length} line(s): ${JSON.stringify(await lines())}`,
+        ),
+      );
+
+      // Finish this conversation first, because Talk again is a no-op while
+      // one runs: Enter takes the focused first answer, then two more skip
+      // and advance the smith's reply to the end, which hands the focus back
+      // to the furnace.
+      await focusCanvas(evaluate);
+      await key(cdp, sessionId, 'Enter');
+      await sleep(600);
+      await key(cdp, sessionId, 'Enter');
+      await sleep(600);
+      await key(cdp, sessionId, 'Enter');
+      const ended = await waitFor(evaluate, `(() => {
+        const w = window.slottedPlayground.state.wasm;
+        return typeof w.current_screen === 'function' ? w.current_screen() === 'machine:furnace' : true;
+      })()`, 10_000);
+      add(verdict(id, 'answering and advancing to the end leaves the furnace on top', ended, `the top is ${await topScreen(evaluate)}; transcript: ${JSON.stringify(await lines())}`));
+
+      // The switch writes `demo.found_key` through `set_value`; a stub would
+      // have greyed it, which the page records in `state.notYet`.
+      await evaluate("document.getElementById('dialogue-key').click()");
+      await sleep(600);
+      const on = await evaluate("document.getElementById('dialogue-key').checked && !window.slottedPlayground.state.notYet.has('set_value')");
+      add(verdict(id, 'the "found the key" switch turns on and set_value took the value', on));
+
+      // Talk again, walk to the choice, and take the gated answer: the third
+      // option is the one `demo.found_key` enables, and the focus ring skips
+      // a disabled option, so landing on it is the assertion.
+      const countBefore = (await lines()).length;
+      await evaluate("document.getElementById('dialogue-again').click()");
+      const again = await waitFor(evaluate, `document.querySelectorAll('#dialogue-log .row').length > ${countBefore}`, 15_000);
+      add(verdict(id, 'Talk again starts the conversation over', again, `${countBefore} lines before, ${(await lines()).length} after`));
+      await focusCanvas(evaluate);
+      let atChoice = false;
+      for (let press = 0; press < 4 && !atChoice; press += 1) {
+        await key(cdp, sessionId, 'Enter');
+        atChoice = await waitFor(evaluate, `document.querySelectorAll('#dialogue-log .row').length >= ${countBefore + 2}`, 2500);
+      }
+      await sleep(800);
+      await key(cdp, sessionId, 'ArrowDown');
+      await key(cdp, sessionId, 'ArrowDown');
+      const countAtChoice = (await lines()).length;
+      await key(cdp, sessionId, 'Enter');
+      // "I found the key" is the gated option's text (examples/showcase/locale),
+      // and the transcript's `you:` line is what was chosen.
+      const chose = await waitFor(evaluate, `document.querySelectorAll('#dialogue-log .row').length > ${countAtChoice} && /you.*found the key/i.test([...document.querySelectorAll('#dialogue-log .row')].slice(${countAtChoice}).map((r) => r.textContent).join(' '))`, 10_000);
+      add(
+        verdict(
+          id,
+          'walking down twice and pressing Enter picks the third, gated option',
+          atChoice && chose,
+          `transcript: ${JSON.stringify((await lines()).slice(countAtChoice))}`,
+        ),
+      );
+    }
   }
 
   if (id === 'themes') {
@@ -721,6 +987,10 @@ async function main() {
       lines.push(...deep.lines);
       bad += deep.bad;
 
+      // The pose the docs want, before the picture is taken. Not skipped by
+      // `--no-drive`, because the pose is part of the picture.
+      const posed = await pose(cdp, sessionId, evaluate, id);
+
       // The shot first, then the drive. These screenshots are what the README
       // and the guide embed, and a chest caught mid-sweep or a HUD caught
       // mid-drag is not the picture the docs want; the drive is what proves
@@ -733,7 +1003,7 @@ async function main() {
       // The scene's own controls, pressed. `--no-drive` skips them, for a run
       // that only wants the pictures.
       if (!args.includes('--no-drive')) {
-        const driven = await drive(cdp, sessionId, evaluate, id);
+        const driven = await drive(cdp, sessionId, evaluate, id, posed);
         lines.push(...driven.lines);
         bad += driven.bad;
       }

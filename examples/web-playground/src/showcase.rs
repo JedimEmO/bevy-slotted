@@ -1,45 +1,38 @@
-//! The scene switch: which of the eight showcase scenes the canvas shows.
+//! The scene switch: which of the nine showcase scenes the canvas shows.
 //!
-//! `docs/design/showcase-contract.md` section 1. A scene is a set of entities
+//! `docs/design/showcase-contract.md` section 1, amended by
+//! `docs/design/showcase-refresh-contract.md`. A scene is a set of entities
 //! toggled inside the one app, never a restart. [`SceneRegistry`] holds one
 //! [`SceneHandler`] per scene; [`apply_scene_switch`] calls the old one's
 //! `leave` and the new one's `enter` in `PreUpdate`, after the bus is drained.
 //! The 3D backdrop is spawned once by `scene::ScenePlugin` and shared, so the
 //! orbit carries on across a switch and the page visibly did not reload.
 //!
-//! There are two "current scenes" because one entry in the rail is not a scene
-//! on the canvas. [`ActiveScene`] is what the rail highlights; [`CanvasScene`]
-//! is what is actually spawned. Themes is the difference: selecting it swaps
-//! the controls column and leaves whatever screen was open exactly where it
-//! was, which is the only way "one screen tree, three skins" is worth looking
-//! at. Every other scene moves both.
+//! Every scene is on the canvas. Themes used to be the exception, an entry
+//! that swapped the controls column and left whatever was open alone; the
+//! refresh gave it a settings screen of its own to repaint, so [`ActiveScene`]
+//! is the one current scene and the overlay path went with the second one.
+//!
+//! Below the switch are the native twins of the refresh's five exports
+//! ([`menu_open`], [`settings_ron`], [`restore_settings`], [`talk_again`],
+//! [`set_value`]): the validation and the request, over any [`Bus`], so a
+//! test drives what `bridge` wraps in one line each.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 pub use showcase::{SCENES, Scene, SceneDef};
 use slotted::browser::BrowserPhase;
+use slotted::ui::Value;
 
-use crate::bus::{Bus, quote};
+use crate::bus::{Bus, Request, quote};
 
-/// The scene the rail highlights, and the one the page's controls follow.
+/// The scene the canvas shows, the rail highlights and the page's controls
+/// follow.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActiveScene(pub Scene);
 
 impl Default for ActiveScene {
-    fn default() -> Self {
-        Self(Scene::DEFAULT)
-    }
-}
-
-/// The scene whose entities are on the canvas.
-///
-/// The same as [`ActiveScene`] except while Themes is selected, when it is
-/// whatever was open before.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CanvasScene(pub Scene);
-
-impl Default for CanvasScene {
     fn default() -> Self {
         Self(Scene::DEFAULT)
     }
@@ -69,15 +62,6 @@ pub trait SceneHandler: Send + Sync + 'static {
     /// `demo:chest` screens of its own, docked a panel over each of them for
     /// anyone who had visited Browser first.
     fn docks_the_item_browser(&self) -> bool {
-        false
-    }
-
-    /// Whether selecting this scene leaves the canvas alone.
-    ///
-    /// True for exactly one scene, Themes, and the reason is in this module's
-    /// documentation. A handler that says true has its `enter` and `leave`
-    /// called for the rail's sake and must not spawn anything.
-    fn overlays_current(&self) -> bool {
         false
     }
 }
@@ -115,12 +99,6 @@ impl SceneRegistry {
             .filter(|scene| self.has(*scene))
             .collect()
     }
-
-    fn overlays(&self, scene: Scene) -> bool {
-        self.handlers
-            .get(&scene)
-            .is_some_and(|handler| handler.overlays_current())
-    }
 }
 
 /// Registers the real scenes and the switch.
@@ -130,7 +108,6 @@ pub struct ShowcasePlugin;
 impl Plugin for ShowcasePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ActiveScene>()
-            .init_resource::<CanvasScene>()
             .insert_resource(SceneRegistry::with_all_scenes())
             .add_message::<SwitchScene>()
             // After the browser's own `Startup` registrations. Both this and
@@ -150,6 +127,7 @@ impl Plugin for ShowcasePlugin {
                 PostUpdate,
                 (
                     publish_scene,
+                    publish_screen,
                     crate::scenes::multiplayer::pump_link,
                     crate::scenes::multiplayer::fit_client_screens,
                     crate::scenes::testing::advance_replay,
@@ -202,21 +180,12 @@ pub fn apply_scene_switch(world: &mut World) {
     // The handlers are taken out of the registry for the call: `enter` and
     // `leave` want `&mut World`, and the registry lives in it.
     let registry = world.remove_resource::<SceneRegistry>().unwrap_or_default();
-    let overlay = registry.overlays(wanted);
-    if !overlay {
-        let canvas = world.resource::<CanvasScene>().0;
-        // Leaving Themes is leaving nothing: it never entered the canvas, so
-        // whatever it was shown over is still there and stays.
-        if !registry.overlays(canvas)
-            && let Some(old) = registry.handlers.get(&canvas)
-        {
-            old.leave(world);
-        }
-        if let Some(new) = registry.handlers.get(&wanted) {
-            crate::scenes::chest::set_browser_attached(world, new.docks_the_item_browser());
-            new.enter(world);
-        }
-        world.resource_mut::<CanvasScene>().0 = wanted;
+    if let Some(old) = registry.handlers.get(&active) {
+        old.leave(world);
+    }
+    if let Some(new) = registry.handlers.get(&wanted) {
+        crate::scenes::chest::set_browser_attached(world, new.docks_the_item_browser());
+        new.enter(world);
     }
     world.insert_resource(registry);
     world.resource_mut::<ActiveScene>().0 = wanted;
@@ -232,6 +201,32 @@ fn publish_scene(bus: Res<Bus>, active: Res<ActiveScene>) {
     if active.is_changed() {
         bus.set_scene(active.0);
     }
+}
+
+/// `PostUpdate`: the top of the screen stack onto the bus, for
+/// `current_screen`. The topmost entry of any kind, overlays included, so a
+/// running dialogue reads as `slotted:dialogue` over the furnace; the empty
+/// string when nothing is open.
+pub fn publish_screen(bus: Res<Bus>, stack: Option<Res<slotted::ui::ScreenStack>>) {
+    let Some(stack) = stack else { return };
+    if !stack.is_changed() {
+        return;
+    }
+    bus.set_screen(current_screen_of(&stack));
+}
+
+/// The kind on top of `stack`, overlays included, or an empty string.
+pub fn current_screen_of(stack: &slotted::ui::ScreenStack) -> String {
+    stack
+        .top_any()
+        .map(|entry| entry.kind.0.to_string())
+        .unwrap_or_default()
+}
+
+/// `current_screen()`: the kind of the screen on top of the stack, as the
+/// world last published it.
+pub fn current_screen(bus: &Bus) -> String {
+    bus.screen()
 }
 
 /// The scene table as the JSON the rail renders.
@@ -260,9 +255,287 @@ pub fn scenes_json() -> String {
     format!("[{}]", scenes.join(","))
 }
 
+// ---------------------------------------------------------------------------
+// The refresh's exports, natively (docs/design/showcase-refresh-contract.md
+// section 5)
+// ---------------------------------------------------------------------------
+
+/// One of the Menus scene's screens, by the name the page uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MenuScreen {
+    /// `showcase:main`.
+    Title,
+    /// `slotted:pause`.
+    Pause,
+    /// `demo:settings`.
+    Settings,
+}
+
+impl MenuScreen {
+    /// The three, in the order the page's buttons show them.
+    pub const ALL: [MenuScreen; 3] = [MenuScreen::Title, MenuScreen::Pause, MenuScreen::Settings];
+
+    /// The name the page passes to `menu_open`.
+    pub const fn id(self) -> &'static str {
+        match self {
+            MenuScreen::Title => "title",
+            MenuScreen::Pause => "pause",
+            MenuScreen::Settings => "settings",
+        }
+    }
+
+    /// The screen with this name, if there is one.
+    pub fn from_id(id: &str) -> Option<MenuScreen> {
+        MenuScreen::ALL.into_iter().find(|which| which.id() == id)
+    }
+}
+
+/// `menu_open(which)`: pushes the named menu screen. Menus scene only; the
+/// world says so on the console when another is open.
+///
+/// # Errors
+///
+/// A name that is not `title`, `pause` or `settings`.
+pub fn menu_open(bus: &Bus, which: &str) -> Result<(), String> {
+    let which = MenuScreen::from_id(which).ok_or_else(|| {
+        format!(
+            "`{which}` is not a menu screen; the page has {}",
+            MenuScreen::ALL
+                .iter()
+                .map(|w| w.id())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })?;
+    bus.request(Request::MenuOpen(which));
+    Ok(())
+}
+
+/// `settings_ron()`: the saved settings as RON, empty when nothing was
+/// saved. Read straight off the bus, where the `PageSettings` store put it.
+pub fn settings_ron(bus: &Bus) -> String {
+    bus.settings()
+}
+
+/// `restore_settings(ron)`: puts a [`settings_ron`] value back, or resets
+/// the saved settings when `ron` is empty.
+///
+/// Two things happen, and the order matters. The bus slot is written here,
+/// synchronously, so a `MenuPlugin` that has not loaded the store yet (the
+/// page calls this before the first frame, and `apply_settings` runs in
+/// `PostStartup`) finds the values when it does. Then a request goes on the
+/// queue, so a world that already applied its settings re-seeds them from
+/// the text; the two are idempotent, and whichever runs second is a no-op.
+///
+/// # Errors
+///
+/// Text that is neither empty nor saved settings. Nothing is written then,
+/// so a stale key in `localStorage` cannot empty a store that was fine.
+pub fn restore_settings(bus: &Bus, ron: &str) -> Result<(), String> {
+    if ron.trim().is_empty() {
+        bus.set_settings("");
+    } else {
+        crate::settings_store::from_ron(ron)?;
+        bus.set_settings(ron);
+    }
+    bus.request(Request::RestoreSettings {
+        ron: ron.to_owned(),
+    });
+    Ok(())
+}
+
+/// `talk_again()`: starts the smith's conversation again. Dialogue scene
+/// only; the world says so on the console when another is open, and a
+/// no-op with a line while one is running.
+pub fn talk_again(bus: &Bus) {
+    bus.request(Request::TalkAgain);
+}
+
+/// `set_value(key, json)`: writes one declared settings key into the value
+/// store. `json` is a JSON bool, number or string; it is made the kind the
+/// key's default has, so a page can say `1` for a slider and `"1280x720"`
+/// for a select.
+///
+/// # Errors
+///
+/// A key `showcase::settings::spec` does not declare, or a value that is
+/// not a JSON bool, number or string of the key's kind.
+pub fn set_value(bus: &Bus, key: &str, json: &str) -> Result<(), String> {
+    let defaults = showcase::settings::spec().defaults();
+    let Some(default) = defaults.get(key) else {
+        return Err(format!(
+            "`{key}` is not a settings key; the spec declares {}",
+            defaults.keys().cloned().collect::<Vec<_>>().join(", ")
+        ));
+    };
+    let value = parse_json_value(json, default)?;
+    bus.request(Request::SetValue {
+        key: key.to_owned(),
+        value,
+    });
+    Ok(())
+}
+
+/// A JSON bool, number or string as the `Value` kind `like` has.
+///
+/// Small enough not to be worth `serde_json` in the wasm module: three
+/// scalars, and a string with the escapes a page would write.
+fn parse_json_value(json: &str, like: &Value) -> Result<Value, String> {
+    let text = json.trim();
+    let wrong = |what: &str| {
+        format!(
+            "`{json}` is a JSON {what}, and the key holds a {}",
+            match like {
+                Value::Bool(_) => "bool",
+                Value::Int(_) => "whole number",
+                Value::Float(_) => "number",
+                Value::Text(_) => "string",
+            }
+        )
+    };
+    match (text, like) {
+        ("true", Value::Bool(_)) => Ok(Value::Bool(true)),
+        ("false", Value::Bool(_)) => Ok(Value::Bool(false)),
+        ("true" | "false", _) => Err(wrong("bool")),
+        (quoted, _) if quoted.starts_with('"') => {
+            let inner = quoted
+                .strip_suffix('"')
+                .and_then(|q| q.strip_prefix('"'))
+                .ok_or_else(|| format!("`{json}` is not a JSON string"))?;
+            let unescaped = unescape_json(inner)?;
+            match like {
+                Value::Text(_) => Ok(Value::Text(unescaped)),
+                _ => Err(wrong("string")),
+            }
+        }
+        (number, Value::Int(_)) => number
+            .parse::<i64>()
+            .map(Value::Int)
+            .map_err(|_| format!("`{json}` is not a JSON whole number")),
+        (number, Value::Float(_)) => number
+            .parse::<f64>()
+            .map(Value::Float)
+            .map_err(|_| format!("`{json}` is not a JSON number")),
+        (number, _) if number.parse::<f64>().is_ok() => Err(wrong("number")),
+        _ => Err(format!("`{json}` is not a JSON bool, number or string")),
+    }
+}
+
+/// The body of a JSON string literal, escapes resolved.
+fn unescape_json(inner: &str) -> Result<String, String> {
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('/') => out.push('/'),
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some('u') => {
+                let code: String = chars.by_ref().take(4).collect();
+                let point = u32::from_str_radix(&code, 16)
+                    .ok()
+                    .and_then(char::from_u32)
+                    .ok_or_else(|| format!("`\\u{code}` is not a character"))?;
+                out.push(point);
+            }
+            other => return Err(format!("`\\{}` is not a JSON escape", other.unwrap_or(' '))),
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_open_accepts_the_three_names_and_nothing_else() {
+        let bus = Bus::new();
+        for which in MenuScreen::ALL {
+            menu_open(&bus, which.id()).expect("a real name");
+        }
+        assert_eq!(bus.take_requests().len(), 3);
+        let error = menu_open(&bus, "about").expect_err("not a screen the page can open");
+        assert!(error.contains("title, pause, settings"), "{error}");
+        assert!(bus.take_requests().is_empty(), "a refusal queues nothing");
+    }
+
+    #[test]
+    fn restore_settings_writes_the_bus_first_and_refuses_what_is_not_settings() {
+        let bus = Bus::new();
+        let ron = "(values:{\"settings.ui_scale\":1.25},bindings:None)";
+        restore_settings(&bus, ron).expect("saved settings");
+        assert_eq!(settings_ron(&bus), ron, "the store's load finds it at once");
+        assert!(matches!(
+            bus.take_requests().as_slice(),
+            [Request::RestoreSettings { ron: text }] if text == ron
+        ));
+
+        restore_settings(&bus, "  ").expect("empty resets");
+        assert_eq!(settings_ron(&bus), "");
+
+        bus.set_settings(ron);
+        assert!(restore_settings(&bus, "(values:").is_err());
+        assert_eq!(settings_ron(&bus), ron, "a refusal leaves the slot alone");
+    }
+
+    #[test]
+    fn set_value_checks_the_key_and_makes_the_value_the_keys_kind() {
+        let bus = Bus::new();
+        set_value(&bus, "demo.found_key", "true").expect("a declared toggle");
+        set_value(&bus, "settings.ui_scale", "1").expect("a whole number is a float");
+        set_value(&bus, "settings.resolution", "\"1280x720\"").expect("a select's option");
+        set_value(&bus, "settings.player_name", "\"a \\\"quoted\\\" name\"")
+            .expect("a string with escapes");
+        let values: Vec<(String, Value)> = bus
+            .take_requests()
+            .into_iter()
+            .map(|r| match r {
+                Request::SetValue { key, value } => (key, value),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![
+                ("demo.found_key".to_owned(), Value::Bool(true)),
+                ("settings.ui_scale".to_owned(), Value::Float(1.0)),
+                (
+                    "settings.resolution".to_owned(),
+                    Value::Text("1280x720".to_owned())
+                ),
+                (
+                    "settings.player_name".to_owned(),
+                    Value::Text("a \"quoted\" name".to_owned())
+                ),
+            ]
+        );
+
+        assert!(
+            set_value(&bus, "demo.nothing", "true").is_err(),
+            "an undeclared key"
+        );
+        assert!(
+            set_value(&bus, "demo.found_key", "1").is_err(),
+            "a number for a bool"
+        );
+        assert!(
+            set_value(&bus, "settings.ui_scale", "\"big\"").is_err(),
+            "a string for a slider"
+        );
+        assert!(
+            set_value(&bus, "settings.ui_scale", "{}").is_err(),
+            "not a scalar"
+        );
+        assert!(bus.take_requests().is_empty(), "a refusal queues nothing");
+    }
 
     #[test]
     fn the_json_lists_every_scene_in_rail_order() {
@@ -281,15 +554,5 @@ mod tests {
     fn every_scene_in_the_table_has_a_handler() {
         let registry = SceneRegistry::with_all_scenes();
         assert_eq!(registry.registered(), Scene::ALL);
-    }
-
-    #[test]
-    fn themes_is_the_only_scene_that_leaves_the_canvas_alone() {
-        let registry = SceneRegistry::with_all_scenes();
-        let overlays: Vec<Scene> = Scene::ALL
-            .into_iter()
-            .filter(|scene| registry.overlays(*scene))
-            .collect();
-        assert_eq!(overlays, [Scene::Themes]);
     }
 }

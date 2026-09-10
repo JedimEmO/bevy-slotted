@@ -168,7 +168,7 @@ pub fn set_canvas_console(on: bool) {
 // The showcase (docs/design/showcase-contract.md section 4)
 // ---------------------------------------------------------------------------
 
-/// The eight scenes as the JSON the rail renders: id, title, caption, the
+/// The nine scenes as the JSON the rail renders: id, title, caption, the
 /// three things to try, and whether the scene is real yet.
 #[wasm_bindgen]
 pub fn list_scenes() -> JsValue {
@@ -194,6 +194,16 @@ pub fn set_scene(id: &str) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn current_scene() -> JsValue {
     JsValue::from_str(Bus::global().scene().map_or("", Scene::id))
+}
+
+/// The kind of the screen on top of the stack (`showcase:main`,
+/// `slotted:pause`, `demo:settings`, `demo:chest`, `slotted:dialogue`, ..),
+/// overlays included, or an empty string when nothing is open or before the
+/// first frame. Read-only; the world publishes it once a frame, the same
+/// push-pull the snapshot uses.
+#[wasm_bindgen]
+pub fn current_screen() -> String {
+    showcase::current_screen(&Bus::global())
 }
 
 /// Applies a theme to the open scene: `glass`, `paper` or `neon`.
@@ -337,77 +347,80 @@ pub fn replay_status() -> JsValue {
     JsValue::from_str(&Bus::global().replay_status())
 }
 
-/// What a stubbed export throws. `web/playground.js` and `smoke.html` test
-/// for the prefix and render a stub as a disabled control, so a page built
-/// against the stubs keeps working against the finished module.
-pub const NOT_YET_PREFIX: &str = "not yet: ";
-
-fn not_yet(what: &str) -> JsValue {
-    js_sys::TypeError::new(&format!("{NOT_YET_PREFIX}{what}")).into()
-}
-
 // ---------------------------------------------------------------------------
-// Showcase refresh stubs (docs/design/showcase-refresh-contract.md section
-// 5). Package A replaces each body; the signatures are the contract's.
+// The showcase refresh (docs/design/showcase-refresh-contract.md section 5).
+// Each is one line over its native twin in `showcase`, which does the
+// validation and the request.
 // ---------------------------------------------------------------------------
 
-/// Pushes the named menu screen: `title`, `pause` or `settings`. Menus only.
+/// Opens the named menu screen: `title`, `pause` or `settings`. Menus scene
+/// only; elsewhere it is a line on the console and nothing else.
+///
+/// `pause` and `settings` push over whatever is open; `title` pops back to
+/// the title, or closes the chest and shows a fresh one.
 ///
 /// # Errors
 ///
-/// Anything but those three names; and `not yet:` until the scene lands.
+/// Anything but those three names, as a `TypeError`.
 #[wasm_bindgen]
 pub fn menu_open(which: &str) -> Result<(), JsValue> {
-    let _ = which;
-    Err(not_yet("the Menus scene is a stub"))
+    showcase::menu_open(&Bus::global(), which).map_err(type_error)
 }
 
-/// The saved settings as RON, for the page to keep in `localStorage`. Empty
-/// when nothing was saved.
+/// The saved settings as RON, for the page to keep in
+/// `localStorage["slotted.settings"]`. Empty when nothing was saved, which
+/// the page reads as "clear the key".
 ///
-/// # Errors
-///
-/// `not yet:` until the Menus scene lands.
+/// The world writes it on every save (once the changes stop, so a slider
+/// drag is one write) and `restore_settings` writes it too, so what comes
+/// back is always what the store holds.
 #[wasm_bindgen]
-pub fn settings_ron() -> Result<String, JsValue> {
-    Err(not_yet("the Menus scene is a stub"))
+pub fn settings_ron() -> String {
+    showcase::settings_ron(&Bus::global())
 }
 
 /// Puts a [`settings_ron`] value back, or resets the saved settings when
-/// `ron` is empty. Called once at boot with whatever `localStorage` held.
+/// `ron` is empty.
+///
+/// Called once at boot with whatever `localStorage` held, before the first
+/// frame, so the store's load finds the values; and by the page's Reset
+/// button with an empty string, which forgets the saved settings and puts
+/// every declared key back to its default, so the next `settings_ron()`
+/// comes back empty. A running world re-seeds its values from the text, and
+/// an open settings screen repaints.
 ///
 /// # Errors
 ///
-/// The text is neither empty nor saved settings; and `not yet:` until the
-/// Menus scene lands.
+/// Text that is neither empty nor saved settings, as a `TypeError`; nothing
+/// is changed then.
 #[wasm_bindgen]
 pub fn restore_settings(ron: &str) -> Result<(), JsValue> {
-    let _ = ron;
-    Err(not_yet("the Menus scene is a stub"))
+    showcase::restore_settings(&Bus::global(), ron).map_err(type_error)
 }
 
-/// Starts the smith's conversation again. Dialogue only; a no-op with a
-/// console line while one is running.
-///
-/// # Errors
-///
-/// `not yet:` until the Dialogue scene lands.
+/// Starts the smith's conversation again. Dialogue scene only; a no-op with
+/// a console line while one is running, and a line elsewhere.
 #[wasm_bindgen]
-pub fn talk_again() -> Result<(), JsValue> {
-    Err(not_yet("the Dialogue scene is a stub"))
+pub fn talk_again() {
+    showcase::talk_again(&Bus::global());
 }
 
 /// Writes one declared settings key into the value store. `json` is a JSON
-/// bool, number or string.
+/// bool, number or string, made the kind the key's default has, so the
+/// page's "found the key" switch says `set_value("demo.found_key", "true")`.
+/// The store's rules and guards still apply.
 ///
 /// # Errors
 ///
-/// A key the settings spec does not declare, a value of the wrong shape; and
-/// `not yet:` until the Dialogue scene lands.
+/// A key `showcase::settings::spec` does not declare, or a value that is
+/// not a JSON scalar of the key's kind, as a `TypeError`.
 #[wasm_bindgen]
 pub fn set_value(key: &str, json: &str) -> Result<(), JsValue> {
-    let _ = (key, json);
-    Err(not_yet("the Dialogue scene is a stub"))
+    showcase::set_value(&Bus::global(), key, json).map_err(type_error)
+}
+
+fn type_error(message: String) -> JsValue {
+    js_sys::TypeError::new(&message).into()
 }
 
 fn not_a_scene(id: &str) -> JsValue {

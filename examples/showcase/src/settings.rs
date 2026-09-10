@@ -235,14 +235,16 @@ impl ValueGuard for UiScaleGuard {
     }
 }
 
-/// Inserts the [`Settings`] resource, the guard and the base locale, and
-/// makes sure `MenuPlugin` is there to turn the spec into a screen.
+/// Inserts the [`Settings`] resource, the guard and the locale, and makes
+/// sure `MenuPlugin` is there to turn the spec into a screen.
 ///
 /// The base locale is loaded from the compiled-in `assets/locale/en-US.ftl`
 /// unless a `Localization` is already present: the settings labels and the
 /// footer's `{key:..}` placeholders are Fluent strings, and a game with no
 /// mods installed has nothing else that reads the file. A pack install
-/// layers the mods' catalogues over the same base.
+/// layers the mods' catalogues over the same base. The showcase's own
+/// strings (`examples/showcase/locale/en-US.ftl`) go in as a fallback
+/// either way; see [`install_locale`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SettingsDemoPlugin;
 
@@ -265,23 +267,41 @@ pub fn install_guard(mut guards: ResMut<ValueGuards>) {
 /// The base catalogue, compiled in.
 const EN_US: &str = include_str!("../../../assets/locale/en-US.ftl");
 
-/// `Startup`: the base `en-US` catalogue as the `Localization` port, unless
-/// whatever is installed already resolves the settings strings (a pack
-/// install layered the same file under the mods' own).
-pub fn install_locale(mut commands: Commands, existing: Option<Res<Localization>>) {
-    if existing.is_some_and(|loc| {
+/// The showcase's own catalogue, compiled in: the Menus and Dialogue scenes'
+/// strings and the chest header's keys
+/// (docs/design/showcase-refresh-contract.md sections 4.2 and 4.3).
+pub const SHOWCASE_EN_US: &str = include_str!("../locale/en-US.ftl");
+
+/// `Startup`: the locale.
+///
+/// Two layers. The base `en-US` catalogue becomes the `Localization` port
+/// unless whatever is installed already resolves the settings strings (a
+/// pack install layered the same file under the mods' own, which is how the
+/// web playground gets it). Then the showcase's own catalogue
+/// ([`SHOWCASE_EN_US`]) is pushed as a fallback of the port, whichever way
+/// the primary got there: a fallback survives a pack install and a mod
+/// reload, both of which replace only the primary, and it is where a key no
+/// mod and no base file defines (`demo.showcase.*`, `demo.smith.*`,
+/// `demo.chest.title`) is answered.
+pub fn install_locale(world: &mut World) {
+    let resolves_settings = world.get_resource::<Localization>().is_some_and(|loc| {
         loc.resolve(&LocKey("demo.settings.title".to_owned()))
             .is_some()
-    }) {
-        return;
+    });
+    if !resolves_settings {
+        let mut table = LocaleTable::default();
+        if let Err(error) = table.push_layer(None, EN_US.to_owned()) {
+            warn!(%error, "the base locale file is not valid Fluent");
+        }
+        let locales = Locales::new(table);
+        world.insert_resource(locales.port());
+        world.insert_resource(locales);
     }
-    let mut table = LocaleTable::default();
-    if let Err(error) = table.push_layer(None, EN_US.to_owned()) {
-        warn!(%error, "the base locale file is not valid Fluent");
+    let mut showcase = LocaleTable::default();
+    if let Err(error) = showcase.push_layer(None, SHOWCASE_EN_US.to_owned()) {
+        warn!(%error, "the showcase locale file is not valid Fluent");
     }
-    let locales = Locales::new(table);
-    commands.insert_resource(locales.port());
-    commands.insert_resource(locales);
+    world.resource_mut::<Localization>().push_fallback(showcase);
 }
 
 /// Pushes the settings screen as a modal over whatever is open. Nothing
@@ -323,6 +343,41 @@ mod tests {
             Some("Press {key:back} to close, {key:tab_next} for the next tab"),
             "Fluent's string literals hand the rich placeholders through"
         );
+    }
+
+    #[test]
+    fn the_showcase_catalogue_parses_and_resolves_the_new_scenes_strings() {
+        let mut table = LocaleTable::default();
+        table
+            .push_layer(None, SHOWCASE_EN_US.to_owned())
+            .expect("examples/showcase/locale/en-US.ftl is valid Fluent");
+        let text = |key: &str| Localizer::resolve(&table, &LocKey(key.to_owned()), no_args());
+        assert_eq!(text("demo.showcase.title").as_deref(), Some("Slotted"));
+        assert_eq!(text("demo-smith").as_deref(), Some("Smith"));
+        assert_eq!(text("demo.chest.title").as_deref(), Some("Copper Chest"));
+        assert!(
+            text("demo.showcase.about.body")
+                .is_some_and(|body| body.contains("[b]") && body.contains("{key:back}")),
+            "the About body carries a bold run and a key-styled run"
+        );
+        for key in [
+            "demo.showcase.footer",
+            "demo.showcase.about",
+            "demo.showcase.about.title",
+            "demo.showcase.leave.title",
+            "demo.showcase.leave.message",
+            "demo.showcase.leave.accept",
+            "demo.showcase.no_exit",
+            "demo.showcase.thanks",
+            "demo-smith-hello",
+            "demo-smith-ask",
+            "demo-smith-yes",
+            "demo-smith-no",
+            "demo-smith-secret",
+            "demo-smith-secret-line",
+        ] {
+            assert!(text(key).is_some(), "{key} resolves");
+        }
     }
 
     #[test]

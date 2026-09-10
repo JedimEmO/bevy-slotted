@@ -1,0 +1,27 @@
+// The showcase's title screen (docs/design/showcase-refresh-contract.md
+// section 4.2): `slotted:main_menu` with one node of its own, the same way
+// `examples/menus/screens/main.screen.ron` does it. Inheriting means the
+// template's tree is the starting point and this file's nodes merge onto it
+// by id (docs/guide/screens.md); the root always restates its own shape,
+// because the child's root wins on role, layout and tags. The About button
+// is not here: it is an `Injection` at the template's `buttons_end` anchor
+// (`src/menus.rs`), which is the path a mod takes to add a button to a
+// screen it does not own.
+#![enable(implicit_some)]
+(
+    kind: "showcase:main",
+    inherits: "slotted:main_menu",
+    initial_focus: "play",
+    root: (
+        type: "panel", role: "panel",
+        layout: (direction: "column", gap: 3.0, padding: (5.0, 5.0, 5.0, 5.0), min_width: 340,
+                 place: (anchor: "left", offset: (48.0, 0.0)), align: "start"),
+        tags: {"test_id": "main_menu"},
+        children: [
+            // An unseen id is appended under the template's root, after the
+            // `footer` anchor.
+            (type: "text", key: "demo.showcase.footer", style: "caption",
+             tags: {"test_id": "footer_note"}),
+        ],
+    ),
+)

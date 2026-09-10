@@ -6,13 +6,14 @@
 //! chest's menu and contents ([`chest`]), the machine's simulation and face
 //! widget ([`machine`]), the copper chest the Lua mods build ([`mods`]), the
 //! cube ring and orbit every scene sits in front of ([`backdrop`]), the
-//! settings screen's store, rules and guard ([`settings`]), the menu config
-//! and the quit flow the examples share ([`menus`]), and the screen files
-//! compiled in so a scene switch never waits on an asset handle
-//! ([`screens`]).
+//! settings screen's store, rules and guard ([`settings`]), the menu config,
+//! the quit flow and the showcase's title screen ([`menus`]), the smith's
+//! conversation ([`dialogue`]), and the screen files compiled in so a scene
+//! switch never waits on an asset handle ([`screens`]).
 
 pub mod backdrop;
 pub mod chest;
+pub mod dialogue;
 pub mod machine;
 pub mod menus;
 pub mod mods;
@@ -140,7 +141,7 @@ pub const SCENES: [SceneDef; 9] = [
             "Change a setting, reload the page, open Settings again",
             "Walk a menu with the arrow keys and Enter",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Dialogue,
@@ -151,7 +152,7 @@ pub const SCENES: [SceneDef; 9] = [
             "Turn on \"found the key\" on the right and ask again",
             "Press X for the history",
         ],
-        ready: false,
+        ready: true,
     },
     SceneDef {
         scene: Scene::Themes,
@@ -226,14 +227,8 @@ mod tests {
 
     #[test]
     fn every_scene_is_ready() {
-        // The showcase refresh (docs/design/showcase-refresh-contract.md)
-        // ships Menus and Dialogue as stubs; package A flips them.
         let ready: Vec<Scene> = Scene::ALL.into_iter().filter(|s| s.ready()).collect();
-        let expected: Vec<Scene> = Scene::ALL
-            .into_iter()
-            .filter(|s| !matches!(s, Scene::Menus | Scene::Dialogue))
-            .collect();
-        assert_eq!(ready, expected);
+        assert_eq!(ready, Scene::ALL, "every scene is real");
         assert!(Scene::DEFAULT.ready());
     }
 }

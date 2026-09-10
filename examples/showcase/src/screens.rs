@@ -1,8 +1,8 @@
 //! The screen files the showcase opens, compiled in.
 //!
 //! A browser tab has no filesystem, and the screens the showcase opens from
-//! Rust (`demo:chest`, `machine:furnace` and `demo:settings`) are checked-in
-//! RON beside the examples that own them. `include_str!` is the whole mechanism: the file
+//! Rust (`demo:chest`, `machine:furnace`, `showcase:main` and
+//! `demo:settings`) are checked-in RON beside the examples that own them. `include_str!` is the whole mechanism: the file
 //! on disk stays the one copy, a native example still loads it through the
 //! `AssetServer` so it hot-reloads, and the page gets the same bytes with no
 //! fetch to wait for.
@@ -18,6 +18,10 @@ pub const CHEST_SCREEN_RON: &str = include_str!("../../../assets/screens/demo_ch
 
 /// `examples/machine/screens/furnace.screen.ron`, the machine scene.
 pub const FURNACE_SCREEN_RON: &str = include_str!("../../machine/screens/furnace.screen.ron");
+
+/// `examples/showcase/screens/main.screen.ron`, the menus scene's title:
+/// `slotted:main_menu` with a footer note of its own.
+pub const MAIN_SCREEN_RON: &str = include_str!("../screens/main.screen.ron");
 
 /// Parses one of the constants above.
 ///
@@ -43,5 +47,12 @@ mod tests {
             parse("furnace", FURNACE_SCREEN_RON).kind.0.to_string(),
             "machine:furnace"
         );
+        let main = parse("main", MAIN_SCREEN_RON);
+        assert_eq!(main.kind.0.to_string(), "showcase:main");
+        assert_eq!(
+            main.inherits.as_ref().map(|k| k.0.to_string()).as_deref(),
+            Some("slotted:main_menu")
+        );
+        assert_eq!(main.initial_focus.as_deref(), Some("play"));
     }
 }

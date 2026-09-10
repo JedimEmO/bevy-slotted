@@ -14,29 +14,46 @@
 use bevy::prelude::*;
 use slotted_test::prelude::*;
 use web_playground::bus::{Bus, Request};
-use web_playground::showcase::{ActiveScene, CanvasScene, Scene, SceneRegistry, SwitchScene};
+use web_playground::showcase::{ActiveScene, Scene, SceneRegistry, SwitchScene};
 
 /// The mods the playground bundles, on disk.
 pub fn mods_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../modded/mods")
 }
 
-/// A harness with the bundled mods loaded and the luaur runtime in place.
+/// A harness with the bundled mods loaded and the luaur runtime in place,
+/// and the bus it was built around.
 ///
 /// `mod_layout_with_base` rather than `mod_layout`: the base namespaces `demo`
 /// and `machine` are loaded as mods with synthetic manifests, which is exactly
 /// what the playground's `build.rs` bakes into the browser bundle, and without
 /// them the Chest and Machine scenes have no items to put in a chest.
-pub fn harness() -> UiHarness {
+///
+/// The bus is made here rather than by the caller because the settings store
+/// is built over it (`PageSettings`, the same adapter `build_app` inserts) and
+/// has to be in place before `MenuPlugin` loads it at `PostStartup`.
+pub fn harness() -> (UiHarness, Bus) {
+    harness_over(Bus::new())
+}
+
+/// [`harness`] over a bus the caller made, so what the page hands back before
+/// the first frame (`restore_settings` at boot) can be on it already.
+pub fn harness_over(bus: Bus) -> (UiHarness, Bus) {
+    let storage = web_playground::settings_store::PageSettings::new(bus.clone()).storage();
     let mut harness = UiHarness::builder()
-        // The same two plugins `build_app` adds on top of the facade: the
-        // furnace simulation with its face widget, and the chest's key
-        // bindings and header labels.
+        // The same plugins `build_app` adds on top of the facade: the
+        // furnace simulation with its face widget, the chest's key bindings
+        // and header labels, and the menus' config, title, dialogue and
+        // routing.
         .plugins((
             SlottedPlugins::headless(),
             showcase::machine::MachineDemoPlugin,
             showcase::chest::ChestDemoPlugin,
+            web_playground::scenes::menus::MenusDemoPlugin,
         ))
+        .plugins(move |app: &mut App| {
+            app.insert_resource(storage.clone());
+        })
         .mods_dir(mods_dir())
         // The size the bundled recording was made at. `tests/showcase.rs`
         // replays it, and a recording carries pointer positions and no
@@ -60,14 +77,13 @@ pub fn harness() -> UiHarness {
         ));
     let layout = harness.mod_layout_with_base();
     harness.load_mods(layout);
-    harness
+    (harness, bus)
 }
 
 /// The harness plus the bus and the playground's request plumbing, but no
 /// scenes: what `tests_tab.rs` and `restart.rs` want.
 pub fn playground_world() -> (UiHarness, Bus) {
-    let mut harness = harness();
-    let bus = Bus::new();
+    let (mut harness, bus) = harness();
     let world = harness.world_mut();
     world.insert_resource(bus.clone());
     world.init_resource::<Messages<web_playground::StartTests>>();
@@ -90,12 +106,15 @@ pub fn playground_world() -> (UiHarness, Bus) {
 /// [`command`] take a request off the bus and write the message it would have
 /// written, which is the same two lines that system runs.
 pub fn showcase_world() -> (UiHarness, Bus) {
-    let mut harness = harness();
-    let bus = Bus::new();
+    showcase_world_over(Bus::new())
+}
+
+/// [`showcase_world`] over a bus the caller made.
+pub fn showcase_world_over(bus: Bus) -> (UiHarness, Bus) {
+    let (mut harness, bus) = harness_over(bus);
     let world = harness.world_mut();
     world.insert_resource(bus.clone());
     world.init_resource::<ActiveScene>();
-    world.init_resource::<CanvasScene>();
     world.init_resource::<Messages<SwitchScene>>();
     world.init_resource::<Messages<web_playground::SceneCommand>>();
     world.init_resource::<Messages<web_playground::StartTests>>();
@@ -119,6 +138,7 @@ pub fn showcase_world() -> (UiHarness, Bus) {
     world.get_resource_or_init::<Schedules>().add_systems(
         PostUpdate,
         (
+            web_playground::showcase::publish_screen,
             web_playground::scenes::multiplayer::pump_link,
             web_playground::scenes::multiplayer::fit_client_screens,
             web_playground::scenes::testing::advance_replay,
@@ -154,14 +174,9 @@ pub fn command(harness: &mut UiHarness, command: web_playground::SceneCommand) {
     harness.settle();
 }
 
-/// Which scene the rail is on.
+/// Which scene the rail is on and the canvas shows.
 pub fn active(harness: &UiHarness) -> Scene {
     harness.world().resource::<ActiveScene>().0
-}
-
-/// Which scene's entities are on the canvas.
-pub fn canvas(harness: &UiHarness) -> Scene {
-    harness.world().resource::<CanvasScene>().0
 }
 
 /// Every console line written since the last drain, oldest first.

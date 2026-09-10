@@ -5,13 +5,15 @@
 //! switch, this module owns what each scene spawns.
 //!
 //! The two shared pieces are [`teardown`], which is how a `leave` is written
-//! once instead of eight times, and [`registries`], which is the frozen
+//! once instead of nine times, and [`registries`], which is the frozen
 //! registry set every scene fills its inventories against and which does not
 //! exist until the mods have loaded.
 
 pub mod chest;
+pub mod dialogue;
 pub mod hud;
 pub mod machine;
+pub mod menus;
 pub mod mods;
 pub mod multiplayer;
 pub mod testing;
@@ -29,8 +31,8 @@ use crate::showcase::{Scene, SceneRegistry};
 pub fn register_all(registry: &mut SceneRegistry) {
     registry.register(Scene::Chest, chest::ChestScene);
     registry.register(Scene::Machine, machine::MachineScene);
-    // Menus and Dialogue: docs/design/showcase-refresh-contract.md. Not
-    // registered until package A lands them; the page greys them out.
+    registry.register(Scene::Menus, menus::MenusScene);
+    registry.register(Scene::Dialogue, dialogue::DialogueScene);
     registry.register(Scene::Themes, themes::ThemesScene);
     registry.register(Scene::Mods, mods::ModsScene);
     registry.register(Scene::Hud, hud::HudScene);

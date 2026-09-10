@@ -24,6 +24,7 @@ pub mod bus;
 pub mod hud_store;
 pub mod scene;
 pub mod scenes;
+pub mod settings_store;
 pub mod showcase;
 pub mod snapshot;
 pub mod tests;
@@ -180,6 +181,10 @@ pub fn build_app(bus: Bus) -> App {
         .insert_resource(slotted::ui::hud_editor::HudLayoutStore::new(
             hud_store::global(),
         ))
+        // The settings store likewise: the bus, which the page reads with
+        // `settings_ron` and writes with `restore_settings`
+        // (docs/design/showcase-refresh-contract.md section 4.2).
+        .insert_resource(settings_store::PageSettings::global().storage())
         .add_plugins(slotted::SlottedPlugins::default().set(SlottedPacksPlugin {
             config: PacksConfig {
                 // The HUD scene's `hud_clock` mod writes the time on every
@@ -215,6 +220,12 @@ pub fn build_app(bus: Bus) -> App {
         // title and capacity readout are filled in. Same plugin the windowed
         // chest example adds, so the two behave alike.
         .add_plugins(::showcase::chest::ChestDemoPlugin)
+        // The menus: the settings spec and the `MenuConfig`, the showcase's
+        // title screen, the smith's conversation, and the systems that answer
+        // what `slotted-menu` leaves to the game. For the whole app, like the
+        // two above: a `MenuConfig` has to be there when `MenuPlugin` fills
+        // the title in at `PostStartup`, and the dialogue is registered once.
+        .add_plugins(scenes::menus::MenusDemoPlugin)
         .add_plugins(scene::ScenePlugin)
         .add_plugins(showcase::ShowcasePlugin)
         .add_message::<StartTests>()
@@ -635,6 +646,18 @@ pub(crate) fn drain_requests(
             Request::ReplayPlay(on) => {
                 scenes.write(SceneCommand::ReplayPlay(on));
             }
+            Request::MenuOpen(which) => {
+                scenes.write(SceneCommand::MenuOpen(which));
+            }
+            Request::RestoreSettings { ron } => {
+                scenes.write(SceneCommand::RestoreSettings { ron });
+            }
+            Request::TalkAgain => {
+                scenes.write(SceneCommand::TalkAgain);
+            }
+            Request::SetValue { key, value } => {
+                scenes.write(SceneCommand::SetValue { key, value });
+            }
             Request::Reload { mod_id } => match ModId::new(&mod_id) {
                 Ok(mod_id) => {
                     bus.log("info", "playground", format!("reloading {mod_id}"));
@@ -717,7 +740,7 @@ fn level_name(level: slotted_script::LogLevel) -> &'static str {
 /// living in a resource for the link conditions. Turning them into a message
 /// applied by [`apply_scene_commands`] a step later is the same arrangement
 /// [`RestoreState`] already uses.
-#[derive(Message, Debug, Clone, PartialEq, Eq)]
+#[derive(Message, Debug, Clone, PartialEq)]
 pub enum SceneCommand {
     /// Repaint in a bundled theme.
     SetTheme {
@@ -754,6 +777,22 @@ pub enum SceneCommand {
     },
     /// Play or pause.
     ReplayPlay(bool),
+    /// Push one of the Menus scene's screens.
+    MenuOpen(showcase::MenuScreen),
+    /// Put saved settings back, or reset them when the text is empty.
+    RestoreSettings {
+        /// A `slotted_menu::SavedSettings` as RON.
+        ron: String,
+    },
+    /// Start the smith's conversation again.
+    TalkAgain,
+    /// Write one declared settings key into the value store.
+    SetValue {
+        /// The key.
+        key: String,
+        /// The value, of the key's kind.
+        value: slotted::ui::Value,
+    },
 }
 
 /// `apply_scene_commands` under a name an integration test can add as a system.
@@ -807,6 +846,17 @@ pub fn apply_scene_commands(world: &mut World) {
             SceneCommand::ReplayLoad => scenes::testing::load(world),
             SceneCommand::ReplaySeek { frame } => scenes::testing::seek(world, frame as usize),
             SceneCommand::ReplayPlay(on) => scenes::testing::play(world, on),
+            SceneCommand::MenuOpen(which) => scenes::menus::open(world, which),
+            SceneCommand::RestoreSettings { ron } => scenes::menus::restore_settings(world, &ron),
+            SceneCommand::TalkAgain => scenes::dialogue::talk_again(world),
+            SceneCommand::SetValue { key, value } => {
+                world.write_message(slotted::ui::SetValue {
+                    key,
+                    value,
+                    source: None,
+                });
+                Ok(())
+            }
         };
         if let Err(message) = outcome {
             bus.log("error", "showcase", message);

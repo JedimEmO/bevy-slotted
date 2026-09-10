@@ -60,6 +60,12 @@ const DEFAULT_SCENE = 'chest';
 const THEMES = THEME_DIFF.themes;
 /** Where the HUD scene keeps the layout a visitor dragged into place. */
 const HUD_KEY = 'slotted.showcase.hud';
+/**
+ * Where the saved settings live between visits (showcase refresh contract
+ * section 4.2). The game's `SettingsStorage` is a store on the page side;
+ * `settings_ron` reads it out and `restore_settings` puts it back at boot.
+ */
+const SETTINGS_KEY = 'slotted.settings';
 /** How often the HUD and Testing scenes ask the world where things are. */
 const POLL_MS = 1000;
 
@@ -101,6 +107,8 @@ const state = {
   notYet: new Set(),
   // The per-scene poll (HUD layout, replay position), cleared on the way out.
   scenePoll: null,
+  // Date.now() before which the settings store is not asked again.
+  nextSettings: 0,
   replay: { frame: 0, frames: 0, playing: false },
 
   idle: null,
@@ -262,6 +270,10 @@ async function restart(error) {
   }
 
   if (state.snapshot) call('restore_state', [state.snapshot]);
+  // After the state, not before: a restart lands on the scene the snapshot
+  // names, and the Menus scene's settings screen has to find its values
+  // already restored when `enter` runs.
+  restoreSettings();
   state.restarting = false;
 
   // The visitor's text, not the bundle's: the editor is what they think is
@@ -566,6 +578,7 @@ function appendLines(lines) {
       continue;
     }
     if (line.who === 'test') appendTestLine(line);
+    if (line.who === 'dialogue') appendDialogueLine(line);
     if (state.sceneId === 'chest' && /transfer/i.test(line.text)) {
       el('browser-readout').textContent = line.text;
     }
@@ -593,6 +606,7 @@ function pollConsole() {
     // After the batch, not before: a line the world just wrote may be the one
     // that says the chest changed.
     takeSnapshot();
+    syncSettings();
   } catch (error) {
     console.error('draining the console:', error);
   }
@@ -649,6 +663,8 @@ function isNotYet(error) {
 const PANELS = {
   chest: 'controls-chest',
   machine: 'controls-machine',
+  menus: 'controls-menus',
+  dialogue: 'controls-dialogue',
   themes: 'controls-themes',
   mods: 'controls-mods',
   hud: 'controls-hud',
@@ -658,6 +674,8 @@ const PANELS = {
 const NOTES = {
   chest: 'browser-soon',
   machine: 'machine-soon',
+  menus: 'menus-soon',
+  dialogue: 'dialogue-soon',
   themes: 'themes-soon',
   hud: 'hud-soon',
   multiplayer: 'net-soon',
@@ -693,6 +711,22 @@ function comingUp(name = null) {
   }
 }
 
+/**
+ * Re-says what is missing for the scene that just came on screen.
+ *
+ * An export can answer `not yet` while another scene is showing: the settings
+ * store is asked at boot and on every scene, and the note that call would
+ * write belongs on the Menus block, not on whatever block was open. So those
+ * calls are quiet, and this puts the note where it belongs when the block
+ * that owns the control is the one on screen.
+ */
+function remarkNotYet() {
+  const panel = activePanel();
+  for (const name of state.notYet) {
+    if (panel?.querySelector(`[data-export~="${name}"]`)) comingUp(name);
+  }
+}
+
 function notComingUp() {
   activePanel()?.classList.remove('is-soon');
   const note = el(NOTES[state.sceneId] ?? '');
@@ -704,10 +738,10 @@ function notComingUp() {
  * the page renders rather than an error it reports: the control greys out and
  * the panel's note says what is missing.
  */
-function sceneCall(name, args = [], fallback = undefined) {
+function sceneCall(name, args = [], fallback = undefined, { quiet = false } = {}) {
   if (!state.wasm || state.dead || state.booting) return fallback;
   if (state.notYet.has(name)) {
-    comingUp(name);
+    if (!quiet) comingUp(name);
     return fallback;
   }
   try {
@@ -716,7 +750,7 @@ function sceneCall(name, args = [], fallback = undefined) {
   } catch (error) {
     if (isNotYet(error)) {
       state.notYet.add(name);
-      comingUp(name);
+      if (!quiet) comingUp(name);
       return fallback;
     }
     if (!isTrap(error)) throw error;
@@ -853,8 +887,12 @@ function renderControls() {
   if (wanted === 'controls-stub') {
     el('controls-stub-text').textContent = `The ${scene?.title ?? 'scene'} scene has no controls.`;
   }
-  if (scene?.ready) notComingUp();
-  else comingUp();
+  if (scene?.ready) {
+    notComingUp();
+    remarkNotYet();
+  } else {
+    comingUp();
+  }
   ENTER[state.sceneId]?.();
 }
 
@@ -966,6 +1004,140 @@ function setTheme(name) {
   state.theme = name;
   markTheme();
   writeSceneQuery();
+}
+
+// --- Menus -----------------------------------------------------------------
+
+/** The settings the visitor last saved, or '' when there are none. */
+function storedSettings() {
+  try {
+    return localStorage.getItem(SETTINGS_KEY) ?? '';
+  } catch {
+    // A browser with site data switched off. The scene still works; the
+    // settings just do not outlive the tab.
+    return '';
+  }
+}
+
+function storeSettings(ron) {
+  try {
+    if (ron) localStorage.setItem(SETTINGS_KEY, ron);
+    else localStorage.removeItem(SETTINGS_KEY);
+  } catch {
+    /* nothing to do: the settings degrade to values that last one visit */
+  }
+}
+
+function showSettingsStored() {
+  const ron = storedSettings();
+  el('settings-stored').textContent = ron
+    ? `${ron.length} bytes of RON in localStorage under ${SETTINGS_KEY}`
+    : 'nothing saved yet';
+}
+
+/**
+ * Hands the saved settings back to the game. Once at boot, before the first
+ * frame, and again after every restart; the empty string is "forget them",
+ * the same word `restore_hud_layout` uses.
+ *
+ * Quiet, because this runs on whatever scene is open and the note for a stub
+ * belongs on the Menus block; `remarkNotYet` puts it there.
+ */
+function restoreSettings() {
+  const ron = storedSettings();
+  if (ron) sceneCall('restore_settings', [ron], undefined, { quiet: true });
+}
+
+/**
+ * Copies what the game has saved into `localStorage`, at most once a second.
+ *
+ * On the console poll rather than a per-scene one, because the settings
+ * screen is reachable from two scenes (Menus and Themes) and a value changed
+ * in either has to survive a reload. The same guard as the HUD layout: only a
+ * non-empty read is written, so the store being empty for a frame after a
+ * reset or a restart cannot wipe the key, and only Reset clears it.
+ */
+function syncSettings() {
+  const now = Date.now();
+  if (now < state.nextSettings) return;
+  state.nextSettings = now + POLL_MS;
+  const ron = sceneCall('settings_ron', [], '', { quiet: true });
+  if (typeof ron === 'string' && ron.length > 0 && ron !== storedSettings()) {
+    storeSettings(ron);
+    if (state.sceneId === 'menus') showSettingsStored();
+  }
+}
+
+/** Pushes one of the three named screens, and gives the keys back to the game. */
+function openMenu(which) {
+  sceneCall('menu_open', [which]);
+  focusCanvas();
+}
+
+function resetSettings() {
+  storeSettings('');
+  sceneCall('restore_settings', ['']);
+  showSettingsStored();
+  focusCanvas();
+}
+
+/**
+ * The game hears the keyboard through the canvas, so a control that was just
+ * pressed with the pointer hands the focus back, or the next Enter presses the
+ * page's button again instead of the menu's.
+ */
+function focusCanvas() {
+  el('slotted-canvas')?.focus({ preventScroll: true });
+}
+
+function enterMenus() {
+  showSettingsStored();
+}
+
+// --- Dialogue --------------------------------------------------------------
+
+/** A `who: "dialogue"` line: the transcript pane gets it, and so does the console. */
+function appendDialogueLine(line) {
+  const log = el('dialogue-log');
+  if (!log) return;
+  // The scene writes `smith: ...` and `you: ...`; the speaker is the colour.
+  const at = line.text.indexOf(':');
+  const speaker = at > 0 ? line.text.slice(0, at).trim() : '';
+  const rest = at > 0 ? line.text.slice(at + 1).trim() : line.text;
+  const row = document.createElement('div');
+  row.className = 'row';
+  const who = document.createElement('span');
+  who.className = `peer ${speaker === 'you' ? 'peer-1' : 'peer-server'}`;
+  who.textContent = speaker || 'dialogue';
+  const body = document.createElement('span');
+  body.className = 'body';
+  body.textContent = rest;
+  row.append(who, body);
+  log.appendChild(row);
+  while (log.childElementCount > MAX_ROWS) log.firstElementChild.remove();
+  log.scrollTop = log.scrollHeight;
+}
+
+function setFoundKey(on) {
+  // A JSON literal, because `set_value` takes the value as JSON so one export
+  // covers a bool, a number and a string.
+  sceneCall('set_value', ['demo.found_key', on ? 'true' : 'false']);
+  el('dialogue-key').checked = on;
+  focusCanvas();
+}
+
+function talkAgain() {
+  sceneCall('talk_again', []);
+  focusCanvas();
+}
+
+function enterDialogue() {
+  // A fresh conversation on the way in: `enter` starts the dialogue from the
+  // top, and last visit's lines would read as part of this one.
+  el('dialogue-log').replaceChildren();
+  // The switch is left as it was. The value store is the game's and survives
+  // a scene switch, so the switch showing what the page last wrote is the
+  // truth; resetting it here would be the page lying about the store.
 }
 
 // --- HUD -------------------------------------------------------------------
@@ -1153,6 +1325,8 @@ const ENTER = {
     el('browser-readout').textContent = 'nothing yet';
   },
   machine: () => setRedstone(false),
+  menus: enterMenus,
+  dialogue: enterDialogue,
   themes: () => markTheme(),
   hud: enterHud,
   multiplayer: () => netConfig(),
@@ -1223,6 +1397,10 @@ async function main() {
     setStatus('the module failed to start', 'bad');
     console.error(error);
   }
+  // Before the first frame: `default()` has built the instance and Bevy's
+  // loop starts on the next animation frame, so what is handed back here is
+  // what the settings screen opens on.
+  restoreSettings();
   el('boot').classList.add('gone');
   setStatus('running', 'ok');
   keepTheRailInView();
@@ -1279,6 +1457,9 @@ async function main() {
       setStatus(location.href, '');
     }
   });
+  // Only these two chords are the page's. Enter, Esc, X and the arrows go to
+  // the canvas untouched, because the menus and the dialogue are walked with
+  // them and a `preventDefault` here would be the page eating the game's keys.
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
@@ -1313,6 +1494,15 @@ function wireSceneControls() {
   buildThemeButtons();
   el('redstone-on').addEventListener('click', () => setRedstone(true));
   el('redstone-off').addEventListener('click', () => setRedstone(false));
+
+  el('menu-title').addEventListener('click', () => openMenu('title'));
+  el('menu-pause').addEventListener('click', () => openMenu('pause'));
+  el('menu-settings').addEventListener('click', () => openMenu('settings'));
+  el('settings-reset').addEventListener('click', resetSettings);
+
+  el('dialogue-again').addEventListener('click', talkAgain);
+  el('dialogue-key').addEventListener('change', () => setFoundKey(el('dialogue-key').checked));
+  el('dialogue-clear').addEventListener('click', () => el('dialogue-log').replaceChildren());
 
   el('hud-edit').addEventListener('click', () => {
     setHudEdit(el('hud-edit').getAttribute('aria-pressed') !== 'true');
@@ -1368,6 +1558,11 @@ window.slottedPlayground = {
   set_theme: setTheme,
   machine_redstone: setRedstone,
   browser_search: (...args) => sceneCall('browser_search', args),
+  menu_open: openMenu,
+  settings_ron: (...args) => sceneCall('settings_ron', args, '', { quiet: true }),
+  restore_settings: (...args) => sceneCall('restore_settings', args),
+  talk_again: talkAgain,
+  set_value: (...args) => sceneCall('set_value', args),
   hud_edit: setHudEdit,
   hud_layout: (...args) => sceneCall('hud_layout', args, ''),
   restore_hud_layout: (...args) => sceneCall('restore_hud_layout', args),

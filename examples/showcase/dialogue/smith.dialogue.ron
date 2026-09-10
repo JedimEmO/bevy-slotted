@@ -1,0 +1,28 @@
+// The showcase's conversation (docs/design/showcase-refresh-contract.md
+// section 4.3): the smith at the furnace. A `Dialogue` is a list of nodes:
+// `say` lines with a speaker and a portrait, a `choice` with options, and
+// `end`. The strings are Fluent keys in `locale/en-US.ftl` beside this file;
+// the `secret` option shows disabled until the value store's `demo.found_key`
+// holds, which the settings screen's Demo tab and the page's switch both
+// write. The file is compiled in (`src/dialogue.rs`) and registered through
+// `Dialogue::from_ron` at startup, so a scene switch never waits on an asset
+// handle. docs/guide/dialogue.md explains the format.
+#![enable(implicit_some)]
+(
+    id: "showcase:smith",
+    start: "hello",
+    nodes: {
+        "hello": say(speaker: "demo-smith", portrait: (image: "portraits/smith.png"),
+                     text: "demo-smith-hello", next: "ask"),
+        "ask": choice(prompt: "demo-smith-ask", options: [
+            (id: "yes", text: "demo-smith-yes", next: "yes"),
+            (id: "no", text: "demo-smith-no", next: "bye"),
+            (id: "secret", text: "demo-smith-secret", next: "secret", enabled_if: "demo.found_key"),
+        ]),
+        "yes": say(speaker: "demo-smith", portrait: (image: "portraits/smith.png"),
+                   text: "demo-smith-yes-line", args: {"name": "Traveller"}, next: "bye"),
+        "secret": say(speaker: "demo-smith", portrait: (image: "portraits/smith.png"),
+                      text: "demo-smith-secret-line", next: "bye"),
+        "bye": end,
+    },
+)

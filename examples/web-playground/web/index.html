@@ -87,6 +87,46 @@
       </div>
     </div>
 
+    <div id="controls-menus" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">menus</span><span class="soon-note" id="menus-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">One stack. The title, the pause, the settings, a confirm and
+        a toast all sit on it, and <kbd>Esc</kbd> pops whatever is on top. These
+        push a screen from outside the game, which is what a mod would do.</p>
+        <div class="row-buttons" role="group" aria-label="open a screen">
+          <button id="menu-title" type="button" data-export="menu_open">Title</button>
+          <button id="menu-pause" type="button" data-export="menu_open">Pause</button>
+          <button id="menu-settings" type="button" data-export="menu_open">Settings</button>
+        </div>
+        <p class="muted">The arrow keys move the focus ring, <kbd>Enter</kbd> presses,
+        and a slider takes <kbd>&larr;</kbd> <kbd>&rarr;</kbd>. Quit on the pause asks
+        first; Quit on the title has nowhere to go and says so.</p>
+        <div class="readout"><span class="eyebrow">saved settings</span>
+          <p id="settings-stored" class="mono-line">nothing saved yet</p>
+          <div class="row-buttons">
+            <button id="settings-reset" type="button" data-export="restore_settings">Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="controls-dialogue" class="panel ctl" hidden>
+      <div class="ctl-head"><span class="eyebrow">dialogue</span><span class="soon-note" id="dialogue-soon"></span></div>
+      <div class="ctl-body">
+        <p class="muted">The smith talks over the furnace, and the furnace keeps
+        cooking. <kbd>Enter</kbd> skips the typing and then advances, <kbd>X</kbd>
+        opens the history, <kbd>Esc</kbd> closes it.</p>
+        <div class="row-buttons">
+          <button id="dialogue-again" type="button" data-export="talk_again">Talk again</button>
+          <label class="toggle"><input id="dialogue-key" type="checkbox" data-export="set_value"><span>found the key</span></label>
+        </div>
+        <p class="muted">The third answer is gated on <code>demo.found_key</code>, a
+        value the page writes through the same store the settings use.</p>
+        <div class="log-head"><span class="eyebrow">transcript</span><button id="dialogue-clear" type="button">Clear</button></div>
+        <div id="dialogue-log" class="net-log dialogue-log"></div>
+      </div>
+    </div>
+
     <div id="controls-themes" class="panel ctl" hidden>
       <div class="ctl-head"><span class="eyebrow">themes</span><span class="soon-note" id="themes-soon"></span></div>
       <div class="ctl-body">

@@ -22,7 +22,10 @@ blur = ["slotted/blur"]
 # this page does not want. A path dependency rather than the workspace one,
 # because a workspace dependency cannot be inherited with
 # `default-features = false`. The runtime comes in below, inserted directly.
-slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "packs", "dev", "net"] }
+# `menu` is the point of the showcase refresh (docs/design/showcase-refresh-
+# contract.md section 8): the Menus and Dialogue scenes are `slotted-menu`'s
+# screen stack, settings, confirm, toast, page and dialogue runner.
+slotted = { path = "../../crates/slotted", version = "0.1.0", default-features = false, features = ["ui", "browser", "menu", "packs", "dev", "net"] }
 slotted-net = { workspace = true }
 slotted-packs = { workspace = true, features = ["ui"] }
 slotted-script = { workspace = true }
@@ -33,8 +36,10 @@ slotted-registry = { workspace = true }
 # (docs/design/showcase-contract.md section 1).
 showcase = { path = "../showcase" }
 # The op implementations the Tests tab drives against the live app. Defaults
-# off: `insta` is a native snapshot library the page has no use for.
-slotted-test = { path = "../../crates/slotted-test", version = "0.1.0", default-features = false, features = ["script"] }
+# off: `insta` is a native snapshot library the page has no use for. `menu`
+# for the harness's toast, dialogue and confirm helpers the native tests use;
+# it names nothing the `menu` feature above did not already bring in.
+slotted-test = { path = "../../crates/slotted-test", version = "0.1.0", default-features = false, features = ["script", "menu"] }
 bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_ui_widgets",
     "bevy_asset",

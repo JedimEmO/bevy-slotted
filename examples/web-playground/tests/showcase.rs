@@ -1,24 +1,28 @@
 //! The showcase's scenes, natively: one smoke assertion per scene.
 //!
-//! `docs/design/showcase-contract.md` section 6. Every scene opens in a
-//! headless `UiHarness` and proves one fact about itself, so the page's rail
-//! never points at something only a browser can check. Below those, four tests
-//! about the set as a whole and about the three things the scenes needed that
-//! nothing else in the workspace has: the HUD layout round trip, the
-//! multiplayer link, and the replay scrubber.
-#![allow(clippy::unwrap_used)]
+//! `docs/design/showcase-contract.md` section 6, amended by
+//! `docs/design/showcase-refresh-contract.md` sections 4 and 7. Every scene
+//! opens in a headless `UiHarness` and proves one fact about itself, so the
+//! page's rail never points at something only a browser can check. Below
+//! those, tests about the set as a whole and about the things the scenes
+//! needed that nothing else in the workspace has: the HUD layout round trip,
+//! the multiplayer link, the replay scrubber, and the settings round trip
+//! through the page.
+#![allow(clippy::unwrap_used, clippy::float_cmp)]
 
 mod common;
 
 use bevy::prelude::*;
 use common::{
-    active, all_stacks, browser_panels, canvas, command, lines, open_screens, showcase_world,
-    switch_to,
+    active, all_stacks, browser_panels, command, lines, open_screens, showcase_world,
+    showcase_world_over, switch_to,
 };
+use slotted::menu::{ActiveDialogue, DialogueChoice, EndReason, NodeId, kinds};
+use slotted::ui::{SliderState, UiAction, Value};
 use slotted_test::prelude::*;
 use slotted_theme::ActiveTheme;
 use web_playground::SceneCommand;
-use web_playground::showcase::{Scene, SceneRegistry};
+use web_playground::showcase::{MenuScreen, Scene, SceneRegistry};
 
 // ---------------------------------------------------------------------------
 // One per scene, in rail order. Each opens the scene and proves the fact the
@@ -92,23 +96,413 @@ fn machine_scene_cooks_and_carries_the_injected_sort() {
     );
 }
 
-/// Switching to Themes leaves the canvas where it was, and `set_theme` swaps
-/// the handle the whole tree resolves its colours through.
+/// After `set_scene(menus)` the title is the top of the stack; Play opens
+/// the chest; `Menu` pushes the pause over it; Settings opens the demo's
+/// settings screen; moving the UI-scale slider writes a save that reaches
+/// the bus and comes back out of `settings_ron()`; and the injected About
+/// button is reachable by keyboard.
 #[test]
-fn themes_scene_repaints_without_touching_the_open_screen() {
+#[allow(clippy::too_many_lines)]
+fn menus_scene_walks_the_stack_and_a_setting_reaches_the_bus() {
     let (mut harness, bus) = showcase_world();
-    switch_to(&mut harness, &bus, Scene::Chest);
-    let before = open_screens(&mut harness);
-    let panel = harness.find(&by::test_id("chest_panel"));
+    switch_to(&mut harness, &bus, Scene::Menus);
+    assert_eq!(active(&harness), Scene::Menus);
+    let title = showcase::menus::main_kind();
+    let chest = ScreenKind::new(showcase::chest::CHEST);
+    let settings = ScreenKind::new(showcase::settings::SETTINGS);
+    assert_eq!(harness.stack_top(), Some(title.clone()));
+    assert_eq!(
+        harness.focused(),
+        Some(harness.find(&by::test_id("play"))),
+        "the title opens with Play focused"
+    );
+    assert_eq!(
+        harness
+            .text_of(harness.find(&by::test_id("title")))
+            .as_deref(),
+        Some("Slotted"),
+        "the title comes from `MenuConfig` through the showcase catalogue"
+    );
+    assert_eq!(
+        web_playground::showcase::settings_ron(&bus),
+        "",
+        "nothing is saved yet"
+    );
 
+    // Play: the title goes, the chest comes, with no browser docked.
+    let play = harness.find(&by::test_id("play"));
+    harness.activate(play);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![chest.clone()]);
+    assert_eq!(
+        browser_panels(&mut harness),
+        0,
+        "the Menus scene docks no browser"
+    );
+    assert_eq!(harness.find_all(&by::role(SemanticRole::Slot)).len(), 63);
+
+    // Back pops the chest; Menu with nothing open pauses. The driver reads
+    // the top of the stack through `current_screen`.
+    harness.action(UiAction::Back);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![]);
+    harness.step(1);
+    assert_eq!(web_playground::showcase::current_screen(&bus), "");
+    harness.action(UiAction::Menu);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![kinds::pause()]);
+    harness.step(1);
+    assert_eq!(
+        web_playground::showcase::current_screen(&bus),
+        "slotted:pause"
+    );
+
+    // Settings from the pause: the generated screen over it.
+    let button = harness.find(&by::test_id("settings"));
+    harness.activate(button);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![kinds::pause(), settings.clone()]);
+
+    // Down past the resolution select to the UI scale slider; Right steps it,
+    // and the store saves once the change settles.
+    let slider = harness.find(&by::test_id("settings.ui_scale"));
+    harness.set_focus(Some(slider));
+    assert_eq!(harness.value("settings.ui_scale"), Some(Value::Float(1.0)));
+    harness.action(UiAction::Right);
+    harness.settle();
+    harness.step(3);
+    assert_eq!(harness.value("settings.ui_scale"), Some(Value::Float(1.25)));
+    let ron = web_playground::showcase::settings_ron(&bus);
+    assert!(
+        ron.contains("settings.ui_scale"),
+        "the save reached the bus: {ron:?}"
+    );
+    let saved = web_playground::settings_store::from_ron(&ron).expect("it is saved settings");
+    assert_eq!(
+        saved.values.get("settings.ui_scale"),
+        Some(&Value::Float(1.25))
+    );
+
+    // The page's Title button, and About by keyboard: Down past the
+    // template's three buttons reaches the injected one.
+    command(&mut harness, SceneCommand::MenuOpen(MenuScreen::Title));
+    assert_eq!(harness.stack_top(), Some(title.clone()));
+    assert_eq!(harness.focused(), Some(harness.find(&by::test_id("play"))));
+    for id in ["settings", "quit", "about"] {
+        harness.action(UiAction::Down);
+        harness.settle();
+        assert_eq!(
+            harness.focused(),
+            Some(harness.find(&by::test_id(id))),
+            "Down reaches {id}"
+        );
+    }
+    harness.action(UiAction::Accept);
+    harness.settle();
+    assert_eq!(harness.stack_top(), Some(kinds::page()));
+    let page = harness.find(&by::screen(kinds::page()));
+    assert_eq!(
+        harness
+            .text_of(harness.find(&by::test_id("title").within(page)))
+            .as_deref(),
+        Some("About this showcase")
+    );
+    harness.action(UiAction::Back);
+    harness.settle();
+    assert_eq!(harness.stack_top(), Some(title));
+}
+
+/// Quit on the title asks, and an accepted confirm shows the title again with
+/// a toast rather than exiting; Quit on the pause asks, and an accepted
+/// confirm pops back to the title. Leaving the scene clears the stack and
+/// the toast, and keeps the saved settings.
+#[test]
+fn menus_scene_quit_confirms_stay_in_the_tab_and_leave_is_clean() {
+    let (mut harness, bus) = showcase_world();
+    switch_to(&mut harness, &bus, Scene::Menus);
+    let title = showcase::menus::main_kind();
+
+    // Quit on the title: a danger confirm, then the title and a toast.
+    let quit = harness.find(&by::test_id("quit"));
+    harness.activate(quit);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![title.clone(), kinds::confirm()]);
+    harness.confirm_accept();
+    harness.settle();
+    assert_eq!(harness.stack(), vec![title.clone()], "the title is back");
+    assert_eq!(harness.toasts().len(), 1, "with the no-exit toast");
+
+    // The pause's Quit: back to the title, not out of the app.
+    command(&mut harness, SceneCommand::MenuOpen(MenuScreen::Pause));
+    assert_eq!(harness.stack_top(), Some(kinds::pause()));
+    let quit = harness.find(&by::test_id("quit").within(harness.find(&by::screen(kinds::pause()))));
+    harness.activate(quit);
+    harness.settle();
+    assert_eq!(harness.stack_top(), Some(kinds::confirm()));
+    harness.confirm_accept();
+    harness.settle();
+    assert_eq!(harness.stack(), vec![title.clone()]);
+    assert!(
+        harness
+            .world()
+            .get_resource::<Messages<AppExit>>()
+            .is_none_or(|exits| {
+                bevy::ecs::message::MessageCursor::default()
+                    .read(exits)
+                    .next()
+                    .is_none()
+            }),
+        "nothing called AppExit"
+    );
+
+    // A setting, so there is something to keep.
+    command(&mut harness, SceneCommand::MenuOpen(MenuScreen::Settings));
+    let slider = harness.find(&by::test_id("settings.ui_scale"));
+    harness.set_focus(Some(slider));
+    harness.action(UiAction::Right);
+    harness.settle();
+    harness.step(3);
+    let saved = web_playground::showcase::settings_ron(&bus);
+    assert!(!saved.is_empty());
+
+    switch_to(&mut harness, &bus, Scene::Machine);
+    assert_eq!(harness.stack(), vec![ScreenKind::new("machine:furnace")]);
+    assert!(harness.toasts().is_empty(), "the toast did not follow");
+    assert_eq!(
+        web_playground::showcase::settings_ron(&bus),
+        saved,
+        "the settings store survives the scene"
+    );
+}
+
+/// After `set_scene(dialogue)` the smith is on `hello` over the furnace;
+/// two advances reach `ask` with `secret` disabled; `demo.found_key` and a
+/// jump back to `ask` show it enabled; choosing `yes` writes a
+/// `DialogueChoice` and a toast; and the end leaves `machine:furnace` on top
+/// of the stack, with the transcript on the bus.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn dialogue_scene_talks_to_the_smith_over_the_furnace() {
+    let (mut harness, bus) = showcase_world();
+    switch_to(&mut harness, &bus, Scene::Dialogue);
+    assert_eq!(active(&harness), Scene::Dialogue);
+    let furnace = ScreenKind::new("machine:furnace");
+    let smith = showcase::dialogue::smith_id();
+    assert_eq!(harness.stack(), vec![furnace.clone(), kinds::dialogue()]);
+    assert_eq!(
+        harness.stack_top(),
+        Some(furnace.clone()),
+        "the dialogue is an overlay; the furnace is the non-overlay top"
+    );
+    assert_eq!(
+        harness.dialogue(),
+        Some((smith.clone(), NodeId::new("hello")))
+    );
+    let root = harness.find(&by::screen(kinds::dialogue()));
+    assert_eq!(
+        harness
+            .text_of(harness.find(&by::test_id("speaker").within(root)))
+            .as_deref(),
+        Some("Smith"),
+        "the speaker resolves through the showcase catalogue"
+    );
+
+    // The furnace keeps cooking behind the overlay.
+    harness.advance(std::time::Duration::from_secs(3));
+    harness.settle();
+    let cook = property(&mut harness, showcase::machine::props::COOK);
+    let burn = property(&mut harness, showcase::machine::props::BURN);
+    assert!(cook > 0 || burn > 0, "the furnace cooked under the overlay");
+
+    // Back mid-conversation pops nothing: the furnace under the overlay
+    // stays, and so does the smith.
+    harness.action(UiAction::Back);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![furnace.clone(), kinds::dialogue()]);
+    assert_eq!(
+        harness.dialogue(),
+        Some((smith.clone(), NodeId::new("hello")))
+    );
+
+    // Accept skips the typewriter, Accept again reaches the choice.
+    harness.dialogue_advance();
+    harness.settle();
+    assert!(harness.dialogue_revealed());
+    harness.dialogue_advance();
+    harness.advance(std::time::Duration::from_millis(400));
+    harness.settle();
+    let ask = NodeId::new("ask");
+    assert_eq!(harness.dialogue(), Some((smith.clone(), ask.clone())));
+    assert_eq!(
+        harness.dialogue_options(),
+        vec![
+            ("yes".to_owned(), true),
+            ("no".to_owned(), true),
+            ("secret".to_owned(), false),
+        ],
+        "the third answer waits for demo.found_key"
+    );
+
+    // The page's switch, through the same command the export queues, then
+    // back to `ask`: the answer is unlocked.
+    command(
+        &mut harness,
+        SceneCommand::SetValue {
+            key: showcase::settings::FOUND_KEY.to_owned(),
+            value: Value::Bool(true),
+        },
+    );
+    assert_eq!(
+        harness.value(showcase::settings::FOUND_KEY),
+        Some(Value::Bool(true))
+    );
+    harness.world_mut().commands().queue(|world: &mut World| {
+        slotted::menu::jump_dialogue(&mut world.commands(), NodeId::new("ask"));
+    });
+    harness.advance(std::time::Duration::from_millis(400));
+    harness.settle();
+    assert_eq!(
+        harness.dialogue_options(),
+        vec![
+            ("yes".to_owned(), true),
+            ("no".to_owned(), true),
+            ("secret".to_owned(), true),
+        ]
+    );
+
+    // X opens the history page over the conversation; Esc on it goes back.
+    harness.action(UiAction::Secondary);
+    harness.settle();
+    assert_eq!(harness.stack_top(), Some(kinds::page()));
+    harness.action(UiAction::Back);
+    harness.settle();
+    assert_eq!(harness.stack(), vec![furnace.clone(), kinds::dialogue()]);
+    assert_eq!(harness.dialogue(), Some((smith.clone(), ask.clone())));
+
+    // Yes: the choice, the toast, and the smith's next line.
+    let _ = harness.dialogue_events();
+    harness.dialogue_choose("yes");
+    harness.settle();
+    let events = harness.dialogue_events();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            DialogueEvent::Chosen(DialogueChoice { option, .. }) if option == "yes"
+        )),
+        "the choice was written: {events:?}"
+    );
+    assert_eq!(
+        harness.toasts().len(),
+        1,
+        "the game answered `yes` with a toast"
+    );
+    assert_eq!(
+        harness.dialogue(),
+        Some((smith.clone(), NodeId::new("yes")))
+    );
+
+    // Two more accepts: the line, then the end. The furnace has focus back.
+    harness.dialogue_advance();
+    harness.settle();
+    harness.dialogue_advance();
+    harness.settle();
+    assert_eq!(harness.dialogue(), None);
+    assert!(
+        harness.dialogue_events().iter().any(|event| matches!(
+            event,
+            DialogueEvent::Ended(ended) if ended.reason == EndReason::Finished
+        )),
+        "the dialogue ended on its own"
+    );
+    assert_eq!(harness.stack(), vec![furnace.clone()]);
+    assert_eq!(harness.stack_top(), Some(furnace));
+
+    // The transcript the page's pane shows.
+    let transcript: Vec<String> = lines(&bus)
+        .into_iter()
+        .filter(|(who, _)| who == "dialogue")
+        .map(|(_, text)| text)
+        .collect();
+    assert!(
+        transcript
+            .iter()
+            .any(|t| t.starts_with("smith: Mind the sparks")),
+        "the first line: {transcript:#?}"
+    );
+    assert!(
+        transcript
+            .iter()
+            .any(|t| t.starts_with("smith: Need something")),
+        "the prompt: {transcript:#?}"
+    );
+    assert!(
+        transcript
+            .iter()
+            .any(|t| t.starts_with("you: Yes, tell me")),
+        "the answer: {transcript:#?}"
+    );
+    assert!(
+        transcript
+            .iter()
+            .any(|t| t.starts_with("smith: Good, Traveller")),
+        "the argument came through: {transcript:#?}"
+    );
+
+    // Talk again: from the top. And again while it runs: a line, no restart.
+    command(&mut harness, SceneCommand::TalkAgain);
+    assert_eq!(
+        harness.dialogue(),
+        Some((smith.clone(), NodeId::new("hello")))
+    );
+    harness.dialogue_advance();
+    harness.settle();
+    let _ = bus.drain_console();
+    command(&mut harness, SceneCommand::TalkAgain);
+    assert_eq!(harness.dialogue(), Some((smith, NodeId::new("hello"))));
+    assert!(
+        harness.dialogue_revealed(),
+        "the running conversation was not restarted"
+    );
+    assert!(
+        lines(&bus)
+            .iter()
+            .any(|(_, text)| text.contains("still talking")),
+        "and the console said why"
+    );
+}
+
+/// Themes opens the settings screen on a canvas of its own, and `set_theme`
+/// swaps the handle the whole tree resolves its colours through without
+/// respawning it: the focused row and the slider's value survive the swap.
+#[test]
+fn themes_scene_repaints_the_settings_screen_in_place() {
+    let (mut harness, bus) = showcase_world();
     switch_to(&mut harness, &bus, Scene::Themes);
     assert_eq!(active(&harness), Scene::Themes);
     assert_eq!(
-        canvas(&harness),
-        Scene::Chest,
-        "Themes shows the controls over whatever was open"
+        open_screens(&mut harness),
+        [showcase::settings::SETTINGS],
+        "Themes has a screen of its own"
     );
-    assert_eq!(open_screens(&mut harness), before);
+    let tabs = harness.find(&by::test_id("settings.tabs"));
+    assert!(
+        harness
+            .find_all(&by::role(SemanticRole::Tab).within(tabs))
+            .len()
+            >= 3,
+        "tabs to repaint"
+    );
+
+    // A slider moved and left focused, so a respawn would show.
+    let slider = harness.find(&by::test_id("settings.ui_scale"));
+    harness.set_focus(Some(slider));
+    harness.action(UiAction::Right);
+    harness.settle();
+    assert_eq!(harness.value("settings.ui_scale"), Some(Value::Float(1.25)));
+    assert_eq!(
+        harness.world().get::<SliderState>(slider).unwrap().value,
+        1.25
+    );
 
     let glass = theme_handle(&harness);
     command(
@@ -119,8 +513,33 @@ fn themes_scene_repaints_without_touching_the_open_screen() {
     );
     assert_ne!(theme_handle(&harness), glass, "the theme handle changed");
     assert!(
-        harness.world().get_entity(panel).is_ok(),
-        "the panel was repainted, not respawned"
+        harness.world().get_entity(slider).is_ok(),
+        "the slider was repainted, not respawned"
+    );
+    assert_eq!(harness.focused(), Some(slider), "focus stayed on the row");
+    assert_eq!(
+        harness.world().get::<SliderState>(slider).unwrap().value,
+        1.25,
+        "the slider still shows its value"
+    );
+    assert_eq!(harness.value("settings.ui_scale"), Some(Value::Float(1.25)));
+
+    // Esc closes the screen like any other; the next theme button brings it
+    // back, still showing the value.
+    harness.action(UiAction::Back);
+    harness.settle();
+    assert!(open_screens(&mut harness).is_empty());
+    command(
+        &mut harness,
+        SceneCommand::SetTheme {
+            name: "paper".to_owned(),
+        },
+    );
+    assert_eq!(open_screens(&mut harness), [showcase::settings::SETTINGS]);
+    let slider = harness.find(&by::test_id("settings.ui_scale"));
+    assert_eq!(
+        harness.world().get::<SliderState>(slider).unwrap().value,
+        1.25
     );
 }
 
@@ -235,17 +654,14 @@ fn testing_scene_runs_lua_tests_and_loads_the_recording() {
 // The whole set
 // ---------------------------------------------------------------------------
 
-/// Cycle every real scene in rail order and back to the first. After each switch,
+/// Cycle every scene in rail order and back to the first. After each switch,
 /// nothing of the previous scene is left on the canvas: the count of screens
 /// and menus is the count that scene opens, never that plus a leftover.
 #[test]
 fn every_scene_enters_and_leaves_cleanly() {
     let (mut harness, bus) = showcase_world();
-    for scene in Scene::ALL
-        .into_iter()
-        .filter(|scene| scene.ready())
-        .chain([Scene::Chest])
-    {
+    assert_eq!(Scene::ALL.len(), 9);
+    for scene in Scene::ALL.into_iter().chain([Scene::Chest]) {
         switch_to(&mut harness, &bus, scene);
         assert_eq!(active(&harness), scene);
         let screens = open_screens(&mut harness);
@@ -254,34 +670,45 @@ fn every_scene_enters_and_leaves_cleanly() {
             .query::<&slotted_ecs::menu::OpenMenu>()
             .iter(harness.world())
             .count();
-        let expected: usize = match scene {
+        let (expected_screens, expected_menus): (usize, usize) = match scene {
+            // The title with no game behind it until Play; the settings
+            // screen over no menu.
+            Scene::Menus | Scene::Themes => (1, 0),
+            // The furnace and the dialogue over it.
+            Scene::Dialogue => (2, 1),
             // No screen at all, and one menu the hotbar layer draws from.
-            Scene::Hud => 0,
+            Scene::Hud => (0, 1),
             // Two clients, two screens.
-            Scene::Multiplayer => 2,
-            // Themes keeps whatever was open, which at that point is Machine.
-            _ => 1,
+            Scene::Multiplayer => (2, 2),
+            _ => (1, 1),
         };
-        assert_eq!(screens.len(), expected, "screens after entering {scene:?}");
-        assert_eq!(menus, expected.max(1), "menus after entering {scene:?}");
+        assert_eq!(
+            screens.len(),
+            expected_screens,
+            "screens after entering {scene:?}: {screens:?}"
+        );
+        assert_eq!(menus, expected_menus, "menus after entering {scene:?}");
+        assert!(
+            harness.toasts().is_empty(),
+            "no toast followed into {scene:?}"
+        );
+        assert!(
+            harness.world().get_resource::<ActiveDialogue>().is_none() || scene == Scene::Dialogue,
+            "no dialogue followed into {scene:?}"
+        );
     }
 }
 
 /// `Scene::ready` (what the page greys out) and the registry (what the world
-/// can switch to) name the same scenes, and the bridge JSON lists all nine in
-/// rail order with the copy the contract fixed.
+/// can switch to) name the same scenes, every scene is real, and the bridge
+/// JSON lists all nine in rail order with the copy the contract fixed.
 #[test]
 fn list_scenes_matches_the_page_and_the_registry() {
     let registry = SceneRegistry::with_all_scenes();
     let ready: Vec<Scene> = Scene::ALL.into_iter().filter(|s| s.ready()).collect();
     assert_eq!(registry.registered(), ready);
-    // docs/design/showcase-refresh-contract.md: Menus and Dialogue are stubs
-    // until package A lands them.
-    let real: Vec<Scene> = Scene::ALL
-        .into_iter()
-        .filter(|s| !matches!(s, Scene::Menus | Scene::Dialogue))
-        .collect();
-    assert_eq!(ready, real, "every scene but the two stubs is real");
+    assert_eq!(ready, Scene::ALL, "every scene is real");
+    assert_eq!(ready.len(), 9);
 
     let json = web_playground::showcase::scenes_json();
     let mut at = 0;
@@ -408,6 +835,110 @@ fn a_hud_layout_round_trips_through_the_storage_port() {
         Some(&moved),
         "the clock came back where it was left"
     );
+}
+
+/// Saved settings survive the round trip the page makes them take: the world
+/// saves through the store onto the bus, the page reads the RON out, hands it
+/// back into a fresh module before the first frame, and the settings screen
+/// shows the value; and `restore_settings("")` is the Reset button.
+#[test]
+fn saved_settings_round_trip_through_the_page_and_an_empty_restore_resets() {
+    let (mut harness, bus) = showcase_world();
+    switch_to(&mut harness, &bus, Scene::Menus);
+    command(&mut harness, SceneCommand::MenuOpen(MenuScreen::Settings));
+    let slider = harness.find(&by::test_id("settings.ui_scale"));
+    harness.set_focus(Some(slider));
+    harness.action(UiAction::Right);
+    harness.settle();
+    harness.step(3);
+    let ron = web_playground::showcase::settings_ron(&bus);
+    assert!(ron.contains("settings.ui_scale"), "saved: {ron:?}");
+
+    // A reload: the page calls `restore_settings` before the first frame, so
+    // the store's load at `PostStartup` finds the values.
+    let booted = web_playground::bus::Bus::new();
+    web_playground::showcase::restore_settings(&booted, &ron).expect("saved settings");
+    let (mut restarted, booted) = showcase_world_over(booted);
+    assert_eq!(
+        restarted.value("settings.ui_scale"),
+        Some(Value::Float(1.25)),
+        "the saved value seeded the store at startup"
+    );
+    // The request the export queued as well, which `drain_requests` would
+    // have turned into this: the second of the two paths is a no-op.
+    let queued = booted.take_requests();
+    assert!(matches!(
+        queued.as_slice(),
+        [web_playground::bus::Request::RestoreSettings { .. }]
+    ));
+    command(
+        &mut restarted,
+        SceneCommand::RestoreSettings { ron: ron.clone() },
+    );
+    assert_eq!(
+        restarted.value("settings.ui_scale"),
+        Some(Value::Float(1.25))
+    );
+    switch_to(&mut restarted, &booted, Scene::Menus);
+    command(&mut restarted, SceneCommand::MenuOpen(MenuScreen::Settings));
+    let slider = restarted.find(&by::test_id("settings.ui_scale"));
+    assert_eq!(
+        restarted.world().get::<SliderState>(slider).unwrap().value,
+        1.25,
+        "and the screen shows it"
+    );
+
+    // The same text handed to a world that is already running: the values
+    // land, the open screen repaints, and nothing is saved straight back.
+    let (mut running, running_bus) = showcase_world();
+    switch_to(&mut running, &running_bus, Scene::Menus);
+    command(&mut running, SceneCommand::MenuOpen(MenuScreen::Settings));
+    assert_eq!(running.value("settings.ui_scale"), Some(Value::Float(1.0)));
+    command(
+        &mut running,
+        SceneCommand::RestoreSettings { ron: ron.clone() },
+    );
+    assert_eq!(running.value("settings.ui_scale"), Some(Value::Float(1.25)));
+    let slider = running.find(&by::test_id("settings.ui_scale"));
+    assert_eq!(
+        running.world().get::<SliderState>(slider).unwrap().value,
+        1.25
+    );
+    assert_eq!(web_playground::showcase::settings_ron(&running_bus), ron);
+
+    // Reset: the defaults are back, the screen shows them, and the page reads
+    // an empty string so it can clear its key.
+    command(
+        &mut running,
+        SceneCommand::RestoreSettings { ron: String::new() },
+    );
+    assert_eq!(running.value("settings.ui_scale"), Some(Value::Float(1.0)));
+    assert_eq!(
+        running.world().get::<SliderState>(slider).unwrap().value,
+        1.0
+    );
+    assert_eq!(web_playground::showcase::settings_ron(&running_bus), "");
+    running.step(3);
+    assert_eq!(
+        web_playground::showcase::settings_ron(&running_bus),
+        "",
+        "a reset is not saved straight back as a change"
+    );
+
+    // Text that is not settings is refused on the console and changes nothing.
+    let _ = running_bus.drain_console();
+    command(
+        &mut running,
+        SceneCommand::RestoreSettings {
+            ron: "(values:".to_owned(),
+        },
+    );
+    assert!(
+        lines(&running_bus)
+            .iter()
+            .any(|(who, text)| who == "showcase" && text.contains("not readable")),
+    );
+    assert_eq!(running.value("settings.ui_scale"), Some(Value::Float(1.0)));
 }
 
 /// The bundled recording plays through the real input path and lands on the
