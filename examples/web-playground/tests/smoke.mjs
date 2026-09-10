@@ -35,6 +35,9 @@ const BROWSER = opt('--browser', '/snap/bin/chromium');
 // Wide enough that the item browser's 352 px panel fits in the strip beside
 // the chest; below about 1600 the panel docks but is squeezed to one column.
 const SIZE = opt('--size', '1400,820');
+// `--throttle 4` slows the page's main thread 4x through DevTools, to see
+// what a check does on a runner far slower than the machine at hand.
+const THROTTLE = Number(opt('--throttle', '1'));
 const PORT = 9333;
 
 mkdirSync(PROFILE, { recursive: true });
@@ -646,6 +649,9 @@ async function main() {
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
   await cdp.send('Runtime.enable', {}, sessionId);
   await cdp.send('Page.enable', {}, sessionId);
+  if (THROTTLE > 1) {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE }, sessionId);
+  }
   await cdp.send('Page.navigate', { url: URL_ }, sessionId);
 
   const evaluate = async (expression) => {
@@ -752,7 +758,9 @@ async function main() {
   if (wait) {
     await sleep(Number(wait));
   } else {
-    const deadline = Date.now() + 120_000;
+    // smoke.html's own ceilings add up to about 100 s on a machine where
+    // every wait runs to its limit; this is the driver giving up after that.
+    const deadline = Date.now() + 150_000;
     while (Date.now() < deadline) {
       title = (await evaluate('document.title')) ?? '';
       if (title === 'smoke: pass' || title === 'smoke: fail') break;
@@ -763,6 +771,25 @@ async function main() {
   const report = wait
     ? `captured ${URL_} after ${wait} ms`
     : ((await evaluate("document.getElementById('out').textContent")) ?? '(no output)');
+
+  const probe = async (expr) => {
+    try {
+      const value = await evaluate(expr);
+      return value === undefined || value === null ? '(none)' : String(value);
+    } catch (error) {
+      return `(unreadable: ${error})`;
+    }
+  };
+  // How far smoke.html got and how long each stage took, read before the
+  // page is navigated away from. Printed on every run, because a pass on a
+  // fast machine and a fail on a slow runner differ in the timings, not in
+  // the checks.
+  const smokeTimeline = wait
+    ? ''
+    : [
+        `last stage reached: ${await probe('window.__smokeStage')}`,
+        `stage timeline: ${await probe('(window.__smokeStages || []).join(" -")')}`,
+      ].join('\n');
 
   // Phase two: the real page, driven the way a person drives it. The editor's
   // buffer is replaced and Run is pressed; the assertion is that the line the
@@ -906,28 +933,19 @@ async function main() {
   if (pageResult) console.log(`\n${pageResult}`);
   // On wasm a Lua error aborts the module (ADR 0004), and the smoke page has
   // no restart machinery, so every check after a trap fails with nothing to
-  // say. These answer the question the check list cannot: how far the page
-  // got, and whether the module was still alive at the end.
-  if (failed) {
-    const probe = async (expr) => {
-      try {
-        const value = await evaluate(expr);
-        return value === undefined || value === null ? '(none)' : String(value);
-      } catch (error) {
-        return `(unreadable: ${error})`;
-      }
-    };
+  // say. The timeline answers the question the check list cannot: how far
+  // the page got and where the time went. The index.html block says whether
+  // the real page's module was still alive at the end.
+  if (smokeTimeline) console.log(`\n--- smoke.html ---\n${smokeTimeline}`);
+  if (failed && pageResult) {
     const diagnosis = [
       `title=${title || '(never set)'}`,
-      `last stage reached: ${await probe('window.__smokeStage')}`,
-      `stage timeline: ${await probe('(window.__smokeStages || []).join(" -> ")')}`,
-      `wasm exports still callable: ${await probe('typeof window.list_mods === "function"')}`,
       `playground module present: ${await probe('!!window.slottedPlayground')}`,
       `restarts: ${await probe('window.slottedPlayground && window.slottedPlayground.state.restarts')}`,
       `last lua error: ${await probe('window.slottedPlayground && window.slottedPlayground.state.luaError')}`,
       `wasm heap MiB: ${await probe('Math.round((performance.memory ? performance.memory.usedJSHeapSize : 0) / 1048576)')}`,
     ];
-    console.log(`\n--- diagnosis ---\n${diagnosis.join('\n')}`);
+    console.log(`\n--- index.html ---\n${diagnosis.join('\n')}`);
   }
   if (cdp.logs.length) console.log(`\n--- browser console ---\n${cdp.logs.join('\n')}`);
   console.log(`\nscreenshot: ${SHOT}`);

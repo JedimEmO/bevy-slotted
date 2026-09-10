@@ -47,12 +47,48 @@ const check = (name, ok, detail = '') => results.push({ name, ok, detail });
 // later check failing with nothing to say. The driver reads this after a
 // failure to report the stage the module died in rather than only the
 // checks that never got to run.
+//
+// Each entry also carries how many animation frames the previous stage saw
+// and the longest single main-thread task inside it. A stage that took 23 s
+// over 2 frames with a 21 s task is a frame that stalled; the same 23 s over
+// 1400 frames is the page waiting on something that never came.
+let frames = 0;
+const tick = () => {
+  frames += 1;
+  requestAnimationFrame(tick);
+};
+requestAnimationFrame(tick);
+let longestTask = 0;
+try {
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) longestTask = Math.max(longestTask, entry.duration);
+  }).observe({ type: 'longtask', buffered: true });
+} catch {
+  // Not every browser reports long tasks; the timeline then just omits them.
+}
 const stage = (name) => {
+  // "boot @47ms -[7 frames, longest task 201ms]-> list-mods @2089ms"
+  const mark = `${name} @${Math.round(performance.now())}ms`;
+  const previous = window.__smokeStage
+    ? `[${frames} frames, longest task ${Math.round(longestTask)}ms]-> `
+    : '';
   window.__smokeStage = name;
-  window.__smokeStages = (window.__smokeStages ?? []).concat(`${name} @${Math.round(performance.now())}ms`);
+  window.__smokeStages = (window.__smokeStages ?? []).concat(`${previous}${mark}`);
+  frames = 0;
+  longestTask = 0;
 };
 stage('boot');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Resolves after `n` animation frames, however long they take. */
+const nextFrames = (n) =>
+  new Promise((resolve) => {
+    const step = (left) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
+    step(n);
+  });
+// How long the last check waits for the trap. The chunk runs on the next
+// frame the app gets to; see the note above the check for why a frame can be
+// a long time coming.
+const ABORT_WAIT_MS = 40000;
 
 async function drainUntil(marker, ms) {
   const deadline = Date.now() + ms;
@@ -167,14 +203,19 @@ async function main() {
 
   // The overlay export is reachable and the game survives being told to draw
   // it, which is the only thing this page can assert about a hidden canvas.
+  // The overlay stays up for a few animation frames rather than a number of
+  // milliseconds, so it is drawn at least once however slow the machine is.
   stage('canvas-console');
   set_canvas_console(true);
-  await sleep(500);
+  await nextFrames(3);
   set_canvas_console(false);
   drain_console();
   reload_mod('copper_chest', '', ORIGINAL_CONTROL());
   stage('reload-after-canvas-console');
-  const alive = await drainUntil('reloaded', 8000);
+  // Generous, because on a software-rendered CI runner the frames that carry
+  // the overlay have been seen to take tens of seconds. A pass returns as
+  // soon as the line arrives, so a fast machine pays nothing for the ceiling.
+  const alive = await drainUntil('reloaded', 40000);
   check('the game still reloads after all of that', alive.found, alive.seen.slice(-4).join('\n'));
 
   // ---------------------------------------------------------------------
@@ -207,14 +248,14 @@ async function main() {
       const text = String(event.reason);
       if (/RuntimeError|unreachable|out of bounds|table index/i.test(text)) done(text);
     });
-    setTimeout(() => done(null), 15000);
+    setTimeout(() => done(null), ABORT_WAIT_MS);
     reload_mod('copper_chest', 'while true do end\n', '');
   });
 
   check(
     'a runaway chunk aborts the module, visibly, as ADR 0004 says it must',
     aborted !== null,
-    aborted ? String(aborted).slice(0, 160) : 'no trap reached the page within 15s',
+    aborted ? String(aborted).slice(0, 160) : `no trap reached the page within ${ABORT_WAIT_MS / 1000}s`,
   );
 
   render();
