@@ -45,8 +45,8 @@ const NOT_YET_PREFIX = 'not yet: ';
 const FALLBACK_SCENES = [
   { id: 'chest', title: 'Chest', caption: 'The Minecraft interaction model with a modern skin, and the item and recipe browser docked beside it. Seven click modes, a sweep, a phantom preview, a tooltip, and a search with a grammar.', tries: ['Left-click a stack, then right-click to split it', 'Hold right and drag across empty slots', 'Type #ingots in the browser, then press R over a card'], ready: true },
   { id: 'machine', title: 'Machine', caption: 'A furnace with a tank, an energy bar and two side tabs, driven by menu properties the simulation writes. The Sort button was injected by a mod that has never seen this screen.', tries: ['Put coal in the fuel slot and watch the arrow', 'Open the redstone tab', 'Press Sort'], ready: true },
-  { id: 'menus', title: 'Menus', caption: 'A title screen, a pause, settings that persist, a confirm and a toast, and the game is a chest behind them. Every screen sits on one stack, and the keyboard walks all of it.', tries: ['Press Play, then Esc twice', 'Change a setting, reload the page, open Settings again', 'Walk a menu with the arrow keys and Enter'], ready: false },
-  { id: 'dialogue', title: 'Dialogue', caption: 'A conversation with the smith at the furnace, from one RON file. Lines type out, a choice can be gated on a value, and the history page is the transcript.', tries: ['Press Enter to skip the typing, then choose', 'Turn on "found the key" on the right and ask again', 'Press X for the history'], ready: false },
+  { id: 'menus', title: 'Menus', caption: 'A title screen, a pause, settings that persist, a confirm and a toast, and the game is a chest behind them. Every screen sits on one stack, and the keyboard walks all of it.', tries: ['Press Play, then Esc twice', 'Change a setting, reload the page, open Settings again', 'Walk a menu with the arrow keys and Enter'], ready: true },
+  { id: 'dialogue', title: 'Dialogue', caption: 'A conversation with the smith at the furnace, from one RON file. Lines type out, a choice can be gated on a value, and the history page is the transcript.', tries: ['Press Enter to skip the typing, then choose', 'Turn on "found the key" on the right and ask again', 'Press X for the history'], ready: true },
   { id: 'themes', title: 'Themes', caption: 'One screen tree, three skins. A theme is a RON file of tokens and materials, and swapping it repaints the open settings screen in place: tabs, sliders, selects, toggles and rich text.', tries: ['Switch to paper', 'Switch to neon', 'Open the Chest scene and switch again'], ready: true },
   { id: 'mods', title: 'Mods', caption: 'Four Lua mods, editable here, hot-reloaded into the running game. The chest keeps its contents across a reload, and a crash restarts the runtime.', tries: ['Edit control.lua and press Run', 'Open Tests and run them', 'Type error("boom") and watch the restart'], ready: true },
   { id: 'hud', title: 'HUD', caption: 'Layers anchored to the screen edges, registered from Rust or from a mod, and a position editor a player can use.', tries: ['Press the edit button and drag the hotbar', 'Drag the clock', 'Reload the page and find them where you left them'], ready: true },
@@ -1045,7 +1045,23 @@ function showSettingsStored() {
  */
 function restoreSettings() {
   const ron = storedSettings();
-  if (ron) sceneCall('restore_settings', [ron], undefined, { quiet: true });
+  if (!ron) return;
+  try {
+    sceneCall('restore_settings', [ron], undefined, { quiet: true });
+  } catch (error) {
+    // Text the module refuses (an older build's shape, a hand edit) must not
+    // take the page down at boot, and must not come back next reload either:
+    // forget it and say so, the way a game would with a corrupt save.
+    if (isTrap(error)) throw error;
+    storeSettings('');
+    appendLines([
+      {
+        level: 'warn',
+        who: 'page',
+        text: `the saved settings were not restored and have been forgotten: ${error?.message ?? error}`,
+      },
+    ]);
+  }
 }
 
 /**

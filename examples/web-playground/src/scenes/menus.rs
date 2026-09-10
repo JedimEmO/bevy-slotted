@@ -22,11 +22,11 @@ use bevy::prelude::*;
 use slotted::menu::settings::DefaultBindings;
 use slotted::menu::toast::ToastQueue;
 use slotted::menu::{
-    ConfirmResult, MenuChoice, MenuConfig, PageSpec, SavedSettings, Settings, ToastLevel,
-    ToastSpec, kinds, open_page, toast,
+    ConfirmResult, MenuChoice, MenuConfig, PageSpec, SavedSettings, Settings, SettingsDirty,
+    ToastLevel, ToastSpec, kinds, open_page, same_kind, toast,
 };
 use slotted::prelude::*;
-use slotted::ui::{UiBindings, ValueStore};
+use slotted::ui::{UiBindings, ValueStore, clear_screens, pop_to};
 
 use crate::bus::Bus;
 use crate::scenes;
@@ -119,7 +119,12 @@ pub fn route_choices(mut choices: MessageReader<MenuChoice>, mut commands: Comma
         match choice.id.as_str() {
             "play" => {
                 pop_screen(&mut commands);
-                commands.queue(|world: &mut World| scenes::chest::open(world));
+                commands.queue(|world: &mut World| {
+                    // The chest Esc closed a moment ago left its inventories
+                    // behind; a fresh open spawns its own.
+                    scenes::despawn_orphan_inventories(world);
+                    scenes::chest::open(world);
+                });
             }
             "about" => open_page(
                 &mut commands,
@@ -145,10 +150,11 @@ pub fn leave_or_stay(mut results: MessageReader<ConfirmResult>, mut commands: Co
         }
         match result.id.as_str() {
             showcase::menus::LEAVE_CONFIRM => {
-                // The confirm popped itself; the pause is what is left.
-                pop_screen(&mut commands);
-                forget_chest_later(&mut commands);
-                showcase::menus::open_main_menu(&mut commands);
+                // The confirm popped itself. What is left is the pause and,
+                // when the page's Pause button made it, the chest under it;
+                // leaving means all of it goes, or the next Play would stack
+                // a second chest over the first.
+                back_to_title(&mut commands);
             }
             showcase::menus::QUIT_CONFIRM => {
                 // The confirm popped itself; the title is what is left.
@@ -197,17 +203,19 @@ pub fn open(world: &mut World, which: MenuScreen) -> Result<(), String> {
 }
 
 /// Pops everything above the title, or everything and then pushes a title.
+///
+/// `pop_to` and `clear_screens` rather than a counted run of `pop_screen`:
+/// `pop_screen` skips overlays and a count from `kinds()` includes them, so
+/// the two disagree the moment a toast-like overlay sits on the stack.
 fn back_to_title(commands: &mut Commands) {
     commands.queue(|world: &mut World| {
         let title = showcase::menus::main_kind();
-        let kinds = world.resource::<ScreenStack>().kinds();
-        let above = match kinds.iter().position(|kind| *kind == title) {
-            Some(at) => kinds.len() - at - 1,
-            None => kinds.len(),
-        };
+        let has_title = world.resource::<ScreenStack>().kinds().contains(&title);
         let mut commands = world.commands();
-        for _ in 0..above {
-            pop_screen(&mut commands);
+        if has_title {
+            pop_to(&mut commands, &title);
+        } else {
+            clear_screens(&mut commands);
         }
         forget_chest_later(&mut commands);
         showcase::menus::open_main_menu(&mut commands);
@@ -267,6 +275,11 @@ pub fn restore_settings(world: &mut World, text: &str) -> Result<(), String> {
     let bus = world.resource::<Bus>().clone();
     if text.trim().is_empty() {
         bus.set_settings("");
+        // A save still pending from the frame before would write the
+        // defaults straight back over the empty slot.
+        if let Some(mut dirty) = world.get_resource_mut::<SettingsDirty>() {
+            dirty.0 = false;
+        }
         world.resource_mut::<ValueStore>().restore(spec.defaults());
         if let Some(defaults) = world.get_resource::<DefaultBindings>().cloned() {
             *world.resource_mut::<UiBindings>() = defaults.0;
@@ -291,11 +304,14 @@ pub fn restore_settings(world: &mut World, text: &str) -> Result<(), String> {
             Some(rule) => rule.conform(value),
             None => Ok(value.clone()),
         };
-        match conformed {
-            Ok(fit) => {
+        // The same guard `MenuPlugin`'s own seeding applies: a text rule
+        // with no options conforms any text, so a `Text` saved under a
+        // slider key has to be refused by kind.
+        match (conformed, spec.defaults().get(&key)) {
+            (Ok(fit), Some(default)) if same_kind(&fit, default) => {
                 fitted.insert(key, fit);
             }
-            Err(_) => refused.push(key),
+            _ => refused.push(key),
         }
     }
     let restored = fitted.len();
@@ -329,7 +345,7 @@ fn forget_chest(world: &mut World) {
 }
 
 /// Despawns every toast and forgets the ones waiting for room.
-fn close_toasts(world: &mut World) {
+pub(crate) fn close_toasts(world: &mut World) {
     let toasts: Vec<Entity> = world
         .query_filtered::<Entity, With<slotted::menu::Toast>>()
         .iter(world)

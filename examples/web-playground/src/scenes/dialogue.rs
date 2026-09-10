@@ -47,6 +47,9 @@ impl SceneHandler for DialogueScene {
         }
         world.flush();
         scenes::machine::close(world);
+        // The smith's thank-you is a toast, which is not a screen root and so
+        // not the teardown's; it must not fade over the next scene.
+        scenes::menus::close_toasts(world);
     }
 }
 

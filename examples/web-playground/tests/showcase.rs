@@ -255,6 +255,48 @@ fn menus_scene_quit_confirms_stay_in_the_tab_and_leave_is_clean() {
         "nothing called AppExit"
     );
 
+    // The pause the page's button makes sits over the chest. Leaving from
+    // there takes the chest with it, or the next Play would stack a second
+    // chest over the first with its inventories duplicated.
+    let play = harness.find(&by::test_id("play"));
+    harness.activate(play);
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![ScreenKind::new(showcase::chest::CHEST)]
+    );
+    command(&mut harness, SceneCommand::MenuOpen(MenuScreen::Pause));
+    assert_eq!(
+        harness.stack(),
+        vec![ScreenKind::new(showcase::chest::CHEST), kinds::pause()]
+    );
+    let quit = harness.find(&by::test_id("quit").within(harness.find(&by::screen(kinds::pause()))));
+    harness.activate(quit);
+    harness.settle();
+    harness.confirm_accept();
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![title.clone()],
+        "the chest left with the pause"
+    );
+    let play = harness.find(&by::test_id("play"));
+    harness.activate(play);
+    harness.settle();
+    assert_eq!(
+        harness.stack(),
+        vec![ScreenKind::new(showcase::chest::CHEST)],
+        "one chest, not two"
+    );
+    let inventories = harness
+        .world_mut()
+        .query::<&slotted::ecs::menu::Inventory>()
+        .iter(harness.world())
+        .count();
+    assert_eq!(inventories, 3, "the chest's three inventories, once");
+    command(&mut harness, SceneCommand::MenuOpen(MenuScreen::Title));
+    assert_eq!(harness.stack(), vec![title.clone()]);
+
     // A setting, so there is something to keep.
     command(&mut harness, SceneCommand::MenuOpen(MenuScreen::Settings));
     let slider = harness.find(&by::test_id("settings.ui_scale"));

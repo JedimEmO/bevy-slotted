@@ -702,8 +702,9 @@ pub fn apply_settings(world: &mut World) {
 }
 
 /// Whether two values are the same variant, so a saved `Text` never lands
-/// under a slider key.
-fn same_kind(a: &Value, b: &Value) -> bool {
+/// under a slider key. `Rule::conform` alone does not say: a text rule
+/// with no options accepts any text, whatever key it is for.
+pub fn same_kind(a: &Value, b: &Value) -> bool {
     matches!(
         (a, b),
         (Value::Bool(_), Value::Bool(_))

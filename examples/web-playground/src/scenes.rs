@@ -49,6 +49,30 @@ pub fn registries(world: &World) -> Option<Arc<FrozenRegistries>> {
     world.get_resource::<Registries>().map(|r| r.0.clone())
 }
 
+/// Despawns every inventory entity no open menu borrows.
+///
+/// A scene that opens a chest more than once (Menus: Play, Esc, Play) spawns
+/// three inventories each time and closing the chest frees none of them; the
+/// [`teardown`] catches the leak at the scene's end, this catches it at the
+/// next open, so a long visit does not carry a copy of the chest per Play.
+pub fn despawn_orphan_inventories(world: &mut World) {
+    let borrowed: std::collections::HashSet<Entity> = world
+        .query::<&OpenMenu>()
+        .iter(world)
+        .flat_map(|menu| menu.inventories.iter().copied())
+        .collect();
+    let orphans: Vec<Entity> = world
+        .query_filtered::<Entity, With<slotted::ecs::menu::Inventory>>()
+        .iter(world)
+        .filter(|entity| !borrowed.contains(entity))
+        .collect();
+    for inventory in orphans {
+        if let Ok(entity) = world.get_entity_mut(inventory) {
+            entity.despawn();
+        }
+    }
+}
+
 /// Despawns every screen and every menu, whichever scene made them.
 ///
 /// This is what `leave` means. It is written as "everything on screen" rather

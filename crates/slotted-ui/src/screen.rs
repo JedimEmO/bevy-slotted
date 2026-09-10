@@ -284,11 +284,20 @@ fn merge_screens(base: &ScreenDef, child: &ScreenDef) -> ScreenDef {
             .or_else(|| base.initial_focus.clone()),
         // A child that writes no `presentation` keeps the ancestor's: the
         // default is indistinguishable from "unset" here, so a child wanting
-        // the plain default over a modal ancestor writes `mode: "page"`.
-        presentation: if child.presentation == Presentation::default() {
-            base.presentation
-        } else {
-            child.presentation
+        // the plain default over a modal ancestor writes `mode: "page"`. The
+        // optional fields merge one by one either way, so a child that
+        // restates `mode` does not silently drop the template's `scrim`,
+        // `focus` or `wildcards`.
+        presentation: {
+            let mut merged = if child.presentation == Presentation::default() {
+                base.presentation
+            } else {
+                child.presentation
+            };
+            merged.scrim = child.presentation.scrim.or(base.presentation.scrim);
+            merged.focus = child.presentation.focus.or(base.presentation.focus);
+            merged.wildcards = child.presentation.wildcards.or(base.presentation.wildcards);
+            merged
         },
     }
 }
@@ -899,19 +908,31 @@ impl Command for SpawnScreen {
             parent: self.root,
         };
         ctx.spawn_child(&resolved.root);
-        report_unmatched_injections(world, self.root, &resolved.kind);
+        report_unmatched_injections(
+            world,
+            self.root,
+            &resolved.kind,
+            resolved.presentation.takes_wildcards(),
+        );
         world.trigger(ScreenSpawned { entity: self.root });
     }
 }
 
 /// Records, on the screen root, every injection for this screen whose anchor
-/// the spawned tree does not contain.
-fn report_unmatched_injections(world: &mut World, root: Entity, kind: &ScreenKind) {
+/// the spawned tree does not contain. A wildcard a screen refuses
+/// (`wildcards: false`) was never for it and is not reported.
+fn report_unmatched_injections(
+    world: &mut World,
+    root: Entity,
+    kind: &ScreenKind,
+    wildcards: bool,
+) {
+    let any = ScreenKind::any();
     let wanted: Vec<AnchorId> = world
         .get_resource::<Injections>()
         .map(|i| {
             i.0.iter()
-                .filter(|inj| &inj.target == kind || inj.target == ScreenKind::any())
+                .filter(|inj| &inj.target == kind || (wildcards && inj.target == any))
                 .map(|inj| inj.anchor.clone())
                 .collect()
         })
@@ -1194,5 +1215,57 @@ mod tests {
         let other = screens.resolve(screens.get(&ScreenKind::new("demo:other")).unwrap());
         assert_eq!(other.kind, ScreenKind::new("demo:other"));
         assert_eq!(other.listring, vec![slotted_model::InventoryRef::new(2)]);
+    }
+
+    /// A child that restates one presentation field keeps the ancestor's
+    /// optional ones, so a game's pause that only changes the transition
+    /// does not get the wildcard injections its template refused.
+    #[test]
+    fn a_child_presentation_keeps_the_ancestors_optional_fields() {
+        use crate::def::{Presentation, PresentationMode, Transition};
+        let mut base = screen("demo:base", None, panel("root", vec![]));
+        base.presentation = Presentation {
+            mode: PresentationMode::Modal,
+            scrim: Some(true),
+            focus: None,
+            transition: Transition::SlideUp,
+            back: crate::def::BackPolicy::Pop,
+            wildcards: Some(false),
+        };
+        let mut child = screen("demo:child", Some("demo:base"), panel("root", vec![]));
+        child.presentation = Presentation {
+            mode: PresentationMode::Modal,
+            transition: Transition::Fade,
+            ..Presentation::default()
+        };
+        let mut opting_in = screen("demo:open", Some("demo:base"), panel("root", vec![]));
+        opting_in.presentation = Presentation {
+            wildcards: Some(true),
+            ..Presentation::default()
+        };
+        let screens = registered(vec![base, child, opting_in]);
+
+        let child = screens.resolve(screens.get(&ScreenKind::new("demo:child")).unwrap());
+        assert_eq!(
+            child.presentation.transition,
+            Transition::Fade,
+            "the child's own field"
+        );
+        assert_eq!(child.presentation.scrim, Some(true), "the ancestor's scrim");
+        assert!(
+            !child.presentation.takes_wildcards(),
+            "the ancestor's refusal"
+        );
+
+        let open = screens.resolve(screens.get(&ScreenKind::new("demo:open")).unwrap());
+        assert!(
+            open.presentation.takes_wildcards(),
+            "a child may opt back in"
+        );
+        assert_eq!(
+            open.presentation.scrim,
+            Some(true),
+            "and still keeps the rest"
+        );
     }
 }

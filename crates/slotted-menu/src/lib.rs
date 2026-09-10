@@ -34,8 +34,8 @@ pub use hint_bar::{HintBar, HintEntries, HintEntry};
 pub use page::{PageSpec, open_page};
 pub use plugin::{MenuChoice, MenuConfig, MenuPlugin};
 pub use settings::{
-    FileSettings, MemorySettings, SavedSettings, Settings, SettingsReset, SettingsRow,
-    SettingsSpec, SettingsStorage, SettingsStore, SettingsTab,
+    FileSettings, MemorySettings, SavedSettings, Settings, SettingsDirty, SettingsReset,
+    SettingsRow, SettingsSpec, SettingsStorage, SettingsStore, SettingsTab, same_kind,
 };
 pub use templates::kinds;
 pub use toast::{Toast, ToastLevel, ToastSpec, Toasts, toast};
