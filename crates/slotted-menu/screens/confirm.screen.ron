@@ -4,7 +4,7 @@
 #![enable(implicit_some)]
 (
     kind: "slotted:confirm",
-    presentation: (mode: "modal", scrim: true, transition: "fade", back: "pop"),
+    presentation: (mode: "modal", scrim: true, transition: "fade", back: "pop", wildcards: false),
     initial_focus: "cancel",
     root: (
         type: "panel", role: "panel",

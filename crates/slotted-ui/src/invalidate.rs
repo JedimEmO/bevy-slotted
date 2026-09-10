@@ -119,7 +119,9 @@ pub struct ScreenDependencies {
     /// Kind to every widget kind its resolved tree spawns.
     templates: HashMap<ScreenKind, BTreeSet<WidgetKind>>,
     /// Kind to every anchor id its resolved tree contains, which is what a
-    /// [`ScreenKind::any`] injection matches on.
+    /// [`ScreenKind::any`] injection matches on. A screen whose presentation
+    /// refuses wildcards is indexed with no anchors, so the wildcard never
+    /// reaches it here either.
     anchors: HashMap<ScreenKind, BTreeSet<AnchorId>>,
 }
 
@@ -135,9 +137,12 @@ impl ScreenDependencies {
                 .insert(kind.clone(), ancestors_of(screens, def));
             let mut templates = BTreeSet::new();
             let mut anchors = BTreeSet::new();
+            let wildcards = resolved.presentation.takes_wildcards();
             resolved.root.walk(&mut |node| match node {
                 UiNodeDef::Anchor { id } => {
-                    anchors.insert(id.clone());
+                    if wildcards {
+                        anchors.insert(id.clone());
+                    }
                 }
                 UiNodeDef::Custom { kind, .. }
                 | UiNodeDef::Button {

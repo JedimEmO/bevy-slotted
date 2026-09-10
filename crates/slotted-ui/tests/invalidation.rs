@@ -325,6 +325,59 @@ fn an_any_injection_respawns_ordinary_open_screens() {
     );
 }
 
+/// A screen whose presentation says `wildcards: false` (the menu templates:
+/// a pause is not "any screen of the game") takes no `slotted:any`
+/// injection, and still takes one aimed at its own kind.
+#[test]
+fn a_screen_that_refuses_wildcards_takes_only_its_own_injections() {
+    const NO_WILDCARDS: &str = r#"#![enable(implicit_some)]
+(
+    kind: "inv:menu",
+    presentation: (mode: "modal", wildcards: false),
+    root: (
+        type: "panel",
+        role: "panel",
+        tags: {"test_id": "root"},
+        children: [
+            (type: "anchor", id: "rail"),
+        ],
+    ),
+)"#;
+    let mut h = harness(&[BASE, NO_WILDCARDS]);
+    let mod_owner = Owner::Mod("inv".to_owned());
+    h.world_mut().resource_mut::<Injections>().0.extend([
+        text_injection(
+            ScreenKind::any().0.to_string().as_str(),
+            "rail",
+            "everywhere",
+            mod_owner.clone(),
+        ),
+        text_injection("inv:menu", "rail", "aimed", mod_owner),
+    ]);
+
+    h.open_screen(ScreenKind::new("inv:menu"), ChestFixture::empty());
+    h.settle();
+    assert!(
+        h.try_find(&by::test_id("everywhere")).is_none(),
+        "the wildcard stayed off a screen that refuses wildcards"
+    );
+    assert!(
+        h.try_find(&by::test_id("aimed")).is_some(),
+        "an injection aimed at the screen itself still lands"
+    );
+
+    // And an ordinary screen still takes the wildcard, so the refusal is the
+    // screen's and not a broken match.
+    slotted_ui::pop_screen(&mut h.world_mut().commands());
+    h.settle();
+    h.open_screen(ScreenKind::new("inv:base"), ChestFixture::empty());
+    h.settle();
+    assert!(
+        h.try_find(&by::test_id("everywhere")).is_some(),
+        "the base screen takes the wildcard as before"
+    );
+}
+
 // ---------------------------------------------------------------- removal
 
 /// A mod that stops registering a screen unregisters it, and an instance the

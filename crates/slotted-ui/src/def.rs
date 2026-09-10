@@ -919,6 +919,14 @@ pub struct Presentation {
     /// overlay with choices (the dialogue) says `focus: true`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub focus: Option<bool>,
+    /// Whether an [`Injection`](crate::Injection) aimed at
+    /// [`ScreenKind::any`](crate::ScreenKind::any) lands on this screen.
+    /// Defaults to true. The menu templates (`slotted:pause` and the rest)
+    /// say false: a mod that puts a Sort button on "any screen" means any
+    /// screen of the game, not the pause over it. Injections aimed at the
+    /// screen's own kind land regardless.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wildcards: Option<bool>,
 }
 
 impl Presentation {
@@ -930,6 +938,11 @@ impl Presentation {
     /// Whether the screen takes focus: `focus`, else `mode != overlay`.
     pub fn takes_focus(&self) -> bool {
         self.focus.unwrap_or(self.mode != PresentationMode::Overlay)
+    }
+
+    /// Whether wildcard injections land here: `wildcards`, else true.
+    pub fn takes_wildcards(&self) -> bool {
+        self.wildcards.unwrap_or(true)
     }
 }
 

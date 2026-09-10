@@ -59,6 +59,7 @@ presentation: (mode: "modal", scrim: true, transition: "slide_up", back: "pop"),
 | `scrim` | bool | `true` for `modal`, else `false` | Draw the themed `scrim` role under the screen. |
 | `transition` | `fade`, `slide_up`, `slide_left`, `none` | `fade` | The arrival motion, on the theme's motion tokens. Reduced motion collapses all of them to a fade. |
 | `back` | `pop`, `ignore` | `pop` | What an unclaimed `Back` does to this screen when it is on top. |
+| `wildcards` | bool | `true` | Whether an injection aimed at `slotted:any` lands on this screen. The menu templates (`slotted:pause`, `slotted:settings` and the rest) say `false`: a mod that puts a button on "any screen" means the game's screens, not the pause over them. An injection aimed at the screen's own kind lands regardless. |
 
 ### Focus and nav links
 
@@ -540,9 +541,10 @@ slotted.inject("slotted:any", {
 })
 ```
 
-`"slotted:any"` matches every screen that has that anchor. `exclusion = true`
-publishes the node's rectangle as an exclusion zone, so the item browser docks
-clear of it rather than under it.
+`"slotted:any"` matches every screen that has that anchor and whose
+presentation does not say `wildcards: false` (the menu templates do).
+`exclusion = true` publishes the node's rectangle as an exclusion zone, so the
+item browser docks clear of it rather than under it.
 
 ## Inheritance
 

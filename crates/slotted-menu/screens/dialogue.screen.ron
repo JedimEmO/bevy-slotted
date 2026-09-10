@@ -8,7 +8,7 @@
 (
     kind: "slotted:dialogue",
     presentation: (mode: "overlay", scrim: false, transition: "slide_up", back: "ignore",
-                   focus: true),
+                   focus: true, wildcards: false),
     root: (
         type: "panel", role: "dialogue",
         layout: (direction: "column", gap: 2.0, padding: 3.0, width: "90%", max_width: 900,

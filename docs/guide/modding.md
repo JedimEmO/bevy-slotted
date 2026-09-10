@@ -218,7 +218,9 @@ end)
 ```
 
 `"slotted:any"` is the wildcard: the button lands on every screen in the game
-that has a `title_end` anchor, including screens from mods loaded after yours.
+that has a `title_end` anchor, including screens from mods loaded after yours,
+but not on the menu templates (pause, settings, confirm, the text page, the
+dialogue), whose presentation refuses wildcards.
 `exclusion = true` publishes the button's rectangle so the item browser docks
 clear of it.
 

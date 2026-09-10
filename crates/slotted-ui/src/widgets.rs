@@ -769,11 +769,17 @@ pub fn spawn_anchor(ctx: &mut SpawnCtx<'_>, id: &crate::def::AnchorId) -> Entity
         AnchorNode(id.clone()),
         SemanticRole::Anchor,
     ));
+    // The screen root carries the resolved presentation; a root spawned
+    // without one (a bare test tree) takes wildcards, which is the default.
+    let wildcards = ctx
+        .world
+        .get::<crate::semantic::ScreenRoot>(ctx.screen)
+        .is_none_or(|root| root.presentation.takes_wildcards());
     let injections: Vec<(UiNodeDef, bool)> = ctx
         .world
         .get_resource::<crate::screen::Injections>()
         .map(|i| {
-            i.at(&ctx.kind, id)
+            i.at(&ctx.kind, id, wildcards)
                 .map(|inj| (inj.node.clone(), inj.exclusion))
                 .collect()
         })

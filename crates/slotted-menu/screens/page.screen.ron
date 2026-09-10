@@ -3,7 +3,7 @@
 #![enable(implicit_some)]
 (
     kind: "slotted:page",
-    presentation: (mode: "page", transition: "slide_left", back: "pop"),
+    presentation: (mode: "page", transition: "slide_left", back: "pop", wildcards: false),
     initial_focus: "done",
     root: (
         type: "panel", role: "panel",

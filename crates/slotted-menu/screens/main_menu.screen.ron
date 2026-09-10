@@ -5,7 +5,7 @@
 #![enable(implicit_some)]
 (
     kind: "slotted:main_menu",
-    presentation: (mode: "page", transition: "fade", back: "ignore"),
+    presentation: (mode: "page", transition: "fade", back: "ignore", wildcards: false),
     initial_focus: "play",
     root: (
         type: "panel", role: "panel",

@@ -365,16 +365,19 @@ impl ScreenKind {
 
 impl Injections {
     /// Injections for one screen and anchor, in registration order. An
-    /// injection targeting [`ScreenKind::any`] matches every screen.
+    /// injection targeting [`ScreenKind::any`] matches every screen whose
+    /// presentation takes wildcards (`Presentation::takes_wildcards`);
+    /// `wildcards` is that answer for `target`.
     pub fn at<'a>(
         &'a self,
         target: &'a ScreenKind,
         anchor: &'a AnchorId,
+        wildcards: bool,
     ) -> impl Iterator<Item = &'a Injection> + 'a {
         let any = ScreenKind::any();
-        self.0
-            .iter()
-            .filter(move |i| (&i.target == target || i.target == any) && &i.anchor == anchor)
+        self.0.iter().filter(move |i| {
+            (&i.target == target || (wildcards && i.target == any)) && &i.anchor == anchor
+        })
     }
 }
 

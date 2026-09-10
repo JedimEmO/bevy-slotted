@@ -4,7 +4,7 @@
 #![enable(implicit_some)]
 (
     kind: "slotted:settings",
-    presentation: (mode: "modal", scrim: true, transition: "fade", back: "pop"),
+    presentation: (mode: "modal", scrim: true, transition: "fade", back: "pop", wildcards: false),
     initial_focus: "settings.tabs",
     root: (
         type: "panel", role: "panel",
