@@ -451,6 +451,45 @@ fn button_roles_follow_variant_hover_focus_and_press() {
 }
 
 #[test]
+fn a_button_with_its_own_role_family_paints_from_it_through_every_state() {
+    let mut h = harness();
+    seed(&mut h);
+    let mut def = screen();
+    if let UiNodeDef::Panel { children, .. } = &mut def.root {
+        children.push(UiNodeDef::Button {
+            widget: None,
+            opts: ButtonOpts {
+                label: Some(LocKey("flat".into())),
+                role: Some(slotted_theme::Role::new("card.name")),
+                ..ButtonOpts::default()
+            },
+            tags: tags("flat"),
+        });
+    }
+    h.open(def);
+    h.settle();
+    let flat = find(&h, "flat");
+    h.set_focus(None);
+    h.step(1);
+    assert_eq!(role_of(&h, flat), "card.name", "the family, not `button`");
+    h.hover(flat);
+    h.step(1);
+    assert_eq!(role_of(&h, flat), "card.name.hover");
+    h.set_focus(Some(flat));
+    h.step(1);
+    assert_eq!(role_of(&h, flat), "card.name.focus");
+    assert!(
+        h.world().get::<slotted_ui::ButtonRole>(flat).is_some(),
+        "the family rides on the button"
+    );
+    let ok = find(&h, "ok");
+    assert!(
+        h.world().get::<slotted_ui::ButtonRole>(ok).is_none(),
+        "a variant button carries none"
+    );
+}
+
+#[test]
 fn a_close_button_pops_the_screen() {
     let mut h = harness();
     open(&mut h);

@@ -320,6 +320,14 @@ pub struct ButtonOpts {
     /// `sizes.control_height_compact` rather than `control_height`.
     #[serde(default)]
     pub compact: bool,
+    /// Paint from this role family instead of the variant's (`button`,
+    /// `button.primary`, `button.danger`): the state suffixes (`.hover`,
+    /// `.focus`, `.pressed`, `.disabled`) are appended to it the same way.
+    /// For a button that is one part of a larger framed thing, such as a
+    /// card's name, where the variant's own frame would double the card's;
+    /// a role the theme lacks paints nothing, which is usually the point.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
 }
 
 string_enum! {

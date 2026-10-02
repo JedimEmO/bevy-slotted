@@ -319,6 +319,7 @@ fn spawn_choices(world: &mut World, root: Entity) {
                 variant: default(),
                 disabled: !on,
                 compact: false,
+                role: None,
             },
             tags,
         };

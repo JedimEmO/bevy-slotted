@@ -529,6 +529,12 @@ pub struct ButtonState {
     pub pressed: bool,
 }
 
+/// On a button spawned with `ButtonOpts::role`: the role family it paints
+/// from instead of its variant's. A component of its own rather than a
+/// field, so [`ButtonState`] stays `Copy` for the tests that build one.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct ButtonRole(pub Role);
+
 impl ButtonState {
     /// The role family the variant paints from.
     fn base_role(self) -> &'static str {
@@ -579,7 +585,11 @@ pub fn spawn_button(
             flex_shrink: 0.0,
             ..default()
         },
-        Themed(Role::new(state.base_role())),
+        Themed(
+            opts.role
+                .clone()
+                .unwrap_or_else(|| Role::new(state.base_role())),
+        ),
         SemanticRole::Button,
         SemanticLabel(
             opts.label
@@ -594,6 +604,11 @@ pub fn spawn_button(
         Pickable::default(),
         WidgetNode(widget),
     ));
+    if let Some(role) = &opts.role {
+        ctx.world
+            .entity_mut(entity)
+            .insert(ButtonRole(role.clone()));
+    }
     if opts.disabled {
         ctx.world
             .entity_mut(entity)
@@ -737,12 +752,18 @@ pub fn on_button_accept(
 /// like [`slot_state_roles`]. Disabled wins, then pressed, focus, hover.
 pub fn button_roles(
     focus: Option<Res<bevy::input_focus::InputFocus>>,
-    mut buttons: Query<(Entity, &ButtonState, &Hovered, &mut Themed)>,
+    mut buttons: Query<(
+        Entity,
+        &ButtonState,
+        Option<&ButtonRole>,
+        &Hovered,
+        &mut Themed,
+    )>,
 ) {
     let focused = focus.and_then(|f| f.get());
-    for (entity, state, hovered, mut themed) in &mut buttons {
+    for (entity, state, family, hovered, mut themed) in &mut buttons {
         let role = controls::state_role_with(
-            state.base_role(),
+            family.map_or(state.base_role(), |f| f.0.as_str()),
             controls::ControlLook {
                 hovered: hovered.get(),
                 focused: focused == Some(entity),
