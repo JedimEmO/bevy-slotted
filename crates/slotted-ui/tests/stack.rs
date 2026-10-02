@@ -28,7 +28,7 @@ use slotted_ui::zbands;
 use slotted_ui::{
     InputDevice, Layout, ScreenRoot, ScreenStack, Screens, Scrim, SlottedUiSet, StackChanged,
     UiAction, UiActionClaims, UiActionEmit, UiActionEvent, clear_screens, close_screen, pop_screen,
-    pop_to, push_screen, spawn_screen,
+    pop_to, push_screen, replace_screen, spawn_screen,
 };
 
 const WIDTH: f32 = 1280.0;
@@ -712,4 +712,39 @@ fn a_transition_of_none_starts_nothing() {
     let mut tweens = h.world_mut().query::<&Tween>();
     assert_eq!(tweens.iter(h.world()).count(), 0);
     assert!(h.world().get_entity(root).is_ok());
+}
+
+#[test]
+fn a_replace_by_the_same_kind_rebuilds_without_arriving_again() {
+    let mut h = harness_with(Motion::default());
+    let def = register(&mut h, screen("t:a", page()));
+    push_screen(&mut h.world_mut().commands(), def.clone(), None);
+    h.world_mut().flush();
+    h.step(1);
+    h.settle();
+    assert_eq!(h.world_mut().query::<&Tween>().iter(h.world()).count(), 0);
+
+    let rebuilt = replace_screen(&mut h.world_mut().commands(), def, None);
+    h.world_mut().flush();
+    h.step(1);
+    assert_eq!(stack_kinds(&h), kinds(&["t:a"]));
+    assert_eq!(
+        h.world().resource::<ScreenStack>().top().map(|e| e.root),
+        Some(rebuilt)
+    );
+    assert_eq!(
+        h.world_mut().query::<&Tween>().iter(h.world()).count(),
+        0,
+        "a rebuild does not fade in again"
+    );
+
+    let other = register(&mut h, screen("t:b", page()));
+    replace_screen(&mut h.world_mut().commands(), other, None);
+    h.world_mut().flush();
+    h.step(1);
+    let panel = h.find(&by::test_id("t:b"));
+    assert!(
+        h.world().get::<Tween>(panel).is_some(),
+        "a replace by another kind is a navigation and arrives"
+    );
 }

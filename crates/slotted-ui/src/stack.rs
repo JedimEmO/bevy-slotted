@@ -111,13 +111,20 @@ pub fn push_screen(commands: &mut Commands, def: Arc<ScreenDef>, menu: Option<En
 }
 
 /// Pops the top non-overlay entry, then pushes `def`.
+///
+/// A replace by the same kind is a rebuild, not a navigation: the screen
+/// was already up, so it does not arrive again. A screen that rebuilds its
+/// definition on every change would otherwise flash its fade or slide on
+/// each one. Only a replace that lands before the old entry's arrival
+/// started keeps the transition, since nothing has been drawn yet.
 pub fn replace_screen(
     commands: &mut Commands,
     def: Arc<ScreenDef>,
     menu: Option<Entity>,
 ) -> Entity {
-    commands.queue(PopScreen);
-    push_screen(commands, def, menu)
+    let root = commands.spawn_empty().id();
+    commands.queue(ReplaceScreen { root, def, menu });
+    root
 }
 
 /// Pops the top non-overlay entry, closing its screen and its menu.
@@ -168,6 +175,42 @@ impl Command for CloseStacked {
                 world.despawn(self.0);
             }
             None => {}
+        }
+    }
+}
+
+/// The command behind [`replace_screen`].
+pub struct ReplaceScreen {
+    /// Pre-reserved root.
+    pub root: Entity,
+    /// The screen.
+    pub def: Arc<ScreenDef>,
+    /// Its menu.
+    pub menu: Option<Entity>,
+}
+
+impl Command for ReplaceScreen {
+    type Out = ();
+
+    fn apply(self, world: &mut World) {
+        let arrived_same_kind = world
+            .resource::<ScreenStack>()
+            .entries
+            .iter()
+            .rfind(|e| e.presentation.mode != PresentationMode::Overlay)
+            .is_some_and(|e| {
+                e.kind == self.def.kind && world.get::<PushTransition>(e.root).is_none()
+            });
+        PopScreen.apply(world);
+        let root = self.root;
+        PushScreen {
+            root,
+            def: self.def,
+            menu: self.menu,
+        }
+        .apply(world);
+        if arrived_same_kind {
+            world.entity_mut(root).remove::<PushTransition>();
         }
     }
 }
