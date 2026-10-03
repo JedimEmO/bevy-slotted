@@ -7,6 +7,28 @@ the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Cards
+
+A choice that is a whole framed thing, a skill box or a save slot, used to be
+a framed `panel` with a `button` inside it, which put two frames and two hover
+states on one choice and a click target smaller than the thing it named.
+
+#### Added
+
+- **`UiNodeDef::Card { role, layout, children, disabled, tags }`**, the
+  `card` node: a container that is itself the button. It lays out as a
+  `panel`, takes focus, paints `role` and its `.hover`, `.focus`, `.pressed`
+  and `.disabled` suffixes through `button_roles`, and raises `Activate` on
+  `Accept` and on a primary click as a `button` does. Every descendant is
+  `Pickable::IGNORE`, so a click anywhere on the card lands on it; its
+  children are content, never controls. Its semantic label is the first
+  `text` under it.
+- **`slotted:card`**, the same through the registry (`kinds::card`,
+  `CardParams { role, layout, disabled }`, `role` defaulting to `panel`);
+  `kinds::all` lists thirty kinds.
+- `ButtonOpts::role` and the `ButtonRole` component: a button may paint from
+  a role family of its own instead of its variant's.
+
 ### Menus M3: dialogue
 
 `docs/design/menus-proposal.md` section 5.3, made binding by

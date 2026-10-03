@@ -217,9 +217,44 @@ tab` on a pad, re-rendering when the input mode flips or a binding changes.
 | `variant` | `primary`, `secondary`, `danger` | `secondary` | Which of `button`, `button.primary`, `button.danger` it paints in. |
 | `disabled` | bool | `false` | Inert, and painted `.disabled`. |
 | `compact` | bool | `false` | `control_height_compact` tall rather than `control_height`. |
+| `role` | string | none | A role family to paint from instead of the variant's; the state suffixes are appended to it the same way. A family the theme lacks paints nothing. |
 
 A focused button activates on `Accept` from any device, and on a click. It does
 not carry `bevy_ui_widgets::Button`, so a rebound `Accept` key reaches it.
+
+### `card`
+
+A container that is itself the button: a `panel` in layout and children that
+takes focus and raises `Activate` the way a `button` does. It is for a choice
+that is a whole framed thing, a skill box or a save slot, rather than a label.
+A `button` nested inside a framed `panel` puts two frames and two hover states
+on one choice; a card puts one on it.
+
+| Field | Type | Default | |
+|---|---|---|---|
+| `role` | string | required | The role family it paints from: `role` at rest, then `role.hover`, `role.focus`, `role.pressed` and `role.disabled`, each falling back to `role` where the theme lacks it. |
+| `layout` | `Layout` | all defaults | As a `panel`'s. |
+| `children` | array | `[]` | Content, never controls. |
+| `disabled` | bool | `false` | Inert, and painted `.disabled`. |
+
+Every node under a card ignores the pointer, so a click anywhere on it, on the
+name or on a stripe, lands on the card and the card is the one that looks
+pressed. A button or a slider inside a card therefore cannot be clicked: put
+controls beside a card, not in it. Its accessible label is the first `text`
+under it, depth first. A `menu` tag makes it a menu choice like a button's.
+
+```ron
+(type: "card", role: "list.row",
+ layout: (direction: "row", gap: 1.0, padding: 1.0, width: 220.0),
+ children: [
+     (type: "panel", role: "panel", layout: (width: 4.0)),
+     (type: "panel", role: "invisible", children: [
+         (type: "text", key: "skill.vault.name", style: "body"),
+         (type: "text", key: "skill.vault.cost", style: "caption"),
+     ]),
+ ],
+ tags: {"menu": "learn.vault"})
+```
 
 ### Value controls
 
@@ -496,7 +531,8 @@ A registered widget kind.
 | `children` | array | `[]` | Handed to the widget. |
 
 The built-in kinds are `slotted:panel`, `slotted:text`, `slotted:rich_text`,
-`slotted:slot`, `slotted:slot_grid`, `slotted:button`, `slotted:close`,
+`slotted:slot`, `slotted:slot_grid`, `slotted:button`, `slotted:card`,
+`slotted:close`,
 `slotted:action_rail`, `slotted:hotbar`, `slotted:tooltip`, `slotted:tank`,
 `slotted:bar`, `slotted:progress`, `slotted:side_tab`, `slotted:icon_button`,
 `slotted:virtual_grid`, `slotted:viewport`, and one per M1 control

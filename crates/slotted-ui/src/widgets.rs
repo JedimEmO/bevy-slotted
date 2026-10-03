@@ -184,9 +184,13 @@ pub mod kinds {
     pub fn close() -> WidgetKind {
         WidgetKind(ns("slotted:close"))
     }
+    /// A container that is itself the button.
+    pub fn card() -> WidgetKind {
+        WidgetKind(ns("slotted:card"))
+    }
 
     /// Every built-in kind.
-    pub fn all() -> [WidgetKind; 29] {
+    pub fn all() -> [WidgetKind; 30] {
         [
             panel(),
             text(),
@@ -217,6 +221,7 @@ pub mod kinds {
             spacer(),
             image(),
             close(),
+            card(),
         ]
     }
 }
@@ -779,6 +784,93 @@ pub fn button_roles(
 }
 
 // ---------------------------------------------------------------------------
+// Card
+// ---------------------------------------------------------------------------
+
+/// Spawns a container that is itself the button (`UiNodeDef::Card`): a
+/// panel's node and children with a button's state, focus and observers,
+/// so [`button_roles`] swaps its role family through hover, focus, press
+/// and disabled, a fresh `Accept` on it goes through [`on_button_accept`]
+/// and a primary click through [`on_button_click`], both as `Activate`.
+///
+/// Every descendant is made `Pickable::IGNORE`: a hit on the name or the
+/// stripe would otherwise be the child's, and the press and release would
+/// land on an entity that has no button state, so the card would never
+/// look pressed. The children are therefore content and never controls.
+pub fn spawn_card(
+    ctx: &mut SpawnCtx<'_>,
+    role: &Role,
+    layout: &Layout,
+    children: &[UiNodeDef],
+    disabled: bool,
+) -> Entity {
+    let spacing = ctx.tokens().spacing.sm;
+    let label =
+        first_text_key(children).map_or_else(|| kinds::card().0.path().to_owned(), |k| k.0.clone());
+    let entity = ctx.spawn_node((
+        layout_node(layout, spacing),
+        Themed(role.clone()),
+        SemanticRole::Button,
+        SemanticLabel(label),
+        ButtonState {
+            variant: crate::def::ButtonVariant::Secondary,
+            disabled,
+            pressed: false,
+        },
+        ButtonRole(role.clone()),
+        Hovered::default(),
+        TabIndex(0),
+        crate::focus_ring::Focusable,
+        AutoDirectionalNavigation::default(),
+        Pickable::default(),
+        WidgetNode(kinds::card()),
+    ));
+    if layout.overflow == crate::def::Overflow::Scroll {
+        ctx.world
+            .entity_mut(entity)
+            .insert(ScrollPosition::default());
+    }
+    if let Some(place) = layout.place {
+        ctx.world
+            .entity_mut(entity)
+            .insert(nine_anchor_transform(place.anchor, 1.0));
+    }
+    if disabled {
+        ctx.world
+            .entity_mut(entity)
+            .insert(bevy::ui::InteractionDisabled);
+    }
+    ctx.spawn_children(entity, children);
+    let mut below: Vec<Entity> = ctx
+        .world
+        .get::<Children>(entity)
+        .map(|c| c.to_vec())
+        .unwrap_or_default();
+    while let Some(child) = below.pop() {
+        if let Some(grand) = ctx.world.get::<Children>(child) {
+            below.extend(grand.iter());
+        }
+        ctx.world.entity_mut(child).insert(Pickable::IGNORE);
+    }
+    let mut e = ctx.world.entity_mut(entity);
+    e.observe(on_button_press);
+    e.observe(on_button_release);
+    e.observe(on_button_drag_end);
+    e.observe(on_button_cancel);
+    e.observe(on_button_click);
+    entity
+}
+
+/// The key of the first `Text` in `defs`, depth first: what a card is
+/// called, since a card has no label of its own.
+fn first_text_key(defs: &[UiNodeDef]) -> Option<&LocKey> {
+    defs.iter().find_map(|def| match def {
+        UiNodeDef::Text { key, .. } => Some(key),
+        other => first_text_key(other.children()),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Anchor
 // ---------------------------------------------------------------------------
 
@@ -1305,6 +1397,42 @@ impl Widget for ButtonWidget {
     }
 }
 
+/// `slotted:card` through the registry.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct CardWidget;
+
+/// Parameters of `slotted:card`: the typed `card` node's fields but its
+/// children and tags, which a `custom` node carries itself.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardParams {
+    /// Theme role family.
+    #[serde(default = "panel_role")]
+    pub role: Role,
+    /// Flow, gap, padding, size.
+    #[serde(default)]
+    pub layout: Layout,
+    /// Inert and drawn as such.
+    #[serde(default)]
+    pub disabled: bool,
+}
+
+impl Default for CardParams {
+    fn default() -> Self {
+        Self {
+            role: panel_role(),
+            layout: Layout::default(),
+            disabled: false,
+        }
+    }
+}
+
+impl Widget for CardWidget {
+    fn spawn(&self, ctx: &mut SpawnCtx<'_>, params: &Value, children: &[UiNodeDef]) -> Entity {
+        let p: CardParams = params_of!(params, "slotted:card");
+        spawn_card(ctx, &p.role, &p.layout, children, p.disabled)
+    }
+}
+
 /// `slotted:action_rail` through the registry.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ActionRailWidget;
@@ -1477,6 +1605,7 @@ pub fn register_builtins(registry: &mut WidgetRegistry) {
     registry.register(kinds::slot(), SlotWidget);
     registry.register(kinds::slot_grid(), SlotGridWidget);
     registry.register(kinds::button(), ButtonWidget);
+    registry.register(kinds::card(), CardWidget);
     registry.register(kinds::action_rail(), ActionRailWidget);
     registry.register(kinds::hotbar(), HotbarWidget);
     registry.register(kinds::tooltip(), TooltipWidget);

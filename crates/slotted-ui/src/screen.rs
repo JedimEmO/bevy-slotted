@@ -569,6 +569,13 @@ impl SpawnCtx<'_> {
             UiNodeDef::Button { widget, opts, .. } => {
                 widgets::spawn_button(self, widget.as_ref(), opts)
             }
+            UiNodeDef::Card {
+                role,
+                layout,
+                children,
+                disabled,
+                ..
+            } => widgets::spawn_card(self, role, layout, children, *disabled),
             UiNodeDef::Anchor { id } => widgets::spawn_anchor(self, id),
             UiNodeDef::Custom {
                 kind,

@@ -944,3 +944,166 @@ fn a_captured_arrow_is_claimed_so_focus_does_not_move() {
         Some(KeyCode::ArrowUp)
     );
 }
+
+// ---------------------------------------------------------------------------
+// Card
+// ---------------------------------------------------------------------------
+
+/// The settings screen with two cards at the end, a live one with a
+/// `menu` tag and a disabled one, each a stripe beside a column holding
+/// its name and a caption, which is the shape a skill box has; and the
+/// focus starting on the live card.
+fn card_screen() -> ScreenDef {
+    fn card(id: &str, disabled: bool) -> UiNodeDef {
+        UiNodeDef::Card {
+            role: slotted_theme::Role::new("list.row"),
+            layout: Layout {
+                direction: slotted_ui::LayoutDirection::Row,
+                gap: 1.0,
+                padding: 1.0.into(),
+                width: Some(slotted_ui::Length::Px(220.0)),
+                ..Layout::default()
+            },
+            children: vec![
+                UiNodeDef::Panel {
+                    role: roles::PANEL,
+                    layout: Layout {
+                        width: Some(slotted_ui::Length::Px(4.0)),
+                        ..Layout::default()
+                    },
+                    children: vec![],
+                    tags: tags(&format!("{id}.stripe")),
+                },
+                UiNodeDef::Panel {
+                    role: slotted_theme::Role::new("invisible"),
+                    layout: Layout {
+                        direction: slotted_ui::LayoutDirection::Column,
+                        ..Layout::default()
+                    },
+                    children: vec![
+                        UiNodeDef::Text {
+                            key: LocKey(format!("{id}.name")),
+                            style: slotted_ui::TextRole::Body,
+                            opts: slotted_ui::TextOpts::default(),
+                            tags: tags(&format!("{id}.name")),
+                        },
+                        UiNodeDef::Text {
+                            key: LocKey(format!("{id}.caption")),
+                            style: slotted_ui::TextRole::Caption,
+                            opts: slotted_ui::TextOpts::default(),
+                            tags: Tags::new(),
+                        },
+                    ],
+                    tags: Tags::new(),
+                },
+            ],
+            disabled,
+            tags: tags(id).with("menu", &format!("pick.{id}")),
+        }
+    }
+    let mut def = screen();
+    def.initial_focus = Some("card".to_owned());
+    if let UiNodeDef::Panel { children, .. } = &mut def.root {
+        children.push(card("card", false));
+        children.push(card("dead", true));
+    }
+    def
+}
+
+fn open_cards(h: &mut UiHarness) {
+    seed(h);
+    h.open(card_screen());
+    h.settle();
+}
+
+#[test]
+fn a_card_is_one_button_a_click_anywhere_on_it_or_accept_chooses() {
+    let mut h = harness();
+    open_cards(&mut h);
+    let card = find(&h, "card");
+    assert_eq!(h.focused(), Some(card), "`initial_focus` lands on the card");
+    assert!(h.world().get::<slotted_ui::Focusable>(card).is_some());
+    assert_eq!(
+        h.world().get::<slotted_ui::SemanticRole>(card),
+        Some(&slotted_ui::SemanticRole::Button)
+    );
+    assert_eq!(
+        h.text_of(card).as_deref(),
+        Some("card.name"),
+        "named by its first text, however deep"
+    );
+    for part in ["card.stripe", "card.name"] {
+        assert_eq!(
+            h.world().get::<Pickable>(find(&h, part)),
+            Some(&Pickable::IGNORE),
+            "{part} lets the pointer through to the card"
+        );
+    }
+
+    h.action(UiAction::Accept);
+    assert_eq!(activated(&mut h), vec![card], "Accept: exactly once");
+    let choices = h.menu_choices();
+    assert_eq!(choices.len(), 1);
+    assert_eq!(choices[0].id, "pick.card");
+    assert_eq!(choices[0].entity, card);
+
+    // On the name, the stripe and the card's own padding: the card each
+    // time, so no part of it is a smaller target.
+    for part in [find(&h, "card.name"), find(&h, "card.stripe"), card] {
+        h.click(part);
+        assert_eq!(activated(&mut h), vec![card], "pointer: exactly once");
+        let choices = h.menu_choices();
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].id, "pick.card");
+    }
+    assert!(h.world().get::<Pressed>(card).is_none());
+    assert!(!h.world().get::<ButtonState>(card).unwrap().pressed);
+}
+
+#[test]
+fn a_card_paints_its_family_through_hover_focus_and_press() {
+    let mut h = harness();
+    open_cards(&mut h);
+    let card = find(&h, "card");
+    assert_eq!(role_of(&h, card), "list.row.focus", "focused on open");
+    assert_eq!(
+        h.world().get::<slotted_ui::ButtonRole>(card),
+        Some(&slotted_ui::ButtonRole(slotted_theme::Role::new(
+            "list.row"
+        )))
+    );
+    h.set_focus(None);
+    h.step(1);
+    assert_eq!(role_of(&h, card), "list.row");
+    // The pointer over a child still hovers the card: `Hovered` counts
+    // descendants, and the children are not hit anyway.
+    h.hover(find(&h, "card.name"));
+    h.step(1);
+    assert_eq!(role_of(&h, card), "list.row.hover");
+    h.pointer_press(PointerButton::Primary);
+    h.step(1);
+    assert_eq!(role_of(&h, card), "list.row.pressed");
+    assert!(h.world().get::<Pressed>(card).is_some());
+    h.pointer_release(PointerButton::Primary);
+    h.step(1);
+    assert_ne!(role_of(&h, card), "list.row.pressed");
+    h.set_focus(Some(card));
+    h.step(1);
+    assert_eq!(role_of(&h, card), "list.row.focus");
+}
+
+#[test]
+fn a_disabled_card_does_nothing_and_is_drawn_as_such() {
+    let mut h = harness();
+    open_cards(&mut h);
+    let dead = find(&h, "dead");
+    assert!(h.world().get::<InteractionDisabled>(dead).is_some());
+    assert_eq!(role_of(&h, dead), "list.row.disabled");
+    h.set_focus(Some(dead));
+    h.action(UiAction::Accept);
+    h.click(find(&h, "dead.name"));
+    h.click(dead);
+    assert!(activated(&mut h).is_empty());
+    assert!(h.menu_choices().is_empty());
+    assert!(h.world().get::<Pressed>(dead).is_none());
+}

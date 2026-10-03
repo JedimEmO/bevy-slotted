@@ -151,7 +151,7 @@ pub use widgets::virtual_grid::{
     GridShape, PooledCell, VirtualCell, VirtualGridSource, VirtualGridSources, VirtualGridState,
     refresh_virtual_grids, spawn_shaped_virtual_grid,
 };
-pub use widgets::{ButtonRole, ButtonState};
+pub use widgets::{ButtonRole, ButtonState, CardParams};
 pub use widgets::{RailAction, SLOT_SIZE, slot_state_roles};
 
 /// Everything a game needs to define and open screens.

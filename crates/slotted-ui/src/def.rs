@@ -1169,6 +1169,31 @@ pub enum UiNodeDef {
         #[serde(default)]
         tags: Tags,
     },
+    /// A container that is itself the button: a panel in look and layout
+    /// that takes focus and raises `Activate` like a [`Button`](Self::Button),
+    /// for a choice that is a whole framed thing (a skill box, a save slot)
+    /// rather than a label. A button nested inside a frame put two frames
+    /// and two hover states on one choice; this puts one on it. The
+    /// children are content, never controls: they ignore the pointer so a
+    /// click anywhere on the card lands on the card.
+    Card {
+        /// Theme role family: `role` at rest, then `.hover`, `.focus`,
+        /// `.pressed` and `.disabled` as a button's are, each falling back
+        /// to `role` where the theme lacks it.
+        role: Role,
+        /// Flow, gap, padding, size, as a panel's.
+        #[serde(default)]
+        layout: Layout,
+        /// Children.
+        #[serde(default)]
+        children: Vec<UiNodeDef>,
+        /// Inert and drawn as such.
+        #[serde(default)]
+        disabled: bool,
+        /// Locator tags; a `menu` tag makes it a menu choice.
+        #[serde(default)]
+        tags: Tags,
+    },
     /// A switch or checkbox bound to a `Bool` (menus M1 contract 3.3).
     Toggle {
         /// Label to the left.
@@ -1470,6 +1495,7 @@ impl UiNodeDef {
             | Self::Text { tags, .. }
             | Self::RichText { tags, .. }
             | Self::Button { tags, .. }
+            | Self::Card { tags, .. }
             | Self::Toggle { tags, .. }
             | Self::Slider { tags, .. }
             | Self::Select { tags, .. }
@@ -1503,6 +1529,7 @@ impl UiNodeDef {
             | Self::Text { tags, .. }
             | Self::RichText { tags, .. }
             | Self::Button { tags, .. }
+            | Self::Card { tags, .. }
             | Self::Toggle { tags, .. }
             | Self::Slider { tags, .. }
             | Self::Select { tags, .. }
@@ -1530,6 +1557,7 @@ impl UiNodeDef {
     pub fn children(&self) -> &[UiNodeDef] {
         match self {
             Self::Panel { children, .. }
+            | Self::Card { children, .. }
             | Self::SideTab { children, .. }
             | Self::Scroll { children, .. }
             | Self::Tabs { children, .. }
@@ -1556,6 +1584,7 @@ impl UiNodeDef {
     pub fn children_mut(&mut self) -> Option<&mut Vec<UiNodeDef>> {
         match self {
             Self::Panel { children, .. }
+            | Self::Card { children, .. }
             | Self::SideTab { children, .. }
             | Self::Scroll { children, .. }
             | Self::Tabs { children, .. }
