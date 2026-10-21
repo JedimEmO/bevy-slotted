@@ -524,7 +524,7 @@ fn set_if_changed<C: Component + PartialEq>(entity: &mut EntityWorldMut<'_>, val
 /// `focus: true` overlay gets its focus back when the modal above it pops).
 /// Clears it when the focused node died with a popped screen and nothing is
 /// left to take over.
-fn restore_focus(world: &mut World) {
+pub(crate) fn restore_focus(world: &mut World) {
     let top = world.resource::<ScreenStack>().focus_top().cloned();
     let alive = |world: &World, e: Option<Entity>| e.filter(|e| world.get_entity(*e).is_ok());
     let target = top.and_then(|top| {

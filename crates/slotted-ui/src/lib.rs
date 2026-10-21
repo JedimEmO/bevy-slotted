@@ -27,6 +27,7 @@ pub mod layers;
 pub mod loc;
 pub mod motion;
 pub mod nav;
+pub mod patch;
 pub mod plugin;
 pub mod preview;
 pub mod recording;
@@ -82,6 +83,7 @@ pub use nav::{
     TextEntryFocused, directional_nav_actions, focus_on_spawn, on_slot_accept, screen_root_of,
     screen_root_where, track_text_entry_focus,
 };
+pub use patch::{PatchScreen, PatchStats, patch_screen};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use preview::{
     DragGhost, HintGlyphs, SlotHint, SlotPhantom, Validity, render_overlays,

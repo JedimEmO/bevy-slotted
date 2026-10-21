@@ -448,8 +448,29 @@ impl SpawnCtx<'_> {
     /// Spawns `def` under `self.parent` and returns its root entity. The one
     /// dispatch point: typed variants go to their built-in widget, `Custom`
     /// goes through the [`WidgetRegistry`].
-    #[allow(clippy::too_many_lines)]
     pub fn spawn_child(&mut self, def: &UiNodeDef) -> Entity {
+        // A screen spawn or a patch opens a trace, so the call tree that
+        // built the entities is kept beside the def tree for `patch_screen`.
+        let traced = self.world.contains_resource::<SpawnTrace>();
+        if traced {
+            self.world
+                .resource_mut::<SpawnTrace>()
+                .levels
+                .push(Vec::new());
+        }
+        let entity = self.spawn_child_inner(def);
+        if traced {
+            let mut trace = self.world.resource_mut::<SpawnTrace>();
+            let children = trace.levels.pop().unwrap_or_default();
+            if let Some(level) = trace.levels.last_mut() {
+                level.push(Rec { entity, children });
+            }
+        }
+        entity
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn spawn_child_inner(&mut self, def: &UiNodeDef) -> Entity {
         let entity = match def {
             UiNodeDef::Panel {
                 role,
@@ -740,6 +761,54 @@ impl SpawnCtx<'_> {
     }
 }
 
+/// One spawned node of a screen: the entity a `spawn_child` call made and the
+/// `spawn_child` calls made inside it, in order. For a panel, card or scroll
+/// those are exactly its def's children; any other widget is patched whole.
+#[derive(Debug, Clone)]
+pub(crate) struct Rec {
+    pub entity: Entity,
+    pub children: Vec<Rec>,
+}
+
+/// Present while a screen or a patched subtree is spawning; `spawn_child`
+/// records into it.
+#[derive(Resource, Default)]
+pub(crate) struct SpawnTrace {
+    levels: Vec<Vec<Rec>>,
+}
+
+/// On a screen root: the resolved definition it was last built or patched
+/// from and the spawn record of its tree, which `patch_screen` diffs against.
+#[derive(Component, Debug, Clone)]
+pub(crate) struct ScreenTrace {
+    pub def: Arc<ScreenDef>,
+    pub node: Rec,
+}
+
+/// Spawns `def` under `ctx.parent` with the call tree recorded.
+pub(crate) fn spawn_traced(ctx: &mut SpawnCtx<'_>, def: &UiNodeDef) -> Rec {
+    let outer = ctx.world.remove_resource::<SpawnTrace>();
+    ctx.world.insert_resource(SpawnTrace {
+        levels: vec![Vec::new()],
+    });
+    let entity = ctx.spawn_child(def);
+    let mut trace = ctx
+        .world
+        .remove_resource::<SpawnTrace>()
+        .unwrap_or_default();
+    if let Some(outer) = outer {
+        ctx.world.insert_resource(outer);
+    }
+    trace
+        .levels
+        .pop()
+        .and_then(|mut level| level.pop())
+        .unwrap_or(Rec {
+            entity,
+            children: Vec::new(),
+        })
+}
+
 /// A widget implementation, registered under a [`WidgetKind`].
 pub trait Widget: Send + Sync {
     /// Spawns the widget's root under `ctx.parent` and returns it. The
@@ -914,7 +983,11 @@ impl Command for SpawnScreen {
             menu: self.menu,
             parent: self.root,
         };
-        ctx.spawn_child(&resolved.root);
+        let node = spawn_traced(&mut ctx, &resolved.root);
+        world.entity_mut(self.root).insert(ScreenTrace {
+            def: Arc::new(resolved.clone()),
+            node,
+        });
         report_unmatched_injections(
             world,
             self.root,
