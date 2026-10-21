@@ -13,7 +13,10 @@ use slotted_test::prelude::*;
 use slotted_ui::def::{
     ButtonOpts, LocKey, Presentation, ScreenDef, ScreenKind, Tags, TextRole, UiNodeDef,
 };
-use slotted_ui::{Layout, PatchStats, ScreenRoot, ScreenStack, Screens, patch_screen, push_screen};
+use slotted_ui::{
+    Layout, PatchStats, ScreenRoot, ScreenStack, Screens, patch_screen, patch_screen_following,
+    push_screen,
+};
 
 fn harness() -> UiHarness {
     UiHarness::builder()
@@ -241,6 +244,62 @@ fn focus_stays_where_its_id_survives_a_respawn() {
     assert_eq!(
         h.world().resource::<InputFocus>().get(),
         Some(id_entity(&h, "go"))
+    );
+}
+
+#[test]
+fn a_named_unchanged_hint_does_not_pull_the_focus_back() {
+    let mut h = harness();
+    let mut def = screen(vec![
+        button("one", "One"),
+        button("two", "Two"),
+        text("clock", "10"),
+    ]);
+    def.initial_focus = Some("one".to_owned());
+    let root = open(&mut h, &def);
+    let two = id_entity(&h, "two");
+    h.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(two, FocusCause::Navigated);
+    h.step(1);
+    let mut next = def.clone();
+    next.root = panel(
+        "root",
+        vec![
+            button("one", "One"),
+            button("two", "Two"),
+            text("clock", "9"),
+        ],
+    );
+    patch(&mut h, root, &next);
+    assert_eq!(h.world().resource::<InputFocus>().get(), Some(two));
+
+    // A hint that moves is obeyed.
+    let one = id_entity(&h, "one");
+    h.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(one, FocusCause::Navigated);
+    h.step(1);
+    let mut moved = next.clone();
+    moved.initial_focus = Some("two".to_owned());
+    patch(&mut h, root, &moved);
+    assert_eq!(
+        h.world().resource::<InputFocus>().get(),
+        Some(id_entity(&h, "two"))
+    );
+
+    // A following patch obeys even a hint that repeats.
+    let one = id_entity(&h, "one");
+    h.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(one, FocusCause::Navigated);
+    h.step(1);
+    patch_screen_following(&mut h.world_mut().commands(), root, Arc::new(moved));
+    h.world_mut().flush();
+    h.step(2);
+    assert_eq!(
+        h.world().resource::<InputFocus>().get(),
+        Some(id_entity(&h, "two"))
     );
 }
 

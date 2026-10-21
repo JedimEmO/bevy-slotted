@@ -34,8 +34,27 @@ use crate::widgets::text::RichText;
 /// Patches the screen at `root` to `def`, or replaces the top screen with it
 /// when the two cannot share a tree (another kind, presentation or list
 /// ring, or a root that was not spawned from a definition).
+///
+/// A named `initial_focus` is obeyed only when it differs from the one the
+/// screen had, so a patch that only moves a clock leaves the player's focus
+/// alone. A press that leads on to the next control, whose hint may repeat,
+/// uses [`patch_screen_following`].
 pub fn patch_screen(commands: &mut Commands, root: Entity, def: Arc<ScreenDef>) {
-    commands.queue(PatchScreen { root, def });
+    commands.queue(PatchScreen {
+        root,
+        def,
+        follow: false,
+    });
+}
+
+/// [`patch_screen`] that always obeys the screen's `initial_focus`, as a
+/// replace does.
+pub fn patch_screen_following(commands: &mut Commands, root: Entity, def: Arc<ScreenDef>) {
+    commands.queue(PatchScreen {
+        root,
+        def,
+        follow: true,
+    });
 }
 
 /// The command behind [`patch_screen`].
@@ -44,13 +63,15 @@ pub struct PatchScreen {
     pub root: Entity,
     /// What it should show.
     pub def: Arc<ScreenDef>,
+    /// Obey `initial_focus` even when it did not change.
+    pub follow: bool,
 }
 
 impl Command for PatchScreen {
     type Out = ();
 
     fn apply(self, world: &mut World) {
-        if try_patch(world, self.root, &self.def) {
+        if try_patch(world, self.root, &self.def, self.follow) {
             return;
         }
         let menu = world
@@ -79,7 +100,7 @@ pub struct PatchStats {
     pub rewritten: u32,
 }
 
-fn try_patch(world: &mut World, root: Entity, def: &ScreenDef) -> bool {
+fn try_patch(world: &mut World, root: Entity, def: &ScreenDef, follow: bool) -> bool {
     let resolved = world
         .get_resource::<Screens>()
         .map_or_else(|| def.clone(), |s| s.resolve(def));
@@ -122,7 +143,13 @@ fn try_patch(world: &mut World, root: Entity, def: &ScreenDef) -> bool {
         },
         stats,
     ));
-    let asked = hint_now.clone();
+    // Only a hint that moved is a request; an unchanged one must not pull
+    // the focus back every patch (a run's clock patches each second).
+    let asked = if !follow && old.initial_focus == hint_now {
+        None
+    } else {
+        hint_now.clone()
+    };
     world
         .entity_mut(root)
         .insert(crate::semantic::ScreenFocusHint(hint_now.clone()));
@@ -194,7 +221,7 @@ fn focus_named(world: &mut World, root: Entity, id: &str) -> bool {
     true
 }
 
-/// Puts the focus where the patched screen wants it. `asked` is a new
+/// Puts the focus where the patched screen wants it. `asked` is a changed
 /// `initial_focus`, which wins; else the focused node stays, or, when it
 /// was respawned, its id is found again; else the screen's own
 /// `initial_focus` (`hint`), else the stack's restore.

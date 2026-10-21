@@ -83,7 +83,7 @@ pub use nav::{
     TextEntryFocused, directional_nav_actions, focus_on_spawn, on_slot_accept, screen_root_of,
     screen_root_where, track_text_entry_focus,
 };
-pub use patch::{PatchScreen, PatchStats, patch_screen};
+pub use patch::{PatchScreen, PatchStats, patch_screen, patch_screen_following};
 pub use plugin::{SlottedUiConfig, SlottedUiPlugin, SlottedUiSet};
 pub use preview::{
     DragGhost, HintGlyphs, SlotHint, SlotPhantom, Validity, render_overlays,
