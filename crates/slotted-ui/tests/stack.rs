@@ -193,6 +193,10 @@ fn visibility(h: &UiHarness, entity: Entity) -> Visibility {
     *h.world().get::<Visibility>(entity).expect("a node")
 }
 
+fn display(h: &UiHarness, entity: Entity) -> Display {
+    h.world().get::<Node>(entity).expect("a node").display
+}
+
 fn z_of(h: &UiHarness, entity: Entity) -> i32 {
     h.world().get::<GlobalZIndex>(entity).expect("a z index").0
 }
@@ -325,7 +329,13 @@ fn a_page_hides_the_entry_below_and_pop_reveals_it() {
 
     let b = push(&mut h, "t:b", page());
     assert_eq!(visibility(&h, a), Visibility::Hidden);
+    assert_eq!(
+        display(&h, a),
+        Display::None,
+        "a hidden entry is skipped by layout"
+    );
     assert_eq!(visibility(&h, b), Visibility::Inherited);
+    assert_ne!(display(&h, b), Display::None);
     assert_eq!(z_of(&h, b), zbands::SCREEN + 2);
     assert!(
         h.world().get_entity(a).is_ok(),
@@ -335,6 +345,48 @@ fn a_page_hides_the_entry_below_and_pop_reveals_it() {
 
     pop(&mut h);
     assert_eq!(visibility(&h, a), Visibility::Inherited);
+    assert_eq!(display(&h, a), Display::Flex, "the display comes back");
+}
+
+#[test]
+fn a_screen_is_filed_under_its_test_id_until_it_goes() {
+    let mut h = harness();
+    // Tagged by hand: the insert, a replace, a remove and a despawn each
+    // keep the index exact.
+    let node = h.world_mut().spawn(slotted_ui::TestId::new("idx.one")).id();
+    let index = |h: &UiHarness, id: &str| {
+        h.world()
+            .resource::<slotted_ui::TestIdIndex>()
+            .entities(id)
+            .to_vec()
+    };
+    assert_eq!(index(&h, "idx.one"), vec![node]);
+    let twin = h.world_mut().spawn(slotted_ui::TestId::new("idx.two")).id();
+    assert_eq!(
+        h.world()
+            .resource::<slotted_ui::TestIdIndex>()
+            .with_prefix("idx.")
+            .map(|(id, e)| (id.to_owned(), e))
+            .collect::<Vec<_>>(),
+        vec![("idx.one".to_owned(), node), ("idx.two".to_owned(), twin)]
+    );
+    h.world_mut()
+        .entity_mut(node)
+        .insert(slotted_ui::TestId::new("idx.three"));
+    assert!(
+        index(&h, "idx.one").is_empty(),
+        "a changed id leaves its old entry"
+    );
+    assert_eq!(index(&h, "idx.three"), vec![node]);
+    h.world_mut()
+        .entity_mut(node)
+        .remove::<slotted_ui::TestId>();
+    assert!(index(&h, "idx.three").is_empty());
+    h.world_mut().despawn(twin);
+    assert!(
+        index(&h, "idx.two").is_empty(),
+        "a despawn leaves the index"
+    );
 }
 
 #[test]

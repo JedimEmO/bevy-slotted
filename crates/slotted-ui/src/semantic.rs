@@ -208,3 +208,101 @@ pub fn sync_accessibility(
         commands.entity(entity).insert(AccessibilityNode(node));
     }
 }
+
+/// Every live [`TestId`] by name, kept exact by observers on the component's
+/// insert and discard (a despawn discards too), so a system that drives a
+/// handful of known rows does that many lookups instead of scanning and
+/// string-matching every tagged node of every screen each frame.
+///
+/// An id may stand on several nodes (the same row in two layers, a screen's
+/// `close` beside another's), so a name maps to every holder, in insertion
+/// order. The map is ordered so a family of rows (`vitals.`) is one range.
+#[derive(Resource, Debug, Default)]
+pub struct TestIdIndex {
+    by_name: std::collections::BTreeMap<String, Vec<Entity>>,
+}
+
+impl TestIdIndex {
+    /// Every node carrying exactly `id`.
+    #[must_use]
+    pub fn entities(&self, id: &str) -> &[Entity] {
+        self.by_name.get(id).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every node whose id starts with `prefix`, with its id.
+    pub fn with_prefix<'a>(
+        &'a self,
+        prefix: &'a str,
+    ) -> impl Iterator<Item = (&'a str, Entity)> + 'a {
+        self.by_name
+            .range::<str, _>((
+                std::ops::Bound::Included(prefix),
+                std::ops::Bound::Unbounded,
+            ))
+            .take_while(move |(id, _)| id.starts_with(prefix))
+            .flat_map(|(id, nodes)| nodes.iter().map(move |node| (id.as_str(), *node)))
+    }
+
+    /// Registers the index and the observers that keep it, once. The UI
+    /// plugin calls it; a test that runs one HUD system on a bare world
+    /// calls it too.
+    pub fn install(world: &mut World) {
+        if world.contains_resource::<Self>() {
+            return;
+        }
+        world.init_resource::<Self>();
+        world.add_observer(index_test_id);
+        world.add_observer(unindex_test_id);
+    }
+
+    /// How many nodes carry an id at all.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.by_name.values().map(Vec::len).sum()
+    }
+
+    /// Whether no node carries an id.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty()
+    }
+
+    fn add(&mut self, id: &str, entity: Entity) {
+        let nodes = self.by_name.entry(id.to_owned()).or_default();
+        if !nodes.contains(&entity) {
+            nodes.push(entity);
+        }
+    }
+
+    fn remove(&mut self, id: &str, entity: Entity) {
+        if let Some(nodes) = self.by_name.get_mut(id) {
+            nodes.retain(|node| *node != entity);
+            if nodes.is_empty() {
+                self.by_name.remove(id);
+            }
+        }
+    }
+}
+
+/// Observer on `Insert<TestId>`: files the node under its id.
+pub(crate) fn index_test_id(
+    trigger: On<Insert, TestId>,
+    ids: Query<&TestId>,
+    mut index: ResMut<TestIdIndex>,
+) {
+    if let Ok(id) = ids.get(trigger.entity) {
+        index.add(&id.0, trigger.entity);
+    }
+}
+
+/// Observer on `Discard<TestId>`: the old id is still readable, so a changed
+/// id or a despawn takes the node out of its old entry before anything else.
+pub(crate) fn unindex_test_id(
+    trigger: On<Discard, TestId>,
+    ids: Query<&TestId>,
+    mut index: ResMut<TestIdIndex>,
+) {
+    if let Ok(id) = ids.get(trigger.entity) {
+        index.remove(&id.0, trigger.entity);
+    }
+}

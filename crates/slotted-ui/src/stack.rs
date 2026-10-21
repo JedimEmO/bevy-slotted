@@ -450,6 +450,7 @@ pub fn apply_presentation(world: &mut World) {
         };
         set_if_changed(&mut root, GlobalZIndex(z));
         set_if_changed(&mut root, visibility);
+        lay_out_only_if_shown(&mut root, visibility == Visibility::Hidden);
         let existing = scrims
             .iter()
             .find(|(_, for_root)| *for_root == entry.root)
@@ -482,6 +483,33 @@ pub fn apply_presentation(world: &mut World) {
             }
             (false, None) => {}
         }
+    }
+}
+
+/// Remembers the display a screen had before the stack hid it, so showing it
+/// again puts that back.
+#[derive(Component, Debug, Clone, Copy)]
+struct StackHidden(Display);
+
+/// A screen under a page is `Visibility::Hidden`, which still costs a full
+/// layout walk every frame; `Display::None` makes layout skip the subtree.
+/// Only this system touches the root's `display` while it is hidden.
+fn lay_out_only_if_shown(root: &mut EntityWorldMut<'_>, hidden: bool) {
+    let Some(display) = root.get::<Node>().map(|node| node.display) else {
+        return;
+    };
+    if hidden {
+        if display != Display::None {
+            root.insert(StackHidden(display));
+            if let Some(mut node) = root.get_mut::<Node>() {
+                node.display = Display::None;
+            }
+        }
+    } else if let Some(before) = root.get::<StackHidden>().copied() {
+        if let Some(mut node) = root.get_mut::<Node>() {
+            node.display = before.0;
+        }
+        root.remove::<StackHidden>();
     }
 }
 

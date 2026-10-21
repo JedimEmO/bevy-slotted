@@ -106,7 +106,7 @@ pub use screen_asset::{
 };
 pub use semantic::{
     AnchorNode, LocText, ScreenFocusHint, ScreenRoot, SemanticLabel, SemanticRole, TestId,
-    WidgetNode, sync_accessibility,
+    TestIdIndex, WidgetNode, sync_accessibility,
 };
 pub use stack::{
     ClearScreens, CloseStacked, PopScreen, PopTo, PushScreen, ReplaceScreen, ScreenStack, Scrim,

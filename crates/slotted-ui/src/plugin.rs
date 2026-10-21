@@ -96,6 +96,7 @@ impl Plugin for SlottedUiPlugin {
         if self.config.hud.builtins {
             crate::hud::register_builtin_layers(&mut hud, &hotbar);
         }
+        crate::semantic::TestIdIndex::install(app.world_mut());
         app.insert_resource(widgets)
             .insert_resource(parts)
             .insert_resource(hud)
